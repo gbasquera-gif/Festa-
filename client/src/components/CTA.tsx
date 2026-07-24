@@ -22,7 +22,7 @@ export default function CTA() {
             <span className="text-[#F06853]">comemorar?</span>
           </h2>
           <p className="text-lg md:text-xl text-white/80 mb-8 max-w-xl">
-            Fale com a Maria Luiza agora mesmo e monte o kit perfeito para a sua festa.
+            Fale com a nossa equipe agora mesmo e monte o kit perfeito para a sua festa.
             Atendimento rápido pelo WhatsApp.
           </p>
           <a
