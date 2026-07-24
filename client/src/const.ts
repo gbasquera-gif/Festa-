@@ -28,21 +28,21 @@ export const SERVICES = [
     id: "festas-infantis",
     title: "Festas Infantis",
     description: "Tudo para a festinha dos pequenos: mesas postas completas, decoração temática, balões e muito mais. É só escolher o tema e a gente cuida do resto.",
-    image: "/manus-storage/hero-festa-infantil_0440e44f.jpg",
+    image: "/manus-storage/hero-festa-infantil_0440e44f.webp",
     features: ["Mesas postas completas", "Decoração temática", "Balões e arcos", "Kit festa pronta"],
   },
   {
     id: "cha-de-bebe",
     title: "Chá de Bebê",
     description: "Receba o novo membro da família com estilo. Locação de conjuntos completos para um chá de bebê inesquecível e cheio de carinho.",
-    image: "/manus-storage/hero-cha-bebe_1762568f.jpg",
+    image: "/manus-storage/hero-cha-bebe_1762568f.webp",
     features: ["Decoração navy e dourada", "Mesas de doces e salgados", "Favors personalizados", "Balões decorativos"],
   },
   {
     id: "cha-de-revelacao",
     title: "Chá de Revelação",
     description: "O momento mais aguardado merece uma celebração especial. Locação de artigos para revelar o sexo do bebê com estilo e emoção.",
-    image: "/manus-storage/hero-cha-revelacao_fb4fda7f.jpg",
+    image: "/manus-storage/hero-cha-revelacao_fb4fda7f.webp",
     features: ["Kit revelação azul/rosa", "Decoração dual color", "Caixa surpresa", "Balões e confetes"],
   },
 ] as const;
@@ -96,10 +96,10 @@ export const FAQ = [
 ] as const;
 
 export const GALLERY = [
-  { src: "/manus-storage/galeria-1_8d8f179e.jpg", alt: "Mesa posta elegante com pratos navy e detalhes dourados" },
-  { src: "/manus-storage/galeria-2_cbae8925.jpg", alt: "Arco de balões nas cores navy, coral e dourado" },
-  { src: "/manus-storage/galeria-3_6c8c3715.jpg", alt: "Mesa de doces decorada com 'Happy Birthday' em dourado" },
-  { src: "/manus-storage/galeria-4_a855ed53.jpg", alt: "Mesa de favors para chá de bebê com caixinhas brancas e douradas" },
-  { src: "/manus-storage/hero-festa-infantil_0440e44f.jpg", alt: "Mesa completa de festa infantil com balões e doces" },
-  { src: "/manus-storage/hero-cha-bebe_1762568f.jpg", alt: "Decoração de chá de bebê com tons navy e dourado" },
+  { src: "/manus-storage/galeria-1_8d8f179e.webp", alt: "Mesa posta elegante com pratos navy e detalhes dourados" },
+  { src: "/manus-storage/galeria-2_cbae8925.webp", alt: "Arco de balões nas cores navy, coral e dourado" },
+  { src: "/manus-storage/galeria-3_6c8c3715.webp", alt: "Mesa de doces decorada com 'Happy Birthday' em dourado" },
+  { src: "/manus-storage/galeria-4_a855ed53.webp", alt: "Mesa de favors para chá de bebê com caixinhas brancas e douradas" },
+  { src: "/manus-storage/hero-festa-infantil_0440e44f.webp", alt: "Mesa completa de festa infantil com balões e doces" },
+  { src: "/manus-storage/hero-cha-bebe_1762568f.webp", alt: "Decoração de chá de bebê com tons navy e dourado" },
 ] as const;
