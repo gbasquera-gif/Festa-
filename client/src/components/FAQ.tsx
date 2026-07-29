@@ -7,7 +7,7 @@ export default function FAQ() {
 
   return (
     <section id="faq" className="py-20 md:py-28 bg-[#FDF9F4] relative overflow-hidden">
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         <div className="grid lg:grid-cols-[1fr_1.5fr] gap-12">
           {/* Left column — header */}
           <div className="lg:sticky lg:top-28 lg:self-start">

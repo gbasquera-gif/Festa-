@@ -7,7 +7,7 @@ export default function About() {
       {/* Decorative element */}
       <div className="absolute top-20 right-0 w-80 h-80 bg-[#FDF9F4] rounded-full -translate-y-1/2 translate-x-1/2" />
 
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         <div className="grid md:grid-cols-2 gap-12 lg:gap-20 items-center">
           {/* Image */}
           <div className="relative">
@@ -16,6 +16,10 @@ export default function About() {
               <img
                 src="/manus-storage/maria-luiza-real_403ac9f6.jpg"
                 alt={`${BRAND.owner} — proprietária da Festaê!`}
+                width={960}
+                height={1280}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-auto object-cover"
               />
             </div>
