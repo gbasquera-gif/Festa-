@@ -7,15 +7,20 @@ export default function CTA() {
       {/* Background */}
       <div className="absolute inset-0">
         <img
-          src="/manus-storage/cta-final_cc92cef5.jpg"
-          alt="Celebração de festa"
+          src="/manus-storage/galeria-2_cbae8925.webp"
+          alt=""
+          aria-hidden="true"
+          width={1920}
+          height={1920}
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#0F2A4F]/95 via-[#0F2A4F]/85 to-[#0F2A4F]/60" />
       </div>
 
       {/* Content */}
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         <div className="max-w-2xl">
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 leading-tight" style={{ fontFamily: "Nunito" }}>
             Pronta para<br />

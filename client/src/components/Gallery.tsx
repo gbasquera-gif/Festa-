@@ -3,7 +3,7 @@ import { GALLERY } from "@/const";
 export default function Gallery() {
   return (
     <section id="galeria" className="py-20 md:py-28 bg-[#FDF9F4] relative overflow-hidden">
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
           <span className="inline-block text-sm font-bold text-[#F06853] uppercase tracking-widest mb-3">
@@ -30,6 +30,10 @@ export default function Gallery() {
                 <img
                   src={item.src}
                   alt={item.alt}
+                  width={1920}
+                  height={1920}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0F2A4F]/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

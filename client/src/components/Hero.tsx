@@ -7,8 +7,13 @@ export default function Hero() {
       {/* Background image */}
       <div className="absolute inset-0">
         <img
-          src="/manus-storage/hero-festa-infantil_0440e44f.jpg"
-          alt="Festa infantil elegante"
+          src="/manus-storage/hero-festa-infantil_0440e44f.webp"
+          alt=""
+          aria-hidden="true"
+          width={1920}
+          height={1080}
+          fetchPriority="high"
+          decoding="async"
           className="w-full h-full object-cover opacity-40"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#0F2A4F] via-[#0F2A4F]/80 to-[#0F2A4F]/30" />
