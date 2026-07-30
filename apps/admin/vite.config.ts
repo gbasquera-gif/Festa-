@@ -14,6 +14,15 @@ export default defineConfig({
     host: true,
     port: 5174,
   },
+  optimizeDeps: {
+    // @festae/shared is a pnpm-symlinked workspace package resolving
+    // outside node_modules' real path, so Vite treats it as project
+    // source instead of a dependency and skips esbuild's CJS→ESM
+    // pre-bundling — its dist/index.js (CommonJS) then fails to expose
+    // named exports to the dev server. Forcing it into optimizeDeps
+    // makes esbuild convert it like any other dependency.
+    include: ["@festae/shared"],
+  },
   build: {
     commonjsOptions: {
       // pnpm symlinks workspace packages outside of node_modules' real path,

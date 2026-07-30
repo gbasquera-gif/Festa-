@@ -5,6 +5,7 @@ import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
 import { useAuth, isApiError } from "@/lib/auth";
+import { track } from "@/lib/analytics";
 
 export default function Login() {
   const { login } = useAuth();
@@ -18,6 +19,7 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login(email, password);
+      track("LOGIN");
       router.replace("/(tabs)");
     } catch (err) {
       setError(isApiError(err) ? err.message : "Não foi possível entrar.");

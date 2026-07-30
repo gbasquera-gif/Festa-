@@ -41,6 +41,7 @@ export const createKitSchema = z.object({
   themeId: z.string().cuid().optional(),
   basePrice: z.coerce.number().min(0),
   coverImageUrl: z.string().url().optional(),
+  images: z.array(z.string().url()).default([]),
   minGuests: z.coerce.number().int().min(0).default(0),
   maxGuests: z.coerce.number().int().min(1).default(9999),
   active: z.boolean().default(true),

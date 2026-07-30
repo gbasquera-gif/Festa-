@@ -5,6 +5,7 @@ export interface Theme {
   name: string;
   slug: string;
   description: string | null;
+  coverImageUrl: string | null;
   colorPalette: string[];
   active: boolean;
 }
@@ -15,6 +16,7 @@ export interface Product {
   description: string | null;
   category: string;
   unitPrice: string;
+  imageUrl: string | null;
   active: boolean;
 }
 
@@ -30,6 +32,8 @@ export interface Kit {
   slug: string;
   description: string | null;
   basePrice: string;
+  coverImageUrl: string | null;
+  images: string[];
   minGuests: number;
   maxGuests: number;
   theme: Theme | null;
@@ -71,7 +75,22 @@ export interface EventRecord {
   budgetGoal: string | null;
   themeId: string | null;
   theme: Theme | null;
+  address: string | null;
+  neighborhood: string | null;
+  city: string;
+  state: string;
   order: Order;
+}
+
+export interface Payment {
+  id: string;
+  type: "DEPOSIT" | "BALANCE";
+  amount: string;
+  method: "PIX" | "CARTAO" | "BOLETO" | "OUTRO";
+  status: "PENDING" | "PAID" | "FAILED" | "REFUNDED";
+  checkoutUrl: string | null;
+  pixQrCode: string | null;
+  pixQrCodeBase64: string | null;
 }
 
 export const EVENT_TYPE_LABEL: Record<EventType, string> = {

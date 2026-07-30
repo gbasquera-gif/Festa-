@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { z } from "zod";
 import { createThemeSchema, type CreateThemeInput } from "@festae/shared";
+import { ImageUploadField } from "@/components/image-upload-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,6 +99,12 @@ function ThemeForm({ theme, onSaved }: { theme?: Theme; onSaved: () => void }) {
         <Label htmlFor="description">Descrição</Label>
         <Textarea id="description" rows={3} {...form.register("description")} />
       </div>
+      <ImageUploadField
+        label="Foto de capa"
+        folder="themes"
+        value={form.watch("coverImageUrl")}
+        onChange={(url) => form.setValue("coverImageUrl", url)}
+      />
       <DialogFooter>
         <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? "Salvando..." : "Salvar"}

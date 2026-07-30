@@ -43,3 +43,32 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const PAYMENT_STATUSES = ["PENDING", "PAID", "FAILED", "REFUNDED"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_TYPES = ["DEPOSIT", "BALANCE"] as const;
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+
+// Ordem representa o funil de conversão, do topo ao fundo — usado para
+// calcular abandono/drop-off entre etapas no resumo de analytics.
+export const ANALYTICS_EVENT_TYPES = [
+  "CADASTRO",
+  "LOGIN",
+  "INICIO_CRIACAO_FESTA",
+  "ESCOLHA_TEMA",
+  "ESCOLHA_KIT",
+  "EXTRA_ADICIONADO",
+  "CLIQUE_WHATSAPP",
+  "RESERVA_CRIADA",
+  "PAGAMENTO_REALIZADO",
+  "ABANDONO",
+] as const;
+export type AnalyticsEventType = (typeof ANALYTICS_EVENT_TYPES)[number];
+
+export const ANALYTICS_FUNNEL_ORDER: AnalyticsEventType[] = [
+  "CADASTRO",
+  "LOGIN",
+  "INICIO_CRIACAO_FESTA",
+  "ESCOLHA_TEMA",
+  "ESCOLHA_KIT",
+  "RESERVA_CRIADA",
+  "PAGAMENTO_REALIZADO",
+];

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { z } from "zod";
 import { createProductSchema, PRODUCT_CATEGORIES, type CreateProductInput } from "@festae/shared";
+import { ImageUploadField } from "@/components/image-upload-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -123,6 +124,12 @@ function ProductForm({ product, onSaved }: { product?: Product; onSaved: () => v
         <Label htmlFor="description">Descrição</Label>
         <Textarea id="description" rows={3} {...form.register("description")} />
       </div>
+      <ImageUploadField
+        label="Foto do produto"
+        folder="products"
+        value={form.watch("imageUrl")}
+        onChange={(url) => form.setValue("imageUrl", url)}
+      />
       <DialogFooter>
         <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? "Salvando..." : "Salvar"}

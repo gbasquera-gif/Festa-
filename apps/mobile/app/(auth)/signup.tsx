@@ -5,6 +5,7 @@ import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
 import { useAuth, isApiError } from "@/lib/auth";
+import { track } from "@/lib/analytics";
 
 export default function Signup() {
   const { signup } = useAuth();
@@ -20,6 +21,7 @@ export default function Signup() {
     setSubmitting(true);
     try {
       await signup(name, email, password, phone || undefined);
+      track("CADASTRO");
       router.replace("/(tabs)");
     } catch (err) {
       setError(isApiError(err) ? err.message : "Não foi possível criar sua conta.");

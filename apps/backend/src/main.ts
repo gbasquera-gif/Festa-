@@ -1,10 +1,13 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { UPLOADS_ROOT } from "./modules/storage/local-disk-storage.service";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: true });
+  app.useStaticAssets(UPLOADS_ROOT, { prefix: "/uploads" });
   app.setGlobalPrefix("api/v1");
 
   const config = new DocumentBuilder()

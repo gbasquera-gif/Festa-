@@ -122,6 +122,12 @@ apps/mobile/.expo/
 # Prisma generated client (regenerated via `pnpm db:generate`)
 packages/database/generated/
 
+# Uploads locais (armazenamento em disco só para dev — troca para
+# S3/R2 antes de produção real)
+apps/backend/uploads/*
+!apps/backend/uploads/.gitkeep
+!apps/backend/uploads/**/.gitkeep
+
 # Capacitor / Android
 apps/site/android/local.properties
 apps/site/android/.gradle/

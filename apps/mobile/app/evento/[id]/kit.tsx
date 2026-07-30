@@ -5,7 +5,10 @@ import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Badge } from "@/components/Badge";
-import { api, ApiError } from "@/lib/api";
+import { StepProgress } from "@/components/StepProgress";
+import { ImageCarousel } from "@/components/ImageCarousel";
+import { api } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import type { EventRecord, Kit } from "@/lib/types";
 
 export default function EscolherKit() {
@@ -29,7 +32,8 @@ export default function EscolherKit() {
   const mutation = useMutation({
     mutationFn: (kitId: string) =>
       api(`/events/${id}/order/kit`, { method: "POST", body: JSON.stringify({ kitId }) }),
-    onSuccess: () => {
+    onSuccess: (_data, kitId) => {
+      track("ESCOLHA_KIT", { kitId, eventId: id });
       queryClient.invalidateQueries({ queryKey: ["event", id] });
       router.push(`/evento/${id}/extras`);
     },
@@ -37,6 +41,8 @@ export default function EscolherKit() {
 
   return (
     <Screen>
+      <StepProgress step={2} />
+
       <View>
         <Text className="font-sans-extrabold text-2xl text-navy">Kit ideal para sua festa</Text>
         <Text className="text-navy/70">
@@ -55,31 +61,37 @@ export default function EscolherKit() {
         </Card>
       )}
 
-      {kits?.map((kit) => (
-        <Card key={kit.id}>
-          <View className="flex-row items-start justify-between">
-            <View className="flex-1 pr-3">
-              <Text className="text-lg font-bold text-navy">{kit.name}</Text>
-              {kit.description && <Text className="text-navy/70">{kit.description}</Text>}
+      {kits?.map((kit, index) => (
+        <Card key={kit.id} className="overflow-hidden p-0">
+          <ImageCarousel images={kit.images.length > 0 ? kit.images : kit.coverImageUrl ? [kit.coverImageUrl] : []} />
+
+          <View className="p-4">
+            <View className="flex-row items-start justify-between">
+              <View className="flex-1 pr-3">
+                <Text className="text-lg font-bold text-navy">{kit.name}</Text>
+                {kit.description && <Text className="text-navy/70">{kit.description}</Text>}
+              </View>
+              <Badge label={`R$ ${Number(kit.basePrice).toFixed(2)}`} variant="coral" />
             </View>
-            <Badge label={`R$ ${Number(kit.basePrice).toFixed(2)}`} variant="coral" />
-          </View>
 
-          <View className="mt-3 gap-1">
-            {kit.products.map((link) => (
-              <Text key={link.productId} className="text-sm text-navy/70">
-                • {link.quantity}x {link.product.name}
-              </Text>
-            ))}
-          </View>
+            {index === 0 && <Badge label="✨ Mais escolhido" variant="success" />}
 
-          <Button
-            className="mt-4"
-            onPress={() => mutation.mutate(kit.id)}
-            loading={mutation.isPending}
-          >
-            Escolher este kit
-          </Button>
+            <View className="mt-3 gap-1">
+              {kit.products.map((link) => (
+                <Text key={link.productId} className="text-sm text-navy/70">
+                  • {link.quantity}x {link.product.name}
+                </Text>
+              ))}
+            </View>
+
+            <Button
+              className="mt-4"
+              onPress={() => mutation.mutate(kit.id)}
+              loading={mutation.isPending}
+            >
+              Escolher este kit
+            </Button>
+          </View>
         </Card>
       ))}
     </Screen>

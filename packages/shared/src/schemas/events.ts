@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "../enums";
 
+export const availabilityQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use o formato AAAA-MM."),
+});
+export type AvailabilityQuery = z.infer<typeof availabilityQuerySchema>;
+
 export const createEventSchema = z.object({
   type: z.enum(EVENT_TYPES),
   date: z.coerce.date(),

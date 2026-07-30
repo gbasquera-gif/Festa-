@@ -72,6 +72,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentType {
+  DEPOSIT
+  BALANCE
+}
+
 // ---------- Models ----------
 
 model User {
@@ -161,6 +166,7 @@ model Kit {
   themeId       String?
   basePrice     Decimal  @db.Decimal(10, 2)
   coverImageUrl String?
+  images        String[] @default([])
   minGuests     Int      @default(0)
   maxGuests     Int      @default(9999)
   active        Boolean  @default(true)
@@ -255,16 +261,33 @@ model Partner {
 }
 
 model Payment {
-  id                String        @id @default(cuid())
-  orderId           String
-  amount            Decimal       @db.Decimal(10, 2)
-  method            PaymentMethod @default(PIX)
-  status            PaymentStatus @default(PENDING)
-  externalReference String?
-  createdAt         DateTime      @default(now())
+  id                 String        @id @default(cuid())
+  orderId            String
+  type               PaymentType   @default(DEPOSIT)
+  amount             Decimal       @db.Decimal(10, 2)
+  method             PaymentMethod @default(PIX)
+  status             PaymentStatus @default(PENDING)
+  externalReference  String?
+  checkoutUrl        String?
+  pixQrCode          String?
+  pixQrCodeBase64    String?
+  paidAt             DateTime?
+  createdAt          DateTime      @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@map("payments")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  type      String
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("analytics_events")
 }

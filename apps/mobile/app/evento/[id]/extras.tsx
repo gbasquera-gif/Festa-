@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { StepProgress } from "@/components/StepProgress";
+import { ImageCover } from "@/components/ImageCover";
 import { api } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import type { Order, Product } from "@/lib/types";
 
 export default function Extras() {
@@ -25,7 +28,10 @@ export default function Extras() {
   const addMutation = useMutation({
     mutationFn: (productId: string) =>
       api(`/events/${id}/order/items`, { method: "POST", body: JSON.stringify({ productId, quantity: 1 }) }),
-    onSuccess: invalidate,
+    onSuccess: (_data, productId) => {
+      track("EXTRA_ADICIONADO", { productId, eventId: id });
+      invalidate();
+    },
   });
 
   const updateMutation = useMutation({
@@ -40,6 +46,8 @@ export default function Extras() {
 
   return (
     <Screen>
+      <StepProgress step={3} />
+
       <View>
         <Text className="font-sans-extrabold text-2xl text-navy">Quer adicionar mais alguma coisa?</Text>
         <Text className="text-navy/70">Itens extras além do que já vem no seu kit.</Text>
@@ -48,8 +56,9 @@ export default function Extras() {
       {products?.map((product) => {
         const quantity = quantityFor(product.id);
         return (
-          <Card key={product.id} className="flex-row items-center justify-between">
-            <View className="flex-1 pr-3">
+          <Card key={product.id} className="flex-row items-center gap-3 overflow-hidden p-0 pr-4">
+            <ImageCover uri={product.imageUrl} rounded="all" className="h-20 w-20" />
+            <View className="flex-1 py-3">
               <Text className="font-bold text-navy">{product.name}</Text>
               <Text className="text-navy/70">R$ {Number(product.unitPrice).toFixed(2)}</Text>
             </View>
