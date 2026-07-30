@@ -1,0 +1,47 @@
+name: EAS Build (mobile)
+
+# Manual trigger only — EAS builds consume Expo's build credits, so we
+# don't want every push kicking one off. Requires an EXPO_TOKEN repo
+# secret (from https://expo.dev/accounts/[account]/settings/access-tokens)
+# and the project to be linked via `eas init` (sets extra.eas.projectId
+# in apps/mobile/app.json) — neither of which can be done from CI itself.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: true
+        default: "android"
+        type: choice
+        options: ["android", "ios", "all"]
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options: ["development", "preview", "production"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build
+        working-directory: apps/mobile
+        run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait
