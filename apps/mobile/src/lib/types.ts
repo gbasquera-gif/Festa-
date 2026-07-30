@@ -1,0 +1,89 @@
+import type { EventType, OrderStatus, ReservationStatus } from "@festae/shared";
+
+export interface Theme {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  colorPalette: string[];
+  active: boolean;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  unitPrice: string;
+  active: boolean;
+}
+
+export interface KitProductLink {
+  productId: string;
+  quantity: number;
+  product: Product;
+}
+
+export interface Kit {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  basePrice: string;
+  minGuests: number;
+  maxGuests: number;
+  theme: Theme | null;
+  products: KitProductLink[];
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitPriceSnapshot: string;
+  product: Product;
+}
+
+export interface Reservation {
+  id: string;
+  eventDate: string;
+  status: ReservationStatus;
+  notes: string | null;
+}
+
+export interface Order {
+  id: string;
+  status: OrderStatus;
+  kitId: string | null;
+  kit: Kit | null;
+  items: OrderItem[];
+  subtotalKit: string;
+  subtotalExtras: string;
+  total: string;
+  reservation: Reservation | null;
+}
+
+export interface EventRecord {
+  id: string;
+  type: EventType;
+  date: string;
+  guestCount: number;
+  budgetGoal: string | null;
+  themeId: string | null;
+  theme: Theme | null;
+  order: Order;
+}
+
+export const EVENT_TYPE_LABEL: Record<EventType, string> = {
+  FESTA_INFANTIL: "Festa Infantil",
+  CHA_DE_BEBE: "Chá de Bebê",
+  CHA_REVELACAO: "Chá de Revelação",
+  OUTRO: "Outro",
+};
+
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  CART: "Montando festa",
+  REQUESTED: "Reserva solicitada",
+  CONFIRMED: "Confirmada",
+  CANCELLED: "Cancelada",
+};
