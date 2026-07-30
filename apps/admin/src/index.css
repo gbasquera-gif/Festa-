@@ -1,0 +1,177 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  /* Festaê Brand Colors */
+  --color-navy: #0F2A4F;
+  --color-coral: #F06853;
+  --color-gold: #C7A360;
+  --color-cream: #FDF9F4;
+
+  --primary: #F06853;
+  --primary-foreground: #FFFFFF;
+  --sidebar-primary: #F06853;
+  --sidebar-primary-foreground: #FFFFFF;
+  --chart-1: #0F2A4F;
+  --chart-2: #F06853;
+  --chart-3: #C7A360;
+  --chart-4: #FDF9F4;
+  --chart-5: #E5DCC8;
+  --radius: 0.75rem;
+  --background: #FDF9F4;
+  --foreground: #0F2A4F;
+  --card: #FFFFFF;
+  --card-foreground: #0F2A4F;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F2A4F;
+  --secondary: #F0E6D8;
+  --secondary-foreground: #0F2A4F;
+  --muted: #F0E6D8;
+  --muted-foreground: #6B7B8F;
+  --accent: #F06853;
+  --accent-foreground: #FFFFFF;
+  --destructive: #E0402E;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5DCC8;
+  --input: #E5DCC8;
+  --ring: #F06853;
+  --sidebar: #FDF9F4;
+  --sidebar-foreground: #0F2A4F;
+  --sidebar-accent: #F0E6D8;
+  --sidebar-accent-foreground: #0F2A4F;
+  --sidebar-border: #E5DCC8;
+  --sidebar-ring: #F06853;
+}
+
+.dark {
+  --primary: #F06853;
+  --primary-foreground: #FFFFFF;
+  --sidebar-primary: #F06853;
+  --sidebar-primary-foreground: #FFFFFF;
+  --background: #0F2A4F;
+  --foreground: #FDF9F4;
+  --card: #1A3A5F;
+  --card-foreground: #FDF9F4;
+  --popover: #1A3A5F;
+  --popover-foreground: #FDF9F4;
+  --secondary: #1A3A5F;
+  --secondary-foreground: #FDF9F4;
+  --muted: #1A3A5F;
+  --muted-foreground: #A0B0C0;
+  --accent: #F06853;
+  --accent-foreground: #FFFFFF;
+  --destructive: #E0402E;
+  --destructive-foreground: #FFFFFF;
+  --border: #2A4A6F;
+  --input: #2A4A6F;
+  --ring: #F06853;
+  --sidebar: #0F2A4F;
+  --sidebar-foreground: #FDF9F4;
+  --sidebar-accent: #1A3A5F;
+  --sidebar-accent-foreground: #FDF9F4;
+  --sidebar-border: #2A4A6F;
+  --sidebar-ring: #F06853;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Nunito", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 1280px;
+    }
+  }
+
+  /* Festaê brand utilities */
+  .text-navy { color: #0F2A4F; }
+  .text-coral { color: #F06853; }
+  .text-gold { color: #C7A360; }
+  .bg-navy { background-color: #0F2A4F; }
+  .bg-coral { background-color: #F06853; }
+  .bg-gold { background-color: #C7A360; }
+}

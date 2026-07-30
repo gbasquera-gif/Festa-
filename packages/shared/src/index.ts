@@ -1,7 +1,56 @@
-export * from "./enums";
-export * from "./brand";
-export * from "./schemas/auth";
-export * from "./schemas/events";
-export * from "./schemas/orders";
-export * from "./schemas/reservations";
-export * from "./schemas/catalog";
+// Explicit re-exports instead of `export *`: tsc compiles `export *` to a
+// dynamic `__exportStar` call under CommonJS, which Rollup/Vite's cjs-interop
+// (cjs-module-lexer) cannot statically analyze — it would silently fail to
+// see any of these names when this package is bundled into apps/admin.
+export {
+  ROLES,
+  EVENT_TYPES,
+  PRODUCT_CATEGORIES,
+  ORDER_STATUSES,
+  RESERVATION_STATUSES,
+  PARTNER_TYPES,
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+} from "./enums";
+export type {
+  Role,
+  EventType,
+  ProductCategory,
+  OrderStatus,
+  ReservationStatus,
+  PartnerType,
+  PaymentMethod,
+  PaymentStatus,
+} from "./enums";
+
+export { BRAND_COLORS, BRAND_NAME, DEFAULT_CITY, DEFAULT_STATE } from "./brand";
+
+export { signupSchema, loginSchema } from "./schemas/auth";
+export type { SignupInput, LoginInput } from "./schemas/auth";
+
+export { createEventSchema, updateEventSchema } from "./schemas/events";
+export type { CreateEventInput, UpdateEventInput } from "./schemas/events";
+
+export { selectKitSchema, addOrderItemSchema, updateOrderItemSchema } from "./schemas/orders";
+export type { SelectKitInput, AddOrderItemInput, UpdateOrderItemInput } from "./schemas/orders";
+
+export { createReservationSchema, updateReservationStatusSchema } from "./schemas/reservations";
+export type { CreateReservationInput, UpdateReservationStatusInput } from "./schemas/reservations";
+
+export {
+  createThemeSchema,
+  updateThemeSchema,
+  createProductSchema,
+  updateProductSchema,
+  kitProductInputSchema,
+  createKitSchema,
+  updateKitSchema,
+} from "./schemas/catalog";
+export type {
+  CreateThemeInput,
+  UpdateThemeInput,
+  CreateProductInput,
+  UpdateProductInput,
+  CreateKitInput,
+  UpdateKitInput,
+} from "./schemas/catalog";
