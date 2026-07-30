@@ -109,24 +109,34 @@ temp/
 .webdev/
 
 # Manus version file (auto-generated, not part of source)
-client/public/__manus__/version.json
+apps/site/client/public/__manus__/version.json
 .project-config.json
 
+# Turborepo
+.turbo/
+
+# Expo
+.expo/
+apps/mobile/.expo/
+
+# Prisma generated client (regenerated via `pnpm db:generate`)
+packages/database/generated/
+
 # Capacitor / Android
-android/local.properties
-android/.gradle/
-android/app/build/
-android/build/
-android/captures/
-android/*.keystore
-android/*.jks
+apps/site/android/local.properties
+apps/site/android/.gradle/
+apps/site/android/app/build/
+apps/site/android/build/
+apps/site/android/captures/
+apps/site/android/*.keystore
+apps/site/android/*.jks
 *.hprof
 
 # Capacitor / iOS
-ios/App/Pods/
-ios/App/build/
-ios/App/App.xcworkspace/xcuserdata/
-ios/App/App.xcodeproj/xcuserdata/
-ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
-ios/.build/
+apps/site/ios/App/Pods/
+apps/site/ios/App/build/
+apps/site/ios/App/App.xcworkspace/xcuserdata/
+apps/site/ios/App/App.xcodeproj/xcuserdata/
+apps/site/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+apps/site/ios/.build/
 *.xcuserstate

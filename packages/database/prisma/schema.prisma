@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  CLIENT
+  ADMIN
+  OPS
+}
+
+enum EventType {
+  FESTA_INFANTIL
+  CHA_DE_BEBE
+  CHA_REVELACAO
+  OUTRO
+}
+
+enum ProductCategory {
+  DECORACAO
+  MOBILIARIO
+  LOUCA
+  ILUMINACAO
+  BRINQUEDO
+  OUTRO
+}
+
+enum OrderStatus {
+  CART
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum PartnerType {
+  DECORADOR
+  DOCERIA
+  FOTOGRAFO
+  DJ
+  BARTENDER
+  ESCOLA
+  EMPRESA
+  OUTRO
+}
+
+enum PaymentMethod {
+  PIX
+  CARTAO
+  BOLETO
+  OUTRO
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// ---------- Models ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(CLIENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events Event[]
+
+  @@map("users")
+}
+
+model Theme {
+  id                  String      @id @default(cuid())
+  name                String
+  slug                String      @unique
+  description         String?
+  coverImageUrl       String?
+  colorPalette        String[]    @default([])
+  suggestedEventTypes EventType[] @default([])
+  active              Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  kits   Kit[]
+  events Event[]
+
+  @@map("themes")
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  userId      String
+  type        EventType
+  date        DateTime
+  guestCount  Int
+  budgetGoal  Decimal?  @db.Decimal(10, 2)
+  themeId     String?
+  address     String?
+  neighborhood String?
+  city        String    @default("Chapecó")
+  state       String    @default("SC")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme Theme? @relation(fields: [themeId], references: [id])
+  order Order?
+
+  @@index([userId])
+  @@index([themeId])
+  @@map("events")
+}
+
+model Product {
+  id            String          @id @default(cuid())
+  name          String
+  slug          String          @unique
+  description   String?
+  category      ProductCategory @default(OUTRO)
+  unitPrice     Decimal         @db.Decimal(10, 2)
+  stockQuantity Int             @default(0)
+  imageUrl      String?
+  partnerId     String?
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  partner    Partner?    @relation(fields: [partnerId], references: [id])
+  kitLinks   KitProduct[]
+  orderItems OrderItem[]
+
+  @@index([partnerId])
+  @@map("products")
+}
+
+model Kit {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String?
+  themeId       String?
+  basePrice     Decimal  @db.Decimal(10, 2)
+  coverImageUrl String?
+  minGuests     Int      @default(0)
+  maxGuests     Int      @default(9999)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  theme    Theme?       @relation(fields: [themeId], references: [id])
+  products KitProduct[]
+  orders   Order[]
+
+  @@index([themeId])
+  @@map("kits")
+}
+
+model KitProduct {
+  id        String @id @default(cuid())
+  kitId     String
+  productId String
+  quantity  Int    @default(1)
+
+  kit     Kit     @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([kitId, productId])
+  @@map("kit_products")
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  eventId        String      @unique
+  kitId          String?
+  status         OrderStatus @default(CART)
+  subtotalKit    Decimal     @default(0) @db.Decimal(10, 2)
+  subtotalExtras Decimal     @default(0) @db.Decimal(10, 2)
+  total          Decimal     @default(0) @db.Decimal(10, 2)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  kit         Kit?         @relation(fields: [kitId], references: [id])
+  items       OrderItem[]
+  reservation Reservation?
+  payments    Payment[]
+
+  @@index([kitId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String @id @default(cuid())
+  orderId           String
+  productId         String
+  quantity          Int    @default(1)
+  unitPriceSnapshot Decimal @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId])
+  @@map("order_items")
+}
+
+model Reservation {
+  id          String            @id @default(cuid())
+  orderId     String            @unique
+  eventDate   DateTime
+  status      ReservationStatus @default(PENDING)
+  requestedAt DateTime          @default(now())
+  confirmedAt DateTime?
+  notes       String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([eventDate])
+  @@map("reservations")
+}
+
+model Partner {
+  id           String      @id @default(cuid())
+  name         String
+  type         PartnerType
+  contactEmail String?
+  contactPhone String?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  products Product[]
+
+  @@map("partners")
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String
+  amount            Decimal       @db.Decimal(10, 2)
+  method            PaymentMethod @default(PIX)
+  status            PaymentStatus @default(PENDING)
+  externalReference String?
+  createdAt         DateTime      @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("payments")
+}
