@@ -5,7 +5,15 @@ name: EAS Build (mobile)
 # secret (from https://expo.dev/accounts/[account]/settings/access-tokens)
 # and the project to be linked via `eas init` (sets extra.eas.projectId
 # in apps/mobile/app.json) — neither of which can be done from CI itself.
+#
+# The `push` trigger below only exists so GitHub registers this workflow
+# as dispatchable (workflow_dispatch requires a prior run to be known to
+# the Actions API, and this repo's default branch doesn't carry this
+# file). It's scoped to changes on this exact file, and the job itself
+# no-ops on that event — it never actually builds anything on push.
 on:
+  push:
+    paths: [".github/workflows/eas-build.yml"]
   workflow_dispatch:
     inputs:
       platform:
@@ -23,6 +31,7 @@ on:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
