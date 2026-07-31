@@ -50,7 +50,8 @@
     "build:android:production": "eas build --platform android --profile production",
     "build:ios:preview": "eas build --platform ios --profile preview",
     "build:ios:production": "eas build --platform ios --profile production",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "eas-build-post-install": "pnpm --filter @festae/shared run build"
   },
   "private": true
 }
