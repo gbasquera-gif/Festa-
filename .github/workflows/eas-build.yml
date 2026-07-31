@@ -29,6 +29,9 @@ on:
         type: choice
         options: ["development", "preview", "production"]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     if: github.event_name == 'workflow_dispatch'
@@ -51,6 +54,31 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
+      # Primeira execução: o projeto ainda não existe no Expo. `eas init`
+      # cria o projeto e grava extra.eas.projectId no app.json — sem isso,
+      # `eas build` recusa rodar em modo não-interativo. Faz isso só uma
+      # vez (rodas seguintes já encontram o projectId e pulam).
+      - name: Link EAS project (only if not linked yet)
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if ! grep -q '"projectId"' app.json; then
+            eas init --non-interactive
+          fi
+
+      - name: Persist EAS project link
+        run: |
+          if ! git diff --quiet -- apps/mobile/app.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add apps/mobile/app.json
+            git commit -m "chore: linka projeto EAS (automático)"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
       - name: Build
         working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait
