@@ -59,13 +59,34 @@ jobs:
       # `eas build` recusa rodar em modo não-interativo. Faz isso só uma
       # vez (rodas seguintes já encontram o projectId e pulam).
       - name: Link EAS project (only if not linked yet)
+        id: eas_init
         working-directory: apps/mobile
+        continue-on-error: true
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           if ! grep -q '"projectId"' app.json; then
-            eas init --non-interactive
+            eas init --non-interactive 2>&1 | tee /tmp/eas-init.log
+            exit ${PIPESTATUS[0]}
           fi
+
+      # Não consigo abrir os logs brutos do Actions do ambiente onde
+      # trabalho (rede restrita) — se o passo acima falhar, publica a
+      # saída como comentário no PR pra eu conseguir ler e diagnosticar.
+      - name: Report eas init failure
+        if: steps.eas_init.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "**eas init falhou** (run ${{ github.run_id }}):"
+            echo '```'
+            cat /tmp/eas-init.log 2>/dev/null || echo "(sem log capturado)"
+            echo '```'
+          } > /tmp/comment-body.md
+          gh pr comment 2 --repo ${{ github.repository }} --body-file /tmp/comment-body.md || \
+            gh api repos/${{ github.repository }}/issues/2/comments -f body="$(cat /tmp/comment-body.md)"
+          exit 1
 
       - name: Persist EAS project link
         run: |
