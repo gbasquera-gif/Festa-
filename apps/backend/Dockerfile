@@ -26,5 +26,6 @@ FROM base AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 COPY --from=builder /repo ./
+RUN chmod +x apps/backend/docker-entrypoint.sh
 EXPOSE 3333
-CMD ["node", "apps/backend/dist/main.js"]
+CMD ["apps/backend/docker-entrypoint.sh"]
