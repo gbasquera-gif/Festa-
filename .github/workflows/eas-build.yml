@@ -101,7 +101,26 @@ jobs:
           fi
 
       - name: Build
+        id: eas_build
         working-directory: apps/mobile
+        continue-on-error: true
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait
+        run: |
+          eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait 2>&1 | tee /tmp/eas-build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Report eas build failure
+        if: steps.eas_build.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "**eas build falhou** (run ${{ github.run_id }}):"
+            echo '```'
+            cat /tmp/eas-build.log 2>/dev/null || echo "(sem log capturado)"
+            echo '```'
+          } > /tmp/comment-body.md
+          gh pr comment 2 --repo ${{ github.repository }} --body-file /tmp/comment-body.md || \
+            gh api repos/${{ github.repository }}/issues/2/comments -f body="$(cat /tmp/comment-body.md)"
+          exit 1
