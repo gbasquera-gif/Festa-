@@ -68,7 +68,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           if ! grep -q '"projectId"' app.json; then
-            eas init --non-interactive 2>&1 | tee /tmp/eas-init.log
+            eas init --non-interactive --force 2>&1 | tee /tmp/eas-init.log
             exit ${PIPESTATUS[0]}
           fi
 
