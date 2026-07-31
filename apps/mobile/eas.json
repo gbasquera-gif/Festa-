@@ -18,7 +18,8 @@
         "EXPO_PUBLIC_API_URL": "https://festa-production.up.railway.app/api/v1"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "resourceClass": "large"
       }
     },
     "production": {
