@@ -9,11 +9,21 @@ interface ScreenProps extends ScrollViewProps {
   header?: ReactNode;
   /** Barra fixa no rodapé, ex: quantidade + "Adicionar ao orçamento". */
   footer?: ReactNode;
+  /** Camada decorativa atrás do conteúdo, ex: os balões do login. */
+  backdrop?: ReactNode;
 }
 
-export function Screen({ children, contentClassName, header, footer, ...props }: ScreenProps) {
+export function Screen({
+  children,
+  contentClassName,
+  header,
+  footer,
+  backdrop,
+  ...props
+}: ScreenProps) {
   return (
     <SafeAreaView className="flex-1 bg-cream" edges={["top", "left", "right"]}>
+      {backdrop}
       {header}
 
       <ScrollView

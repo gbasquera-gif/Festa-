@@ -4,6 +4,8 @@ import { Link, router } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
+import { Wordmark } from "@/components/Wordmark";
+import { BalloonsBackdrop, BALLOONS_HEIGHT } from "@/components/BalloonsBackdrop";
 import { useAuth, isApiError } from "@/lib/auth";
 import { track } from "@/lib/analytics";
 
@@ -29,13 +31,14 @@ export default function Login() {
   }
 
   return (
-    <Screen contentClassName="flex-1 justify-center">
-      <View className="mb-8 items-center">
-        <Text className="font-sans-extrabold text-4xl text-navy">
-          Festa<Text className="text-coral">ê!</Text>
-        </Text>
-        <Text className="mt-2 text-center text-base text-navy/70">
-          Sua festa dos sonhos, pronta em minutos.
+    <Screen backdrop={<BalloonsBackdrop />}>
+      {/* Reserva a faixa dos balões — a logo entra logo abaixo deles. */}
+      <View style={{ height: BALLOONS_HEIGHT - 60 }} />
+
+      <View className="mb-4">
+        <Wordmark compact />
+        <Text className="mt-4 text-center text-base text-navy/70">
+          Bem-vindo de volta! Vamos preparar a próxima festa?
         </Text>
       </View>
 
@@ -61,10 +64,10 @@ export default function Login() {
         </Button>
       </View>
 
-      <View className="mt-6 flex-row justify-center gap-1">
+      <View className="flex-row justify-center gap-1">
         <Text className="text-navy/70">Ainda não tem conta?</Text>
         <Link href="/(auth)/signup">
-          <Text className="font-bold text-coral">Criar conta</Text>
+          <Text className="font-sans-bold text-coral">Criar conta</Text>
         </Link>
       </View>
     </Screen>

@@ -4,6 +4,7 @@ import { Link, router } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
+import { BalloonsBackdrop, BALLOONS_HEIGHT } from "@/components/BalloonsBackdrop";
 import { useAuth, isApiError } from "@/lib/auth";
 import { track } from "@/lib/analytics";
 
@@ -31,8 +32,12 @@ export default function Signup() {
   }
 
   return (
-    <Screen contentClassName="flex-1 justify-center">
-      <View className="mb-6 items-center">
+    <Screen backdrop={<BalloonsBackdrop />}>
+      {/* Mesma reserva do login para os balões — o formulário é mais longo e
+          continua rolando abaixo. */}
+      <View style={{ height: BALLOONS_HEIGHT - 60 }} />
+
+      <View className="mb-2 items-center">
         <Text className="font-sans-extrabold text-3xl text-navy">Criar conta</Text>
         <Text className="mt-2 text-center text-base text-navy/70">
           Leva menos de um minuto — depois é só montar sua festa.
@@ -69,10 +74,10 @@ export default function Signup() {
         </Button>
       </View>
 
-      <View className="mt-6 flex-row justify-center gap-1">
+      <View className="flex-row justify-center gap-1">
         <Text className="text-navy/70">Já tem conta?</Text>
         <Link href="/(auth)/login">
-          <Text className="font-bold text-coral">Entrar</Text>
+          <Text className="font-sans-bold text-coral">Entrar</Text>
         </Link>
       </View>
     </Screen>
