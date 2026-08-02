@@ -13,11 +13,14 @@ import { StepProgress } from "@/components/StepProgress";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 import { api, ApiError } from "@/lib/api";
 import { track } from "@/lib/analytics";
+import { useOrcamento } from "@/lib/orcamento";
 import { EVENT_TYPE_LABEL, type EventRecord, type Theme } from "@/lib/types";
 
 export default function CriarEvento() {
   const queryClient = useQueryClient();
   const { data: themes } = useQuery({ queryKey: ["themes"], queryFn: () => api<Theme[]>("/themes") });
+  const { kitId: draftKitId, items: draftItems, clear: clearOrcamento } = useOrcamento();
+  const hasDraft = Boolean(draftKitId) || draftItems.length > 0;
 
   const [type, setType] = useState<(typeof EVENT_TYPES)[number]>("FESTA_INFANTIL");
   const [date, setDate] = useState("");
@@ -33,8 +36,8 @@ export default function CriarEvento() {
   }, []);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      api<EventRecord>("/events", {
+    mutationFn: async () => {
+      const event = await api<EventRecord>("/events", {
         method: "POST",
         body: JSON.stringify({
           type,
@@ -45,10 +48,32 @@ export default function CriarEvento() {
           address: address || undefined,
           neighborhood: neighborhood || undefined,
         }),
-      }),
+      });
+
+      // O orçamento montado no catálogo vive só no aparelho até aqui: agora
+      // que existe um evento, ele vira o pedido de verdade no backend.
+      if (draftKitId) {
+        await api(`/events/${event.id}/order/kit`, {
+          method: "POST",
+          body: JSON.stringify({ kitId: draftKitId }),
+        });
+      }
+
+      for (const item of draftItems) {
+        await api(`/events/${event.id}/order/items`, {
+          method: "POST",
+          body: JSON.stringify({ productId: item.productId, quantity: item.quantity }),
+        });
+      }
+
+      return event;
+    },
     onSuccess: (event) => {
+      clearOrcamento();
       queryClient.invalidateQueries({ queryKey: ["my-events"] });
-      router.push(`/evento/${event.id}/kit`);
+      // Com kit já escolhido no catálogo, o passo de escolher kit não faz mais
+      // sentido — vai direto para o resumo.
+      router.push(draftKitId ? `/evento/${event.id}/resumo` : `/evento/${event.id}/kit`);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Não foi possível criar o evento."),
   });
@@ -61,7 +86,11 @@ export default function CriarEvento() {
 
       <View>
         <Text className="font-sans-extrabold text-2xl text-navy">Conte sobre sua festa</Text>
-        <Text className="text-navy/70">Essas informações ajudam a gente a recomendar o kit ideal.</Text>
+        <Text className="text-navy/70">
+          {hasDraft
+            ? "Falta só a data e o endereço para fecharmos seu orçamento."
+            : "Essas informações ajudam a gente a recomendar o kit ideal."}
+        </Text>
       </View>
 
       <View className="gap-2">
@@ -153,7 +182,7 @@ export default function CriarEvento() {
         loading={mutation.isPending}
         disabled={!date || !guestCount}
       >
-        Ver kits recomendados
+        {hasDraft ? "Fechar orçamento" : "Ver kits recomendados"}
       </Button>
     </Screen>
   );

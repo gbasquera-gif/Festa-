@@ -12,7 +12,7 @@ export function StepProgress({ step }: { step: 1 | 2 | 3 | 4 }) {
         </Text>
         <Text className="text-xs font-bold text-coral">⏱️ ~2-3 min</Text>
       </View>
-      <View className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5DCC8]">
+      <View className="h-1.5 w-full overflow-hidden rounded-full bg-sand">
         <View className="h-full rounded-full bg-coral" style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
       </View>
     </View>

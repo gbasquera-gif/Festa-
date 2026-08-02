@@ -13,6 +13,8 @@ import {
   Nunito_800ExtraBold,
 } from "@expo-google-fonts/nunito";
 import { AuthProvider } from "@/lib/auth";
+import { OrcamentoProvider } from "@/lib/orcamento";
+import { FavoritesProvider } from "@/lib/favoritos";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -39,11 +41,17 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(auth)" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="evento" />
-            </Stack>
+            <OrcamentoProvider>
+              <FavoritesProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="boas-vindas" />
+                  <Stack.Screen name="(auth)" />
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="catalogo" />
+                  <Stack.Screen name="evento" />
+                </Stack>
+              </FavoritesProvider>
+            </OrcamentoProvider>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

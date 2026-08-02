@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 
 const VARIANT_CLASS: Record<string, string> = {
-  neutral: "bg-[#F0E6D8]",
+  neutral: "bg-linen",
   coral: "bg-coral/15",
   success: "bg-green-100",
   danger: "bg-red-100",

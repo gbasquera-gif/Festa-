@@ -108,7 +108,7 @@ export default function Resumo() {
           </>
         )}
 
-        <View className="mt-4 flex-row justify-between border-t border-[#E5DCC8] pt-3">
+        <View className="mt-4 flex-row justify-between border-t border-sand pt-3">
           <Text className="text-lg font-extrabold text-navy">Total</Text>
           <Text className="text-lg font-extrabold text-coral">R$ {Number(order.total).toFixed(2)}</Text>
         </View>

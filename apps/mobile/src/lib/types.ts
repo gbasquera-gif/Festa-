@@ -1,4 +1,4 @@
-import type { EventType, OrderStatus, ReservationStatus } from "@festae/shared";
+import type { EventType, OrderStatus, ProductCategory, ReservationStatus } from "@festae/shared";
 
 export interface Theme {
   id: string;
@@ -14,7 +14,7 @@ export interface Product {
   id: string;
   name: string;
   description: string | null;
-  category: string;
+  category: ProductCategory;
   unitPrice: string;
   imageUrl: string | null;
   active: boolean;

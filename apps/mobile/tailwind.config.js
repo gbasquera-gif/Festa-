@@ -5,13 +5,18 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        navy: "#0F2A4F",
-        coral: "#F06853",
-        gold: "#C7A360",
-        cream: "#FDF9F4",
+        navy: "#14304C",
+        coral: "#F2674C",
+        gold: "#D3A24E",
+        cream: "#FBF6EE",
+        // Bege dos blocos de imagem/áreas de destaque (mais quente que o cream).
+        linen: "#F3EADC",
+        // Cor das bordas — bege esmaecido, nunca cinza puro.
+        sand: "#E8DCC8",
       },
       fontFamily: {
         sans: ["Nunito_400Regular"],
+        "sans-semibold": ["Nunito_600SemiBold"],
         "sans-bold": ["Nunito_700Bold"],
         "sans-extrabold": ["Nunito_800ExtraBold"],
       },

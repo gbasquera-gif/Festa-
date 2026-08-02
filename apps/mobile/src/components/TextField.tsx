@@ -14,7 +14,7 @@ export function TextField({ label, error, className, ...props }: TextFieldProps 
         placeholderTextColor="#9CA8B8"
         className={cn(
           "rounded-xl border px-4 py-3.5 text-base text-navy",
-          error ? "border-red-400" : "border-[#E5DCC8]",
+          error ? "border-red-400" : "border-sand",
           className,
         )}
         {...props}

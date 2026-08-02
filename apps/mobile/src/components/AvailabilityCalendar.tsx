@@ -51,7 +51,7 @@ export function AvailabilityCalendar({
   }
 
   return (
-    <View className="gap-3 rounded-2xl border border-[#E5DCC8] bg-white p-4">
+    <View className="gap-3 rounded-2xl border border-sand bg-white p-4">
       <View className="flex-row items-center justify-between">
         <Pressable onPress={() => shiftMonth(-1)} className="px-3 py-1" hitSlop={8}>
           <Text className="text-lg font-bold text-navy">‹</Text>

@@ -7,7 +7,7 @@ interface CardProps extends ViewProps {
 }
 
 export function Card({ children, selected, onPress, className, ...props }: CardProps & { className?: string }) {
-  const base = cn("rounded-2xl border bg-white p-4", selected ? "border-2 border-coral" : "border-[#E5DCC8]", className);
+  const base = cn("rounded-2xl border bg-white p-4", selected ? "border-2 border-coral" : "border-sand", className);
 
   if (onPress) {
     return (

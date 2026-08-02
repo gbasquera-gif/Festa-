@@ -13,7 +13,7 @@ export function Chip({
     <Pressable
       onPress={onPress}
       className={`rounded-full border px-4 py-2.5 ${
-        selected ? "border-coral bg-coral" : "border-[#E5DCC8] bg-white"
+        selected ? "border-coral bg-coral" : "border-sand bg-white"
       }`}
     >
       <Text className={`font-semibold ${selected ? "text-white" : "text-navy"}`}>{label}</Text>
