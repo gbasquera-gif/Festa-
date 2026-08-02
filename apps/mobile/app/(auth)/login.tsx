@@ -36,7 +36,7 @@ export default function Login() {
       <View style={{ height: BALLOONS_HEIGHT - 60 }} />
 
       <View className="mb-4">
-        <Wordmark compact />
+        <Wordmark width={250} />
         <Text className="mt-4 text-center text-base text-navy/70">
           Bem-vindo de volta! Vamos preparar a próxima festa?
         </Text>

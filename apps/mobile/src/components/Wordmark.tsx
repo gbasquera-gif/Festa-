@@ -1,33 +1,27 @@
-import { Text, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "@/theme";
+import { Image, View } from "react-native";
+
+// Proporção do arquivo (1008 x 722): mantém o logo sem distorcer em qualquer
+// largura que a tela pedir.
+const ASPECT_RATIO = 1008 / 722;
 
 /**
- * Marca da Festaê: a caixa aberta (o "pegue") sobre o logotipo, com o "ê!"
- * em coral e a assinatura PEGUE · MONTE · COMEMORE.
+ * Logotipo oficial da Festaê — caixinha com confete, o arco dourado, o
+ * "FESTAê!" e a assinatura PEGUE · MONTE · COMEMORE.
+ *
+ * O arquivo tem fundo transparente, mas os vazados internos (o miolo do "A",
+ * do "ê" e o interior da caixa) continuam no creme da arte original. Por isso
+ * ele é feito para telas de fundo creme — sobre navy apareceria um halo.
  */
-export function Wordmark({ compact = false }: { compact?: boolean }) {
+export function Wordmark({ width = 260 }: { width?: number }) {
   return (
     <View className="items-center">
-      {!compact && (
-        <View className="mb-2">
-          <MaterialCommunityIcons name="package-variant" size={56} color={colors.navy} />
-        </View>
-      )}
-
-      <Text
-        className={`font-sans-extrabold tracking-tight text-navy ${compact ? "text-4xl" : "text-6xl"}`}
-      >
-        FESTA<Text className="text-coral">ê!</Text>
-      </Text>
-
-      <View className="mt-2 flex-row items-center gap-2">
-        <Text className="text-[11px] font-sans-bold tracking-[3px] text-navy">PEGUE</Text>
-        <Text className="text-[11px] font-sans-bold text-coral">•</Text>
-        <Text className="text-[11px] font-sans-bold tracking-[3px] text-coral">MONTE</Text>
-        <Text className="text-[11px] font-sans-bold text-gold">•</Text>
-        <Text className="text-[11px] font-sans-bold tracking-[3px] text-navy">COMEMORE</Text>
-      </View>
+      <Image
+        source={require("../../assets/logo-festae.png")}
+        style={{ width, height: width / ASPECT_RATIO }}
+        resizeMode="contain"
+        accessibilityRole="image"
+        accessibilityLabel="Festaê — pegue, monte, comemore"
+      />
     </View>
   );
 }

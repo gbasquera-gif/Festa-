@@ -60,7 +60,7 @@ export default function BoasVindas() {
         {/* flex-1 aqui joga a sobra de espaço para o topo, onde ficam os
             confetes — a logo desce e encosta no bloco de texto, como no layout. */}
         <View className="flex-1 justify-end px-8 pb-10 pt-10">
-          <Wordmark />
+          <Wordmark width={286} />
 
           <Text className="mt-5 text-center text-[11px] font-sans-bold tracking-[2px] text-navy/60">
             LOCAÇÃO DE ARTIGOS PARA FESTAS
