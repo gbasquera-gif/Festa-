@@ -14,6 +14,7 @@ import { Button } from "@/components/Button";
 import { Dots } from "@/components/Dots";
 import { Wordmark } from "@/components/Wordmark";
 import { ConfettiBackdrop } from "@/components/ConfettiBackdrop";
+import { BalloonsBackdrop } from "@/components/BalloonsBackdrop";
 import { setItem } from "@/lib/storage";
 import { ONBOARDING_KEY } from "@/lib/onboarding";
 
@@ -54,7 +55,10 @@ export default function BoasVindas() {
 
   return (
     <View className="flex-1 bg-cream">
-      <ConfettiBackdrop />
+      {/* Os balões ocupam o topo; o confete continua da faixa deles para
+          baixo, para as duas camadas não se sobreporem. */}
+      <ConfettiBackdrop skipAbove={32} />
+      <BalloonsBackdrop />
 
       <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
         {/* flex-1 aqui joga a sobra de espaço para o topo, onde ficam os
