@@ -1,9 +1,16 @@
-import { View } from "react-native";
+import { Dimensions, View } from "react-native";
 import { Balloon } from "./Balloon";
 import { colors } from "@/theme";
 
+// A arte foi desenhada para uma tela de ~874pt de altura. Em aparelhos mais
+// baixos ela encolhe junto, senão a faixa comeria metade da tela.
+const REFERENCE_HEIGHT = 874;
+const SCALE = Math.min(1, Dimensions.get("window").height / REFERENCE_HEIGHT);
+
+const s = (value: number) => Math.round(value * SCALE);
+
 /** Altura da faixa decorativa — as telas reservam esse espaço no topo. */
-export const BALLOONS_HEIGHT = 250;
+export const BALLOONS_HEIGHT = s(250);
 
 interface Streamer {
   top: number;
@@ -41,16 +48,16 @@ export function BalloonsBackdrop() {
       className="absolute inset-x-0 top-0 overflow-hidden"
     >
       {/* Os balões saem parcialmente pelas bordas: a arte continua fora da tela. */}
-      <View style={{ position: "absolute", top: -46, left: -38 }}>
-        <Balloon size={118} color={colors.navy} tilt={-12} ribbonCurls={4} />
+      <View style={{ position: "absolute", top: s(-46), left: s(-38) }}>
+        <Balloon size={s(118)} color={colors.navy} tilt={-12} ribbonCurls={4} />
       </View>
 
-      <View style={{ position: "absolute", top: -26, right: -22 }}>
-        <Balloon size={126} color={colors.coral} tilt={10} ribbonCurls={4} />
+      <View style={{ position: "absolute", top: s(-26), right: s(-22) }}>
+        <Balloon size={s(126)} color={colors.coral} tilt={10} ribbonCurls={4} />
       </View>
 
-      <View style={{ position: "absolute", top: 44, right: 42 }}>
-        <Balloon size={92} color={colors.gold} tilt={-6} ribbonCurls={4} />
+      <View style={{ position: "absolute", top: s(44), right: s(42) }}>
+        <Balloon size={s(92)} color={colors.gold} tilt={-6} ribbonCurls={4} />
       </View>
 
       {STREAMERS.map((streamer, index) => (
@@ -58,7 +65,7 @@ export function BalloonsBackdrop() {
           key={index}
           style={{
             position: "absolute",
-            top: streamer.top,
+            top: s(streamer.top),
             left: streamer.left,
             width: streamer.width,
             height: streamer.height,

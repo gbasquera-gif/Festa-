@@ -31,8 +31,7 @@ const PIECES: Piece[] = [
 ];
 
 /**
- * Confetes espalhados pela tela e os dois quartos de círculo que ancoram o
- * rodapé da tela de boas-vindas.
+ * Confetes espalhados pela tela.
  *
  * `skipAbove` omite as peças do topo (em % da altura) para quando a faixa
  * dos balões já ocupa aquela área — evita confete demais no mesmo lugar.
@@ -55,8 +54,20 @@ export function ConfettiBackdrop({ skipAbove = 0 }: { skipAbove?: number }) {
           }}
         />
       ))}
+    </View>
+  );
+}
 
-      {/* Quartos de círculo do rodapé — saem da tela de propósito. */}
+/**
+ * Quartos de círculo coral e dourado que emolduram o rodapé.
+ *
+ * Ficam presos ao bloco que os envolve (e não ao fundo da janela) para que,
+ * numa tela curta em que o conteúdo rola, eles acompanhem o botão em vez de
+ * cair no meio do texto.
+ */
+export function CornerArcs() {
+  return (
+    <View pointerEvents="none" className="absolute inset-0 overflow-hidden">
       <View
         style={{ width: 230, height: 230, bottom: -120, left: -110, borderRadius: 115 }}
         className="absolute bg-coral"
