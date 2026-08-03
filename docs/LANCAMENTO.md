@@ -43,16 +43,48 @@ Sem isso, toda foto de kit e produto some no próximo deploy do backend.
 
 ## 2. Contas das lojas — você · faz agora
 
-Este é o único item que não acelera com trabalho: são prazos de calendário.
-Abra as duas contas antes de qualquer outra coisa.
+As duas contas são de **organização**, no CNPJ da Festaê. Este é o único item
+que não acelera com trabalho: são prazos de calendário. Comece por aqui.
 
-- **Google Play Console** — US$ 25, pagamento único. Exige verificação de
-  identidade. Contas novas podem precisar de um período de teste fechado com
-  um número mínimo de testadores antes de liberar produção; confirme a regra
-  vigente no próprio console, porque o Google mudou isso mais de uma vez.
-- **Apple Developer Program** — US$ 99/ano. Se for registrar como empresa,
-  é preciso o número **D-U-N-S**, cuja emissão pode levar semanas. **Peça
-  primeiro**, mesmo que o resto ainda não esteja pronto.
+### 2.1 D-U-N-S (bloqueia as duas lojas)
+
+É o identificador da empresa exigido tanto pela Apple quanto pelo Google, e
+**o mesmo número serve para as duas** — pede-se uma vez só.
+
+1. Consulte se a empresa já tem um, pelo
+   [buscador da Apple](https://developer.apple.com/enroll/duns-lookup/).
+   Muita empresa já possui sem saber.
+2. Se não houver, solicite ali mesmo. É gratuito por esse caminho.
+3. Preencha **razão social, endereço e telefone exatamente como constam no
+   CNPJ**. Divergência de pontuação, abreviação ou endereço é a causa número
+   um de atraso — o pedido volta para correção e o prazo reinicia.
+4. Prazo típico de alguns dias úteis, mas pode passar disso.
+
+### 2.2 Domínio e e-mail corporativo
+
+As duas lojas verificam a empresa por site e e-mail no domínio próprio, e a
+política de privacidade (item 5) também precisa de uma URL. Se ainda não
+existir domínio da Festaê no ar, registre agora — costuma ser o gargalo
+escondido, porque só se descobre no meio do cadastro.
+
+### 2.3 Google Play Console — US$ 25, pagamento único
+
+Cadastro em [play.google.com/console/signup](https://play.google.com/console/signup),
+escolhendo **Organização**. Vai pedir D-U-N-S, razão social, endereço,
+verificação de identidade de quem cadastra e um perfil de pagamentos.
+
+Conta de organização não está sujeita à exigência de teste fechado prévio que
+recai sobre contas pessoais novas — confirme a regra vigente no próprio
+console, porque o Google mudou isso mais de uma vez.
+
+### 2.4 Apple Developer Program — US$ 99/ano
+
+Cadastro em [developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll),
+tipo **Organization**. Além do D-U-N-S, exige que quem faz o cadastro tenha
+poderes para assinar em nome da empresa. A Apple costuma ligar para confirmar.
+
+> Os dados da empresa precisam bater **entre si** em D-U-N-S, Receita Federal,
+> Google e Apple. Preencha os quatro com o mesmo texto, copiado do cartão CNPJ.
 
 ---
 
