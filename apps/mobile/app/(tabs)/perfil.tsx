@@ -97,7 +97,13 @@ export default function Perfil() {
           hint={String(products.length + kits.length)}
           onPress={() => router.push("/(tabs)/favoritos")}
         />
-        <Row icon="logo-whatsapp" label="Falar com a Festaê" last onPress={openWhatsApp} />
+        <Row icon="logo-whatsapp" label="Falar com a Festaê" onPress={openWhatsApp} />
+        <Row
+          icon="trash-outline"
+          label="Excluir minha conta"
+          last
+          onPress={() => router.push("/conta/excluir")}
+        />
       </View>
 
       <Button variant="outline" onPress={handleLogout}>

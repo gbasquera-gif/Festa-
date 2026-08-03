@@ -88,6 +88,11 @@ model User {
   role         Role     @default(CLIENT)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  // Conta excluída pelo próprio usuário. Os dados pessoais são apagados no
+  // ato (nome, e-mail, telefone, endereço); a linha permanece para não
+  // derrubar em cascata pedidos e reservas que a empresa ainda precisa
+  // cumprir e guardar por obrigação fiscal.
+  deletedAt DateTime?
 
   events Event[]
 

@@ -13,3 +13,10 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+// A senha é pedida de novo para que um aparelho desbloqueado por outra
+// pessoa não consiga apagar a conta com um toque.
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1),
+});
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;

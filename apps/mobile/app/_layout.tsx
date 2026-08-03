@@ -48,6 +48,7 @@ export default function RootLayout() {
                   <Stack.Screen name="(auth)" />
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="catalogo" />
+                  <Stack.Screen name="conta" />
                   <Stack.Screen name="evento" />
                 </Stack>
               </FavoritesProvider>

@@ -51,6 +51,10 @@ que não acelera com trabalho: são prazos de calendário. Comece por aqui.
 É o identificador da empresa exigido tanto pela Apple quanto pelo Google, e
 **o mesmo número serve para as duas** — pede-se uma vez só.
 
+**Situação: solicitado.** Aguardando o e-mail de confirmação da Dun &
+Bradstreet. Se não chegar em alguns dias úteis, confira a caixa de spam antes
+de pedir de novo — pedido duplicado atrasa em vez de acelerar.
+
 1. Consulte se a empresa já tem um, pelo
    [buscador da Apple](https://developer.apple.com/enroll/duns-lookup/).
    Muita empresa já possui sem saber.
@@ -134,10 +138,15 @@ tamanhos exigidos, descrição, categoria e classificação etária.
 
 ## 7. O que falta no código — a fazer aqui
 
-- [ ] **Exclusão de conta dentro do app.** A Apple reprova app com cadastro
-      que não ofereça isso. Não existe endpoint nem tela.
+- [x] **Exclusão de conta dentro do app.** Perfil → *Excluir minha conta*.
+      Apaga nome, e-mail, telefone e endereços; mantém pedidos e reservas sem
+      vínculo com pessoa identificável, porque a empresa precisa cumprir a
+      entrega contratada e guardar o registro fiscal. Descreva exatamente isso
+      na política de privacidade (item 5).
 - [ ] **Recuperação de senha.** Não bloqueia a loja, mas hoje quem esquecer a
-      senha vira atendimento manual.
+      senha vira atendimento manual. **Depende de um provedor de e-mail
+      transacional** (Resend, SendGrid, SES) — mais uma conta a abrir, vale
+      juntar com as outras.
 - [ ] **Testes automatizados.** Não há nenhum. O CI roda build, typecheck e
       migrations. Vale cobrir ao menos o cálculo do orçamento, o split de
       pagamento e a disponibilidade de data.

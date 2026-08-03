@@ -9,11 +9,14 @@ export function DetailHeader({
   favorite,
   onToggleFavorite,
   shareMessage,
+  showShare = true,
 }: {
   title: string;
   favorite?: boolean;
   onToggleFavorite?: () => void;
   shareMessage?: string;
+  /** Telas de conta não têm o que compartilhar. */
+  showShare?: boolean;
 }) {
   function handleShare() {
     Share.share({ message: shareMessage ?? title }).catch(() => {});
@@ -51,14 +54,18 @@ export function DetailHeader({
         <View className="h-10 w-10" />
       )}
 
-      <Pressable
-        onPress={handleShare}
-        hitSlop={8}
-        accessibilityLabel="Compartilhar"
-        className="h-10 w-10 items-center justify-center"
-      >
-        <Ionicons name="share-outline" size={22} color={colors.navy} />
-      </Pressable>
+      {showShare ? (
+        <Pressable
+          onPress={handleShare}
+          hitSlop={8}
+          accessibilityLabel="Compartilhar"
+          className="h-10 w-10 items-center justify-center"
+        >
+          <Ionicons name="share-outline" size={22} color={colors.navy} />
+        </Pressable>
+      ) : (
+        <View className="h-10 w-10" />
+      )}
     </View>
   );
 }
