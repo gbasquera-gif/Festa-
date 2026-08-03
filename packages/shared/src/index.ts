@@ -30,8 +30,13 @@ export type {
 
 export { BRAND_COLORS, BRAND_NAME, DEFAULT_CITY, DEFAULT_STATE } from "./brand";
 
-export { signupSchema, loginSchema, deleteAccountSchema } from "./schemas/auth";
-export type { SignupInput, LoginInput, DeleteAccountInput } from "./schemas/auth";
+export { signupSchema, loginSchema, deleteAccountSchema, resetPasswordSchema } from "./schemas/auth";
+export type {
+  SignupInput,
+  LoginInput,
+  DeleteAccountInput,
+  ResetPasswordInput,
+} from "./schemas/auth";
 
 export { createEventSchema, updateEventSchema, availabilityQuerySchema } from "./schemas/events";
 export type { CreateEventInput, UpdateEventInput, AvailabilityQuery } from "./schemas/events";

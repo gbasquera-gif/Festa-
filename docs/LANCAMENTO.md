@@ -143,10 +143,11 @@ tamanhos exigidos, descrição, categoria e classificação etária.
       vínculo com pessoa identificável, porque a empresa precisa cumprir a
       entrega contratada e guardar o registro fiscal. Descreva exatamente isso
       na política de privacidade (item 5).
-- [ ] **Recuperação de senha.** Não bloqueia a loja, mas hoje quem esquecer a
-      senha vira atendimento manual. **Depende de um provedor de e-mail
-      transacional** (Resend, SendGrid, SES) — mais uma conta a abrir, vale
-      juntar com as outras.
+- [x] **Recuperação de senha — versão manual.** No login há *Esqueci minha
+      senha*, que abre o WhatsApp da Festaê com a mensagem pronta. Um ADMIN
+      define a senha nova em *Clientes → Nova senha* e a combina com a pessoa.
+      Trocar para recuperação automática por e-mail depois exige um provedor
+      transacional (Resend, SendGrid, SES).
 - [ ] **Testes automatizados.** Não há nenhum. O CI roda build, typecheck e
       migrations. Vale cobrir ao menos o cálculo do orçamento, o split de
       pagamento e a disponibilidade de data.

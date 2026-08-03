@@ -1,4 +1,4 @@
-import { Linking, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
@@ -7,9 +7,8 @@ import { useAuth } from "@/lib/auth";
 import { useFavoritos } from "@/lib/favoritos";
 import { useOrcamento } from "@/lib/orcamento";
 import { track } from "@/lib/analytics";
+import { openWhatsApp } from "@/lib/contato";
 import { colors } from "@/theme";
-
-const WHATSAPP_NUMBER = "5549999487777";
 
 function Row({
   icon,
@@ -51,11 +50,9 @@ export default function Perfil() {
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
-  function openWhatsApp() {
+  function handleWhatsApp() {
     track("CLIQUE_WHATSAPP");
-    Linking.openURL(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent("Oi! Preciso de ajuda para montar minha festa.")}`,
-    ).catch(() => {});
+    openWhatsApp("Oi! Preciso de ajuda para montar minha festa.");
   }
 
   async function handleLogout() {
@@ -97,7 +94,7 @@ export default function Perfil() {
           hint={String(products.length + kits.length)}
           onPress={() => router.push("/(tabs)/favoritos")}
         />
-        <Row icon="logo-whatsapp" label="Falar com a Festaê" onPress={openWhatsApp} />
+        <Row icon="logo-whatsapp" label="Falar com a Festaê" onPress={handleWhatsApp} />
         <Row
           icon="trash-outline"
           label="Excluir minha conta"

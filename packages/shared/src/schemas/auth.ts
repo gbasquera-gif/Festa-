@@ -20,3 +20,11 @@ export const deleteAccountSchema = z.object({
   password: z.string().min(1),
 });
 export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
+
+// Reset feito por um admin pelo painel, para quem perdeu a senha e pediu
+// ajuda pelo WhatsApp. Mesmo mínimo do cadastro, para não abrir uma porta
+// de senha fraca por trás.
+export const resetPasswordSchema = z.object({
+  password: z.string().min(8).max(72),
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

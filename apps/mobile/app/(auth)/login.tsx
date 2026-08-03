@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Link, router } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
@@ -8,6 +8,7 @@ import { Wordmark } from "@/components/Wordmark";
 import { BalloonsBackdrop, BALLOONS_HEIGHT } from "@/components/BalloonsBackdrop";
 import { useAuth, isApiError } from "@/lib/auth";
 import { track } from "@/lib/analytics";
+import { openWhatsApp } from "@/lib/contato";
 
 export default function Login() {
   const { login } = useAuth();
@@ -15,6 +16,13 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function openPasswordHelp() {
+    track("CLIQUE_WHATSAPP");
+    openWhatsApp(
+      `Oi! Esqueci a senha da minha conta no app${email ? ` (${email})` : ""} e preciso de ajuda para entrar.`,
+    );
+  }
 
   async function handleSubmit() {
     setError(null);
@@ -62,6 +70,14 @@ export default function Login() {
         <Button onPress={handleSubmit} loading={submitting}>
           Entrar
         </Button>
+
+        {/* Ainda não há recuperação por e-mail: quem perde a senha fala com a
+            Festaê, que redefine pelo painel admin. */}
+        <Pressable onPress={openPasswordHelp} hitSlop={8}>
+          <Text className="text-center text-sm font-sans-bold text-navy/60 underline">
+            Esqueci minha senha
+          </Text>
+        </Pressable>
       </View>
 
       <View className="flex-row justify-center gap-1">
