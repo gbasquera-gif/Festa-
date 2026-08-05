@@ -26,8 +26,14 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://festae:festae_dev_password@postgres:5432/festae_dev
-      JWT_SECRET: dev-secret-change-me
       PORT: 3333
+      # Este compose é só para desenvolvimento local. Em produção nada aqui
+      # vale: as variáveis vêm do painel do provedor, e o segredo precisa ser
+      # aleatório de verdade.
+      JWT_SECRET: apenas-para-desenvolvimento-local
+      SEED_ADMIN_EMAIL: admin@localhost
+      SEED_ADMIN_PASSWORD: admin-local-123
+      SEED_DEMO_DATA: "true"
     ports:
       - "3333:3333"
 

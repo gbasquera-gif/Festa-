@@ -3,28 +3,55 @@ import { PrismaClient } from "../generated/client/index.js";
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const adminPasswordHash = await bcrypt.hash("festae-admin-123", 10);
-  const clientPasswordHash = await bcrypt.hash("festae-demo-123", 10);
+// Este seed roda a cada boot do container (ver docker-entrypoint.sh), então
+// nada aqui pode conter credencial fixa: o repositório é público, e uma senha
+// escrita no código viraria acesso de administrador para qualquer pessoa.
+const DEMO_DATA_ENABLED = process.env.SEED_DEMO_DATA === "true";
 
+/**
+ * Cria (ou atualiza) o administrador a partir de variáveis de ambiente.
+ *
+ * A senha é reaplicada a cada boot de propósito: trocar SEED_ADMIN_PASSWORD e
+ * reimplantar é o jeito de rotacionar o acesso caso ele vaze.
+ */
+async function seedAdmin() {
+  const email = process.env.SEED_ADMIN_EMAIL;
+  const password = process.env.SEED_ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    console.warn(
+      "SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD não definidos — nenhum administrador foi criado. " +
+        "Sem isso não há como entrar no painel.",
+    );
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
   await prisma.user.upsert({
-    where: { email: "guilherme@festae.com.br" },
-    update: {},
+    where: { email },
+    update: { passwordHash, role: "ADMIN", deletedAt: null },
     create: {
-      email: "guilherme@festae.com.br",
-      name: "Guilherme",
-      passwordHash: adminPasswordHash,
+      email,
+      name: process.env.SEED_ADMIN_NAME ?? "Administrador",
+      passwordHash,
       role: "ADMIN",
     },
   });
 
+  console.log(`Administrador garantido para ${email}.`);
+}
+
+/** Catálogo e contas de exemplo — só para desenvolvimento e demonstração. */
+async function seedDemoData() {
+  const demoPasswordHash = await bcrypt.hash("festae-demo-123", 10);
+
   await prisma.user.upsert({
-    where: { email: "mariluiza@festae.com.br" },
+    where: { email: "operacao@exemplo.com" },
     update: {},
     create: {
-      email: "mariluiza@festae.com.br",
-      name: "Maria Luiza",
-      passwordHash: adminPasswordHash,
+      email: "operacao@exemplo.com",
+      name: "Operação Demo",
+      passwordHash: demoPasswordHash,
       role: "OPS",
     },
   });
@@ -35,7 +62,7 @@ async function main() {
     create: {
       email: "cliente@exemplo.com",
       name: "Cliente Demo",
-      passwordHash: clientPasswordHash,
+      passwordHash: demoPasswordHash,
       role: "CLIENT",
     },
   });
@@ -194,7 +221,15 @@ async function main() {
   await linkKitProduct(kitRevelacao.id, "painel-festa-redondo", 1);
   await linkKitProduct(kitRevelacao.id, "kit-iluminacao-ambiente", 1);
 
-  // Demo event + order + reservation to validate the full flow after seeding
+  // Evento de exemplo para validar o fluxo inteiro depois do seed. Diferente
+  // do resto, `create` não é idempotente — sem esta guarda, cada boot do
+  // container criava mais uma festa fantasma na lista do cliente.
+  const alreadySeeded = await prisma.event.findFirst({ where: { userId: demoClient.id } });
+  if (alreadySeeded) {
+    console.log("Dados de demonstração garantidos.");
+    return;
+  }
+
   const demoEvent = await prisma.event.create({
     data: {
       userId: demoClient.id,
@@ -216,6 +251,18 @@ async function main() {
       total: kitCompleto.basePrice,
     },
   });
+
+  console.log("Dados de demonstração garantidos.");
+}
+
+async function main() {
+  await seedAdmin();
+
+  if (DEMO_DATA_ENABLED) {
+    await seedDemoData();
+  } else {
+    console.log("SEED_DEMO_DATA desligado — catálogo e contas de exemplo não foram criados.");
+  }
 
   console.log("Seed concluído com sucesso.");
 }

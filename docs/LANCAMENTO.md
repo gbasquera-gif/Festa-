@@ -5,6 +5,43 @@ O que falta para o app ir para as lojas. Cada item diz quem faz: **você**
 
 ---
 
+## 0. Fechar o acesso ao painel — você · antes de tudo
+
+O repositório é **público** e, até o commit que corrigiu isso, o seed criava
+dois administradores com senha fixa escrita no código (`festae-admin-123`),
+rodando a cada boot do container. Qualquer pessoa que lesse o repositório
+podia entrar no painel de produção e ver nome, telefone, endereço e pedidos
+de todos os clientes.
+
+O código já não cria mais essas contas, **mas elas continuam no banco de
+produção** — o seed nunca apaga nada. Fechar o buraco depende destes passos:
+
+1. **Variáveis no Railway**, no serviço do backend:
+
+   | Variável | Valor |
+   |---|---|
+   | `JWT_SECRET` | valor aleatório novo — gere com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+   | `SEED_ADMIN_EMAIL` | `contato@festaechapeco.com.br` |
+   | `SEED_ADMIN_PASSWORD` | uma senha forte e nova |
+   | `SEED_ADMIN_NAME` | `Guilherme` |
+   | `SEED_DEMO_DATA` | não defina (fica desligado) |
+
+   Trocar `JWT_SECRET` invalida todas as sessões abertas, inclusive a de quem
+   tenha entrado indevidamente. A API não sobe sem ele.
+
+2. **Aposente as contas antigas.** Entre no painel com o administrador novo e
+   use *Clientes → Nova senha* em `guilherme@festae.com.br` e
+   `mariluiza@festae.com.br`, definindo senhas novas. Enquanto isso não for
+   feito, a senha publicada continua valendo nelas.
+
+3. **Considere tornar o repositório privado** em Settings → General → Danger
+   Zone. Não é obrigatório, mas some com a classe inteira de problema.
+
+> Uma senha que já esteve num repositório público deve ser tratada como
+> conhecida para sempre. Não a reaproveite em nenhum outro serviço.
+
+---
+
 ## 1. Bucket das imagens — você · faz agora
 
 Sem isso, toda foto de kit e produto some no próximo deploy do backend.
