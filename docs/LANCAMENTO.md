@@ -157,11 +157,21 @@ pagamento é combinado à parte — o app avisa isso ao usuário.
 
 ## 4. Publicar o painel admin — você
 
-`apps/admin/Dockerfile` está pronto, mas ninguém o está usando: o
-`railway.json` aponta só para o backend. Crie um **segundo serviço** no
-Railway, no mesmo repositório, com *Dockerfile path* = `apps/admin/Dockerfile`.
 Sem isso a operação não consegue cadastrar produto nem gerenciar reserva fora
-da sua máquina.
+da sua máquina — e é pelo painel que se troca a senha de um cliente.
+
+Crie um **segundo serviço** no Railway apontando para o mesmo repositório e a
+mesma branch do backend. Em *Settings*:
+
+- **Railway Config File:** `railway.admin.json`
+- **Networking → Generate Domain**, para o painel ganhar URL pública
+
+O detalhe que engana: o `railway.json` da raiz aponta para o Dockerfile do
+**backend**, e um serviço novo no mesmo repositório o adota sozinho — sem
+apontar para `railway.admin.json`, o Railway constrói o backend de novo.
+
+Nenhuma variável é necessária: a URL da API já é o padrão do Dockerfile
+(sobrescreva com o build arg `VITE_API_URL` se um dia mudar de domínio).
 
 ---
 
