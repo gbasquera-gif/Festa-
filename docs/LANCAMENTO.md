@@ -142,12 +142,14 @@ A Apple só reconhece a matriz — nunca use CNPJ de filial no cadastro.
    um de atraso — o pedido volta para correção e o prazo reinicia.
 4. Prazo típico de alguns dias úteis, mas pode passar disso.
 
-### 2.2 Domínio e e-mail corporativo
+### 2.2 Domínio e e-mail corporativo — CONCLUÍDO
 
-As duas lojas verificam a empresa por site e e-mail no domínio próprio, e a
-política de privacidade (item 5) também precisa de uma URL. Se ainda não
-existir domínio da Festaê no ar, registre agora — costuma ser o gargalo
-escondido, porque só se descobre no meio do cadastro.
+`festaechapeco.com.br` registrado e `contato@festaechapeco.com.br` em uso —
+é também a conta de administrador do painel.
+
+Use esse endereço nos cadastros das duas lojas: elas verificam a empresa por
+site e e-mail no domínio próprio, e a política de privacidade (item 5) precisa
+ficar numa URL desse domínio.
 
 ### 2.3 Google Play Console — US$ 25, pagamento único
 
