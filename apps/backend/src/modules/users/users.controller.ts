@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Patch, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { resetPasswordSchema } from "@festae/shared";
-import type { ResetPasswordInput } from "@festae/shared";
+import { resetPasswordSchema, updateUserSchema } from "@festae/shared";
+import type { ResetPasswordInput, UpdateUserInput } from "@festae/shared";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { CurrentUser, type AuthUser } from "../../common/decorators/current-user.decorator";
 import { UsersService } from "./users.service";
 
 @ApiTags("users")
@@ -19,6 +20,20 @@ export class UsersController {
   @Get()
   findAll() {
     return this.usersService.findAll();
+  }
+
+  @ApiOperation({
+    summary: "Atualiza nome, e-mail ou perfil de uma conta",
+    description: "Usado para corrigir e-mail digitado errado e para gerir os acessos da equipe.",
+  })
+  @Roles("ADMIN")
+  @Patch(":id")
+  update(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateUserSchema)) body: UpdateUserInput,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.usersService.update(id, body, actor.userId);
   }
 
   // Só ADMIN: definir a senha de outra pessoa é poder entrar na conta dela,

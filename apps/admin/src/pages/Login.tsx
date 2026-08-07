@@ -51,7 +51,7 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@festae.com.br"
+                placeholder="voce@festaechapeco.com.br"
               />
             </div>
             <div className="flex flex-col gap-2">

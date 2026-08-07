@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ROLES } from "../enums";
 
 export const signupSchema = z.object({
   name: z.string().min(2).max(120),
@@ -28,3 +29,17 @@ export const resetPasswordSchema = z.object({
   password: z.string().min(8).max(72),
 });
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+// Edição de conta pelo painel: corrigir e-mail digitado errado, atualizar
+// nome, promover alguém da equipe. Todos os campos são opcionais para que o
+// painel possa enviar só o que mudou.
+export const updateUserSchema = z
+  .object({
+    name: z.string().min(2).max(120).optional(),
+    email: z.string().email().optional(),
+    role: z.enum(ROLES).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Envie ao menos um campo para atualizar.",
+  });
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;
