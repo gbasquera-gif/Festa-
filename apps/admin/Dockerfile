@@ -20,12 +20,17 @@ FROM installer AS builder
 WORKDIR /repo
 COPY --from=pruner /repo/out/full/ .
 # URL pública do backend — precisa estar disponível em build-time porque o
-# Vite embute VITE_* no bundle final (não é lido em runtime).
-ENV VITE_API_URL=https://festa-production.up.railway.app/api/v1
+# Vite embute VITE_* no bundle final (não é lido em runtime). Como ARG, o
+# provedor de hospedagem consegue sobrescrever sem editar este arquivo.
+ARG VITE_API_URL=https://festa-production.up.railway.app/api/v1
+ENV VITE_API_URL=$VITE_API_URL
 RUN npx turbo run build --filter=@festae/admin
 
 FROM node:22-alpine AS runtime
 RUN npm install -g serve
 COPY --from=builder /repo/apps/admin/dist /site
+# Forma shell de propósito: hospedagens como Railway e Render escolhem a
+# porta em tempo de execução e a entregam em $PORT. Fixar 3000 deixaria o
+# serviço no ar mas inalcançável pelo roteador da plataforma.
 EXPOSE 3000
-CMD ["serve", "-s", "/site", "-l", "3000"]
+CMD serve -s /site -l ${PORT:-3000}
