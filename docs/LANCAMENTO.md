@@ -58,15 +58,22 @@ produção** — o seed nunca apaga nada. Fechar o buraco depende destes passos:
 
 ---
 
-## 1. Bucket das imagens — você · faz agora
+## 1. Bucket das imagens — CONCLUÍDO
 
-Sem isso, toda foto de kit e produto some no próximo deploy do backend.
+Bucket `festae-catalogo` no Cloudflare R2, com URL pública ativa e credencial de
+escrita restrita a esse bucket. Verificado ponta a ponta: upload pelo painel
+grava no bucket e a imagem abre por link público, sem sessão.
+
+O passo a passo abaixo fica registrado para o caso de precisar refazer.
+
+<details>
+<summary>Como foi configurado</summary>
 
 1. **Criar o bucket.** [dash.cloudflare.com](https://dash.cloudflare.com) → **R2**
    → *Create bucket* → nome `festae-catalogo`, localização automática.
 2. **Deixar as imagens públicas.** No bucket → *Settings* → *Public access*.
    Habilite o subdomínio `r2.dev` ou conecte um domínio próprio
-   (ex.: `cdn.festae.com.br`). **Copie essa URL pública.**
+   (ex.: `cdn.festaechapeco.com.br`). **Copie essa URL pública.**
 3. **Criar a credencial.** R2 → *Manage API tokens* → *Create API token* →
    permissão **Object Read & Write**, com escopo apenas neste bucket.
    Copie o **Access Key ID** e o **Secret Access Key** — o secret só aparece
@@ -91,6 +98,13 @@ Sem isso, toda foto de kit e produto some no próximo deploy do backend.
 
 > Para testar de ponta a ponta antes de o admin estar publicado, rode o admin
 > local com `VITE_API_URL` apontando para a API de produção e suba uma foto.
+
+</details>
+
+> A URL pública usa o subdomínio `r2.dev`, que a Cloudflare limita em banda e
+> não recomenda para tráfego alto. Quando o app tiver movimento, aponte um
+> `cdn.festaechapeco.com.br` para o bucket — exige trazer o DNS do domínio
+> para a Cloudflare.
 
 ---
 
@@ -171,10 +185,12 @@ pagamento é combinado à parte — o app avisa isso ao usuário.
 
 ---
 
-## 4. Publicar o painel admin — você
+## 4. Publicar o painel admin — CONCLUÍDO
 
-Sem isso a operação não consegue cadastrar produto nem gerenciar reserva fora
-da sua máquina — e é pelo painel que se troca a senha de um cliente.
+No ar como segundo serviço do projeto no Railway, na mesma branch do backend.
+
+<details>
+<summary>Como foi publicado</summary>
 
 Crie um **segundo serviço** no Railway apontando para o mesmo repositório e a
 mesma branch do backend. Em *Settings*:
@@ -188,6 +204,8 @@ apontar para `railway.admin.json`, o Railway constrói o backend de novo.
 
 Nenhuma variável é necessária: a URL da API já é o padrão do Dockerfile
 (sobrescreva com o build arg `VITE_API_URL` se um dia mudar de domínio).
+
+</details>
 
 ---
 
