@@ -21,7 +21,7 @@ export default function Confirmacao() {
       </View>
 
       <View className="gap-3">
-        <Button onPress={() => router.replace("/(tabs)/historico")}>Ver meu histórico</Button>
+        <Button onPress={() => router.replace("/(tabs)/pedidos")}>Ver meus pedidos</Button>
         <Button variant="outline" onPress={() => router.replace("/(tabs)")}>
           Voltar ao início
         </Button>

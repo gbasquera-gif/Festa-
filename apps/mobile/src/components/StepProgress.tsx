@@ -1,9 +1,9 @@
 import { Text, View } from "react-native";
 
-const STEP_LABELS = ["Sua festa", "Kit", "Extras", "Resumo"] as const;
+const STEP_LABELS = ["Sua festa", "Kit", "Extras", "Entrega", "Resumo"] as const;
 const TOTAL_STEPS = STEP_LABELS.length;
 
-export function StepProgress({ step }: { step: 1 | 2 | 3 | 4 }) {
+export function StepProgress({ step }: { step: 1 | 2 | 3 | 4 | 5 }) {
   return (
     <View className="gap-2">
       <View className="flex-row items-center justify-between">

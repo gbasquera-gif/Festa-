@@ -13,8 +13,10 @@
  * gravada no aceite de cada usuário.
  */
 
+import { ASSEMBLY_FEE, DELIVERY_CITY, DELIVERY_FEE } from "./pricing";
+
 /** Sobe a cada alteração de conteúdo. Gravada no aceite do usuário. */
-export const TERMS_VERSION = "1.1.0";
+export const TERMS_VERSION = "1.2.0";
 
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
 export const TERMS_UPDATED_AT = "2026-08-07";
@@ -23,6 +25,11 @@ export const TERMS_UPDATED_AT = "2026-08-07";
 export function formatLegalDate(isoDate: string) {
   const [year, month, day] = isoDate.split("-");
   return day && month && year ? `${day}/${month}/${year}` : isoDate;
+}
+
+/** Formata reais para o texto legal, com a vírgula que se lê no Brasil. */
+function formatBRL(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export interface LegalSection {
@@ -73,7 +80,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       title: "Quais dados coletamos",
       paragraphs: [
         "Ao criar sua conta: nome, e-mail e, se você quiser informar, telefone. A senha é guardada apenas como um código embaralhado (hash) — nem nós conseguimos lê-la.",
-        "Ao montar uma festa: data do evento, quantidade de convidados, orçamento desejado, tema escolhido e, quando você opta por entrega, o endereço e o bairro.",
+        "Ao montar uma festa: data do evento, cidade, quantidade de convidados, tema escolhido e, quando você opta por entrega, o endereço e o bairro.",
         "Ao usar o aplicativo: registramos ações do seu percurso — cadastro, login, escolha de tema, escolha de kit, item adicionado, clique no WhatsApp, reserva criada, pagamento e desistência — para entender onde as pessoas travam e melhorar o serviço.",
         "Seu orçamento em construção fica guardado apenas no seu aparelho até virar um pedido.",
         "Não coletamos CPF, data de nascimento nem localização por GPS. Hoje o aplicativo não pede acesso à sua localização, câmera, contatos ou fotos.",
@@ -173,7 +180,7 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       title: "Preços e pagamento",
       paragraphs: [
-        "Os valores exibidos no aplicativo são uma estimativa. O valor final é confirmado após a definição da data, dos itens e das condições de retirada ou entrega.",
+        "O valor final do pedido é a soma dos produtos escolhidos, mais a taxa de entrega e a taxa de montagem, quando você optar por elas. O resumo mostra cada parcela dessa conta antes de você confirmar.",
         "O pagamento é feito em duas parcelas iguais: 50% no ato da reserva, que é o que garante a data, e 50% na retirada dos itens.",
         "A forma de pagamento aceita é Pix. Pagamento com cartão será oferecido em versão futura do aplicativo.",
         "A data só fica reservada depois que o pagamento dos primeiros 50% for confirmado.",
@@ -192,10 +199,12 @@ export const TERMS_OF_USE: LegalDocument = {
       ],
     },
     {
-      title: "Retirada, entrega e devolução",
+      title: "Retirada, entrega e montagem",
       paragraphs: [
-        "Os itens são retirados e devolvidos na sede da Festaê, nos horários combinados na confirmação da reserva.",
-        "Entrega no local da festa poderá ser oferecida conforme a disponibilidade da equipe, com cobrança de uma taxa de deslocamento informada e aprovada por você antes da confirmação da reserva. A entrega não é garantida: quando não houver disponibilidade, a retirada continua valendo.",
+        "A retirada na sede da Festaê é gratuita e é a forma padrão de receber os itens, nos horários combinados na confirmação da reserva.",
+        `A entrega no local da festa custa ${formatBRL(DELIVERY_FEE)} e está disponível apenas em ${DELIVERY_CITY}. Para festas em outras cidades, a retirada é feita na sede. A taxa aparece no resumo antes de você confirmar, e a entrega depende da disponibilidade da equipe na data.`,
+        `A montagem da decoração no local é um serviço opcional de ${formatBRL(ASSEMBLY_FEE)}, independente de você escolher retirada ou entrega. Sem ela, a montagem fica por sua conta.`,
+        "As duas escolhas aparecem separadas no resumo do pedido, com o valor de cada uma, e entram no total antes do cálculo do sinal.",
         "Os itens são cedidos em locação, não vendidos. Devem ser devolvidos nas condições em que foram recebidos, ressalvado o desgaste natural de uso.",
         "A devolução fora do prazo combinado pode gerar cobrança adicional pelo período extra, informada previamente.",
       ],

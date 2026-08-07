@@ -8,6 +8,7 @@ import { useFavoritos } from "@/lib/favoritos";
 import { useOrcamento } from "@/lib/orcamento";
 import { track } from "@/lib/analytics";
 import { openWhatsApp } from "@/lib/contato";
+import { goToLogin, goToSignup } from "@/lib/login-gate";
 import { colors } from "@/theme";
 
 function Row({
@@ -61,6 +62,47 @@ export default function Perfil() {
     clear();
     await logout();
     router.replace("/(auth)/login");
+  }
+
+  // Visitante vê um convite, não um perfil vazio com o nome em branco.
+  if (!user) {
+    return (
+      <Screen contentClassName="gap-5">
+        <Text className="font-sans-extrabold text-2xl text-navy">Perfil</Text>
+
+        <View className="items-center gap-3 rounded-2xl border border-sand bg-white px-6 py-10">
+          <Ionicons name="person-circle-outline" size={44} color={colors.gold} />
+          <Text className="text-center font-sans-bold text-lg text-navy">
+            Crie sua conta para reservar
+          </Text>
+          <Text className="text-center text-navy/70">
+            Você pode ver todo o catálogo e montar seu orçamento sem conta. Ela só é necessária na
+            hora de reservar a data e pagar o sinal.
+          </Text>
+          <Button className="mt-1 w-full" onPress={() => goToSignup("/(tabs)/perfil")}>
+            Criar conta
+          </Button>
+          <Pressable onPress={() => goToLogin("/(tabs)/perfil")} hitSlop={8}>
+            <Text className="font-sans-bold text-coral">Já tenho conta</Text>
+          </Pressable>
+        </View>
+
+        <View className="overflow-hidden rounded-2xl border border-sand bg-white">
+          <Row icon="logo-whatsapp" label="Falar com a Festaê" onPress={handleWhatsApp} />
+          <Row
+            icon="shield-checkmark-outline"
+            label="Política de Privacidade"
+            onPress={() => router.push("/legal/privacidade")}
+          />
+          <Row
+            icon="document-text-outline"
+            label="Termos de Uso"
+            last
+            onPress={() => router.push("/legal/termos")}
+          />
+        </View>
+      </Screen>
+    );
   }
 
   return (

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Link, router } from "expo-router";
+import { Link, router, useLocalSearchParams } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
@@ -8,10 +8,13 @@ import { Wordmark } from "@/components/Wordmark";
 import { BalloonsBackdrop, BALLOONS_HEIGHT } from "@/components/BalloonsBackdrop";
 import { useAuth, isApiError } from "@/lib/auth";
 import { track } from "@/lib/analytics";
+import { resolveNext } from "@/lib/login-gate";
 import { openWhatsApp } from "@/lib/contato";
 
 export default function Login() {
   const { login } = useAuth();
+  // Preserva a intenção: quem veio de "solicitar reserva" volta para lá.
+  const { next } = useLocalSearchParams<{ next?: string }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export default function Login() {
     try {
       await login(email, password);
       track("LOGIN");
-      router.replace("/(tabs)");
+      router.replace(resolveNext(next) as never);
     } catch (err) {
       setError(isApiError(err) ? err.message : "Não foi possível entrar.");
     } finally {
@@ -82,7 +85,7 @@ export default function Login() {
 
       <View className="flex-row justify-center gap-1">
         <Text className="text-navy/70">Ainda não tem conta?</Text>
-        <Link href="/(auth)/signup">
+        <Link href={{ pathname: "/(auth)/signup", params: next ? { next } : {} }}>
           <Text className="font-sans-bold text-coral">Criar conta</Text>
         </Link>
       </View>

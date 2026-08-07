@@ -17,12 +17,15 @@ export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 export const ORDER_STATUSES = ["CART", "REQUESTED", "CONFIRMED", "CANCELLED"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+/** Etapas operacionais, na ordem em que a Maria Luiza as percorre. */
 export const RESERVATION_STATUSES = [
   "PENDING",
   "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "COMPLETED",
   "REJECTED",
   "CANCELLED",
-  "COMPLETED",
 ] as const;
 export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
 
@@ -58,6 +61,7 @@ export const ANALYTICS_EVENT_TYPES = [
   "EXTRA_ADICIONADO",
   "CLIQUE_WHATSAPP",
   "RESERVA_CRIADA",
+  "PAGAMENTO_INICIADO",
   "PAGAMENTO_REALIZADO",
   "ABANDONO",
 ] as const;
@@ -72,3 +76,6 @@ export const ANALYTICS_FUNNEL_ORDER: AnalyticsEventType[] = [
   "RESERVA_CRIADA",
   "PAGAMENTO_REALIZADO",
 ];
+
+export const FULFILLMENTS = ["PICKUP", "DELIVERY"] as const;
+export type Fulfillment = (typeof FULFILLMENTS)[number];

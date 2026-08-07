@@ -14,6 +14,11 @@ export const createEventSchema = z.object({
   themeId: z.string().cuid().optional(),
   address: z.string().max(255).optional(),
   neighborhood: z.string().max(120).optional(),
+  /**
+   * Cidade da festa. Define se a entrega pode ser oferecida — por isso é
+   * perguntada logo no início, e não junto do endereço.
+   */
+  city: z.string().min(2).max(120).optional(),
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 

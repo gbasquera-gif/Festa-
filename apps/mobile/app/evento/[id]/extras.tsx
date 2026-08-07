@@ -94,7 +94,7 @@ export default function Extras() {
         );
       })}
 
-      <Button onPress={() => router.push(`/evento/${id}/resumo`)}>Ver resumo da festa</Button>
+      <Button onPress={() => router.push(`/evento/${id}/logistica`)}>Escolher entrega e montagem</Button>
     </Screen>
   );
 }

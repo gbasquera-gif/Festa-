@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
+import { splitPayment } from "@festae/shared";
 import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
 
@@ -7,17 +8,6 @@ const PAYMENT_TYPE_LABEL: Record<string, string> = {
   DEPOSIT: "Sinal (50%) da festa",
   BALANCE: "Saldo restante (50%) da festa",
 };
-
-/**
- * Split 50/50 confirmado com a operação: metade na reserva (DEPOSIT),
- * metade na retirada/entrega (BALANCE). Sem parcelamento, sem Apple/Google
- * Pay por enquanto — fica pro roadmap quando o volume justificar.
- */
-function splitAmount(total: number): { deposit: number; balance: number } {
-  const deposit = Math.round(total * 50) / 100;
-  const balance = Math.round((total - deposit) * 100) / 100;
-  return { deposit, balance };
-}
 
 @Injectable()
 export class PaymentsService {
@@ -40,8 +30,9 @@ export class PaymentsService {
       throw new ConflictException("Este pagamento já foi realizado.");
     }
 
-    const total = Number(order.total);
-    const { deposit, balance } = splitAmount(total);
+    // A divisão vem do pacote compartilhado: o valor cobrado no Pix é
+    // exatamente o que o cliente viu no resumo, calculado pela mesma função.
+    const { deposit, balance } = splitPayment(Number(order.total));
     const amount = input.type === "DEPOSIT" ? deposit : balance;
 
     const payment = await prisma.payment.create({
@@ -75,19 +66,49 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * Confirmação vinda do Mercado Pago.
+   *
+   * O sinal pago confirma a reserva automaticamente: a data já foi checada
+   * contra a capacidade do dia quando a reserva foi solicitada, então não há
+   * o que a operação precise decidir depois — e deixar a pessoa pagando e
+   * esperando resposta humana é justamente o que se quis eliminar.
+   */
   async handleWebhook(payload: unknown) {
     const result = await this.gateway.parseWebhook(payload);
     if (!result) return;
 
-    const payment = await prisma.payment.findUnique({ where: { id: result.externalReference } });
-    if (!payment) return;
-
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        status: result.status,
-        paidAt: result.status === "PAID" ? new Date() : payment.paidAt,
-      },
+    const payment = await prisma.payment.findUnique({
+      where: { id: result.externalReference },
+      include: { order: { include: { reservation: true } } },
     });
+    if (!payment) return;
+    // Webhook repetido é normal no Mercado Pago: ignorar o que já está pago
+    // evita reconfirmar reserva e reescrever a data de pagamento.
+    if (payment.status === "PAID") return;
+
+    const confirmsReservation =
+      result.status === "PAID" &&
+      payment.type === "DEPOSIT" &&
+      payment.order.reservation?.status === "PENDING";
+
+    await prisma.$transaction([
+      prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: result.status,
+          paidAt: result.status === "PAID" ? new Date() : payment.paidAt,
+        },
+      }),
+      ...(confirmsReservation
+        ? [
+            prisma.reservation.update({
+              where: { id: payment.order.reservation!.id },
+              data: { status: "CONFIRMED", confirmedAt: new Date() },
+            }),
+            prisma.order.update({ where: { id: payment.orderId }, data: { status: "CONFIRMED" } }),
+          ]
+        : []),
+    ]);
   }
 }

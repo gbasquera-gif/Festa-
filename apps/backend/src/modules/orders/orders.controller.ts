@@ -1,7 +1,17 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { addOrderItemSchema, selectKitSchema, updateOrderItemSchema } from "@festae/shared";
-import type { AddOrderItemInput, SelectKitInput, UpdateOrderItemInput } from "@festae/shared";
+import {
+  addOrderItemSchema,
+  selectKitSchema,
+  setLogisticsSchema,
+  updateOrderItemSchema,
+} from "@festae/shared";
+import type {
+  AddOrderItemInput,
+  SelectKitInput,
+  SetLogisticsInput,
+  UpdateOrderItemInput,
+} from "@festae/shared";
 import { OrdersService } from "./orders.service";
 import { EventsService } from "../events/events.service";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
@@ -32,6 +42,16 @@ export class OrdersController {
   ) {
     await this.eventsService.findById(eventId, user);
     return this.ordersService.selectKit(eventId, body);
+  }
+
+  @Patch("logistics")
+  async setLogistics(
+    @CurrentUser() user: AuthUser,
+    @Param("eventId") eventId: string,
+    @Body(new ZodValidationPipe(setLogisticsSchema)) body: SetLogisticsInput,
+  ) {
+    await this.eventsService.findById(eventId, user);
+    return this.ordersService.setLogistics(eventId, body);
   }
 
   @Post("items")

@@ -32,6 +32,11 @@ enum ProductCategory {
   OUTRO
 }
 
+enum Fulfillment {
+  PICKUP
+  DELIVERY
+}
+
 enum OrderStatus {
   CART
   REQUESTED
@@ -39,12 +44,18 @@ enum OrderStatus {
   CANCELLED
 }
 
+/// Etapas operacionais de uma reserva, na ordem em que acontecem.
+/// Não guarda situação de pagamento: isso vive nos registros de Payment,
+/// porque uma reserva pode estar em PREPARING com ou sem o sinal pago, e
+/// juntar as duas coisas num enum só criaria estados impossíveis.
 enum ReservationStatus {
   PENDING
   CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
   REJECTED
   CANCELLED
-  COMPLETED
 }
 
 enum PartnerType {
@@ -217,6 +228,19 @@ model Order {
   status         OrderStatus @default(CART)
   subtotalKit    Decimal     @default(0) @db.Decimal(10, 2)
   subtotalExtras Decimal     @default(0) @db.Decimal(10, 2)
+
+  /// Retirada na sede ou entrega no local. Padrão retirada: é o que a
+  /// operação faz sempre, entrega depende de disponibilidade e de a festa
+  /// ser em Chapecó.
+  fulfillment Fulfillment @default(PICKUP)
+  assembly    Boolean     @default(false)
+
+  /// Taxas gravadas no pedido, e não lidas da tabela de preços na hora de
+  /// exibir: se a Festaê reajustar a entrega, quem já reservou continua
+  /// pagando o que combinou.
+  deliveryFee Decimal @default(0) @db.Decimal(10, 2)
+  assemblyFee Decimal @default(0) @db.Decimal(10, 2)
+
   total          Decimal     @default(0) @db.Decimal(10, 2)
   notes          String?
   createdAt      DateTime    @default(now())

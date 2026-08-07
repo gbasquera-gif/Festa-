@@ -24,6 +24,8 @@ export default function Index() {
     );
   }
 
-  if (user) return <Redirect href="/(tabs)" />;
-  return <Redirect href={seenOnboarding ? "/(auth)/login" : "/boas-vindas"} />;
+  // Quem já conhece o app cai direto na vitrine, com ou sem conta. A tela de
+  // boas-vindas aparece só na primeira abertura.
+  if (user || seenOnboarding) return <Redirect href="/(tabs)" />;
+  return <Redirect href="/boas-vindas" />;
 }

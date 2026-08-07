@@ -32,9 +32,9 @@ const SLIDES = [
     body: "Decoração, mesas, louças, iluminação e brinquedos no mesmo lugar.",
   },
   {
-    title: "Reserve a data e relaxe:",
-    highlight: "a gente monta e recolhe.",
-    body: "Entrega, montagem e retirada inclusas no seu orçamento.",
+    title: "Reserve a data,",
+    highlight: "retire ou receba em casa.",
+    body: "Retirada na Festaê sem custo. Entrega e montagem são opcionais em Chapecó.",
   },
 ];
 
@@ -48,7 +48,7 @@ export default function BoasVindas() {
 
   // Marca como visto assim que o usuário sai daqui: quem já conhece o app não
   // precisa rever a apresentação a cada logout.
-  async function go(path: "/(auth)/signup" | "/(auth)/login") {
+  async function go(path: "/(tabs)" | "/(auth)/signup" | "/(auth)/login") {
     await setItem(ONBOARDING_KEY, "1").catch(() => {});
     router.replace(path);
   }
@@ -104,8 +104,10 @@ export default function BoasVindas() {
           <View className="mt-auto gap-4 px-8 pb-4 pt-10">
             <CornerArcs />
 
-            <Button variant="navy" onPress={() => go("/(auth)/signup")}>
-              Começar
+            {/* Entra direto na vitrine: a conta é pedida só na hora de
+                reservar, quando a pessoa já sabe o que está contratando. */}
+            <Button variant="navy" onPress={() => go("/(tabs)")}>
+              Ver o catálogo
             </Button>
 
             <Pressable onPress={() => go("/(auth)/login")} hitSlop={8}>

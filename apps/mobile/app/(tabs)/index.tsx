@@ -11,6 +11,7 @@ import { CategoryCircle } from "@/components/CategoryCircle";
 import { CatalogCard } from "@/components/CatalogCard";
 import { PromoBanner, type Promo } from "@/components/PromoBanner";
 import { useAuth } from "@/lib/auth";
+import { goToLogin } from "@/lib/login-gate";
 import { api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/catalog";
 import { EVENT_TYPE_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
@@ -34,9 +35,9 @@ const PROMOS: Promo[] = [
     onPress: () => router.push("/catalogo/kits"),
   },
   {
-    titleLines: ["Data reservada,", "montagem e"],
-    highlight: "retirada inclusas.",
-    subtitle: "A gente entrega, monta e recolhe. Você só comemora.",
+    titleLines: ["Reserve a data", "e escolha como"],
+    highlight: "quer receber.",
+    subtitle: "Retirada grátis na Festaê. Entrega e montagem opcionais em Chapecó.",
     cta: "Reservar data",
     icon: "calendar-heart",
     onPress: () => router.push("/evento/criar"),
@@ -46,9 +47,12 @@ const PROMOS: Promo[] = [
 export default function Home() {
   const { user } = useAuth();
 
+  // Só consulta os eventos de quem tem conta: visitante não tem pedido, e
+  // pedir /events sem token devolveria 401 e sujaria a home com erro.
   const { data: events } = useQuery({
     queryKey: ["my-events"],
     queryFn: () => api<EventRecord[]>("/events"),
+    enabled: Boolean(user),
   });
   const { data: kits } = useQuery({ queryKey: ["kits"], queryFn: () => api<Kit[]>("/kits") });
   const { data: products } = useQuery({
@@ -64,21 +68,31 @@ export default function Home() {
     <Screen contentClassName="gap-6">
       <View className="flex-row items-start justify-between">
         <View className="flex-1">
-          <Text className="font-sans-extrabold text-2xl text-navy">Olá, {firstName ?? "tudo bem"}! 👋</Text>
-          <Text className="text-navy/70">O que vamos preparar hoje?</Text>
+          <Text className="font-sans-extrabold text-2xl text-navy">
+            {firstName ? `Olá, ${firstName}! 👋` : "Bem-vindo à Festaê! 🎈"}
+          </Text>
+          <Text className="text-navy/70">
+            {firstName ? "O que vamos preparar hoje?" : "Veja tudo que temos e monte sua festa."}
+          </Text>
         </View>
 
-        <Pressable
-          onPress={() => router.push("/(tabs)/pedidos")}
-          hitSlop={8}
-          accessibilityLabel="Ver atualizações dos pedidos"
-          className="pt-1"
-        >
-          <Ionicons name="notifications-outline" size={24} color={colors.navy} />
-          {hasUpdates && (
-            <View className="absolute -right-0.5 top-0 h-2.5 w-2.5 rounded-full border border-white bg-coral" />
-          )}
-        </Pressable>
+        {user ? (
+          <Pressable
+            onPress={() => router.push("/(tabs)/pedidos")}
+            hitSlop={8}
+            accessibilityLabel="Ver atualizações dos pedidos"
+            className="pt-1"
+          >
+            <Ionicons name="notifications-outline" size={24} color={colors.navy} />
+            {hasUpdates && (
+              <View className="absolute -right-0.5 top-0 h-2.5 w-2.5 rounded-full border border-white bg-coral" />
+            )}
+          </Pressable>
+        ) : (
+          <Pressable onPress={() => goToLogin()} hitSlop={8} className="pt-1">
+            <Text className="font-sans-bold text-coral">Entrar</Text>
+          </Pressable>
+        )}
       </View>
 
       <SearchField onPress={() => router.push("/catalogo/busca")} />

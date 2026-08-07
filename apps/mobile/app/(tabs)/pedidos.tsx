@@ -12,6 +12,8 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { api } from "@/lib/api";
 import { formatBRL } from "@/lib/catalog";
 import { useOrcamento } from "@/lib/orcamento";
+import { useAuth } from "@/lib/auth";
+import { goToLogin, goToSignup } from "@/lib/login-gate";
 import { EVENT_TYPE_LABEL, ORDER_STATUS_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
 
@@ -23,11 +25,13 @@ const STATUS_VARIANT: Record<string, "neutral" | "coral" | "success" | "danger">
 };
 
 export default function Pedidos() {
+  const { user } = useAuth();
   const { kitId, items, setProductQuantity, removeProduct, setKit, clear } = useOrcamento();
 
   const { data: events, isLoading } = useQuery({
     queryKey: ["my-events"],
     queryFn: () => api<EventRecord[]>("/events"),
+    enabled: Boolean(user),
   });
   const { data: products } = useQuery({
     queryKey: ["products"],
@@ -110,19 +114,40 @@ export default function Pedidos() {
           </View>
 
           <Text className="text-xs leading-4 text-navy/60">
-            O valor final sai depois de escolher a data e o endereço de entrega.
+            O valor final sai depois de escolher a data, a retirada ou entrega e a montagem.
           </Text>
 
-          <Button onPress={() => router.push("/evento/criar")}>Fechar orçamento</Button>
+          {/* O orçamento fica guardado no aparelho: quem monta sem conta não
+              perde nada ao criar uma na hora de fechar. */}
+          <Button onPress={() => (user ? router.push("/evento/criar") : goToSignup("/evento/criar"))}>
+            {user ? "Fechar orçamento" : "Criar conta e fechar orçamento"}
+          </Button>
+          {!user && (
+            <Text className="text-center text-xs text-navy/50">
+              Seu orçamento continua salvo — a conta é só para reservar a data.
+            </Text>
+          )}
         </View>
       )}
 
       <View className="gap-3">
         <SectionHeader title="Suas festas" />
 
-        {isLoading && <Text className="text-navy/60">Carregando...</Text>}
+        {!user && (
+          <View className="items-center gap-3 rounded-2xl border border-sand bg-white px-6 py-8">
+            <Ionicons name="person-circle-outline" size={36} color={colors.gold} />
+            <Text className="text-center text-navy/70">
+              Entre na sua conta para acompanhar as festas que você já pediu.
+            </Text>
+            <Button variant="navy" className="mt-1" onPress={() => goToLogin("/(tabs)/pedidos")}>
+              Entrar
+            </Button>
+          </View>
+        )}
 
-        {events?.length === 0 && !hasDraft && (
+        {user && isLoading && <Text className="text-navy/60">Carregando...</Text>}
+
+        {user && events?.length === 0 && !hasDraft && (
           <View className="items-center gap-3 rounded-2xl border border-sand bg-white px-6 py-10">
             <Ionicons name="bag-handle-outline" size={36} color={colors.gold} />
             <Text className="text-center text-navy/70">

@@ -7,7 +7,12 @@ import { prisma } from "@festae/database";
  * ainda não há necessidade real de variar por data/sazonalidade.
  */
 const MAX_RESERVATIONS_PER_DAY = 2;
-const COUNTED_STATUSES = ["PENDING", "CONFIRMED"] as const;
+/**
+ * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
+ * tanto quanto CONFIRMED: a festa existe e o material está comprometido.
+ * Só REJECTED e CANCELLED liberam a data.
+ */
+const COUNTED_STATUSES = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
 
 export interface DayAvailability {
   date: string;
@@ -51,5 +56,26 @@ export class AvailabilityService {
       });
     }
     return days;
+  }
+
+  /**
+   * Ainda cabe uma festa nesta data?
+   *
+   * Consultado no momento de reservar, e não só ao desenhar o calendário:
+   * entre abrir o app e confirmar, outra pessoa pode ter fechado a última
+   * vaga do dia. Sem esta checagem, a Festaê receberia o sinal de uma data
+   * que não tem como cumprir — e teria que devolver o dinheiro e o cliente.
+   */
+  async isDateAvailable(date: Date): Promise<boolean> {
+    const start = new Date(date);
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    const reserved = await prisma.reservation.count({
+      where: { eventDate: { gte: start, lt: end }, status: { in: [...COUNTED_STATUSES] } },
+    });
+
+    return reserved < MAX_RESERVATIONS_PER_DAY;
   }
 }

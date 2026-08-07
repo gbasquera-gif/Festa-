@@ -1,4 +1,4 @@
-import type { EventType, OrderStatus, ProductCategory, ReservationStatus } from "@festae/shared";
+import type { EventType, Fulfillment, OrderStatus, ProductCategory, ReservationStatus } from "@festae/shared";
 
 export interface Theme {
   id: string;
@@ -63,8 +63,25 @@ export interface Order {
   items: OrderItem[];
   subtotalKit: string;
   subtotalExtras: string;
+  fulfillment: Fulfillment;
+  assembly: boolean;
+  deliveryFee: string;
+  assemblyFee: string;
   total: string;
   reservation: Reservation | null;
+}
+
+export interface PaymentRecord {
+  id: string;
+  type: "DEPOSIT" | "BALANCE";
+  amount: string;
+  method: "PIX" | "CARTAO" | "BOLETO" | "OUTRO";
+  status: "PENDING" | "PAID" | "FAILED" | "REFUNDED";
+  pixQrCode: string | null;
+  pixQrCodeBase64: string | null;
+  checkoutUrl: string | null;
+  paidAt: string | null;
+  createdAt: string;
 }
 
 export interface EventRecord {

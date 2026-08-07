@@ -14,6 +14,7 @@ export {
   PAYMENT_TYPES,
   ANALYTICS_EVENT_TYPES,
   ANALYTICS_FUNNEL_ORDER,
+  FULFILLMENTS,
 } from "./enums";
 export type {
   Role,
@@ -26,6 +27,7 @@ export type {
   PaymentStatus,
   PaymentType,
   AnalyticsEventType,
+  Fulfillment,
 } from "./enums";
 
 export { BRAND_COLORS, BRAND_NAME, DEFAULT_CITY, DEFAULT_STATE } from "./brand";
@@ -59,8 +61,8 @@ export type {
 export { createEventSchema, updateEventSchema, availabilityQuerySchema } from "./schemas/events";
 export type { CreateEventInput, UpdateEventInput, AvailabilityQuery } from "./schemas/events";
 
-export { selectKitSchema, addOrderItemSchema, updateOrderItemSchema } from "./schemas/orders";
-export type { SelectKitInput, AddOrderItemInput, UpdateOrderItemInput } from "./schemas/orders";
+export { setLogisticsSchema, selectKitSchema, addOrderItemSchema, updateOrderItemSchema } from "./schemas/orders";
+export type { SetLogisticsInput, SelectKitInput, AddOrderItemInput, UpdateOrderItemInput } from "./schemas/orders";
 
 export { createReservationSchema, updateReservationStatusSchema } from "./schemas/reservations";
 export type { CreateReservationInput, UpdateReservationStatusInput } from "./schemas/reservations";
@@ -88,3 +90,19 @@ export type { TrackEventInput } from "./schemas/analytics";
 
 export { createCheckoutSchema } from "./schemas/payments";
 export type { CreateCheckoutInput } from "./schemas/payments";
+
+export {
+  DELIVERY_FEE,
+  ASSEMBLY_FEE,
+  DELIVERY_CITY,
+  DEPOSIT_RATE,
+  DELIVERY_UNAVAILABLE_MESSAGE,
+  calculateOrderPricing,
+  splitPayment,
+  checkFulfillment,
+  isDeliveryCity,
+  toCents,
+  toCentsInt,
+  fromCentsInt,
+} from "./pricing";
+export type { PricingInput, PricingResult } from "./pricing";

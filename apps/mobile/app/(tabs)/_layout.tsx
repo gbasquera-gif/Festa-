@@ -1,14 +1,12 @@
-import { Redirect, Tabs } from "expo-router";
+import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useAuth } from "@/lib/auth";
 import { useOrcamento } from "@/lib/orcamento";
 import { colors } from "@/theme";
 
+// Sem guarda de autenticação: a vitrine é aberta. O login é pedido no
+// momento de reservar ou pagar, não na porta de entrada.
 export default function TabsLayout() {
-  const { user, loading } = useAuth();
   const { count } = useOrcamento();
-
-  if (!loading && !user) return <Redirect href="/(auth)/login" />;
 
   return (
     <Tabs
