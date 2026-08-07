@@ -8,7 +8,8 @@ import { uploadImage } from "@/lib/api";
 interface ImageUploadFieldProps {
   label: string;
   folder: "themes" | "kits" | "products";
-  value?: string;
+  // Aceita null porque é assim que a API devolve "sem imagem".
+  value?: string | null;
   onChange: (url: string | undefined) => void;
 }
 

@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { FormErrors } from "@/components/form-errors";
 import { api } from "@/lib/api";
 
 interface Product extends CreateProductInput {
@@ -130,6 +131,7 @@ function ProductForm({ product, onSaved }: { product?: Product; onSaved: () => v
         value={form.watch("imageUrl")}
         onChange={(url) => form.setValue("imageUrl", url)}
       />
+      <FormErrors errors={form.formState.errors} />
       <DialogFooter>
         <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? "Salvando..." : "Salvar"}

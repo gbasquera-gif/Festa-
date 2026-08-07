@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { FormErrors } from "@/components/form-errors";
 import { api } from "@/lib/api";
 
 interface Theme extends CreateThemeInput {
@@ -105,6 +106,7 @@ function ThemeForm({ theme, onSaved }: { theme?: Theme; onSaved: () => void }) {
         value={form.watch("coverImageUrl")}
         onChange={(url) => form.setValue("coverImageUrl", url)}
       />
+      <FormErrors errors={form.formState.errors} />
       <DialogFooter>
         <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? "Salvando..." : "Salvar"}
