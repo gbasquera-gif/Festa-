@@ -6,6 +6,12 @@ export const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(72),
   phone: z.string().min(8).max(20).optional(),
+  // Aceite obrigatório e explícito. Validar no schema garante que nenhuma
+  // conta nasça sem consentimento registrado, mesmo que alguém chame a API
+  // fora do aplicativo.
+  acceptedTerms: z.literal(true, {
+    message: "É preciso aceitar os Termos de Uso e a Política de Privacidade.",
+  }),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 

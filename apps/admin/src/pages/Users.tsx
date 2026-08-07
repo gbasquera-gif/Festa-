@@ -31,6 +31,8 @@ interface UserRow {
   role: "CLIENT" | "ADMIN" | "OPS";
   createdAt: string;
   deletedAt: string | null;
+  termsAcceptedAt: string | null;
+  termsAcceptedVersion: string | null;
 }
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -208,13 +210,16 @@ export default function Users() {
             <TableHead>Telefone</TableHead>
             <TableHead>Perfil</TableHead>
             <TableHead>Desde</TableHead>
+            {/* Prova de consentimento: se um cliente questionar, é aqui que se
+                mostra quando ele aceitou e qual texto estava valendo. */}
+            <TableHead>Aceite dos termos</TableHead>
             {canResetPassword && <TableHead className="text-right">Ações</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={canResetPassword ? 6 : 5}>Carregando...</TableCell>
+              <TableCell colSpan={canResetPassword ? 7 : 6}>Carregando...</TableCell>
             </TableRow>
           )}
           {data?.map((user) => (
@@ -230,6 +235,11 @@ export default function Users() {
                 )}
               </TableCell>
               <TableCell>{new Date(user.createdAt).toLocaleDateString("pt-BR")}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {user.termsAcceptedAt
+                  ? `${new Date(user.termsAcceptedAt).toLocaleDateString("pt-BR")} · v${user.termsAcceptedVersion}`
+                  : "—"}
+              </TableCell>
               {canResetPassword && (
                 <TableCell className="space-x-2 text-right">
                   {!user.deletedAt && (

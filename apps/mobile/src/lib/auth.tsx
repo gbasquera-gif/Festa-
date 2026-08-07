@@ -53,7 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signup(name: string, email: string, password: string, phone?: string) {
     const response = await api<{ accessToken: string; user: AppUser }>("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ name, email, password, phone }),
+      // acceptedTerms sempre true: a tela de cadastro só habilita o botão
+      // depois de a pessoa marcar a caixa, e a API recusa sem isso.
+      body: JSON.stringify({ name, email, password, phone, acceptedTerms: true }),
     });
     await setItem(TOKEN_KEY, response.accessToken);
     setUser(response.user);

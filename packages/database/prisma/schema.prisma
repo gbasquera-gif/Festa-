@@ -94,6 +94,12 @@ model User {
   // cumprir e guardar por obrigação fiscal.
   deletedAt DateTime?
 
+  // Prova de consentimento exigida pela LGPD: não basta saber que aceitou,
+  // é preciso saber QUANDO e QUAL versão do texto estava valendo. Sem a
+  // versão, publicar termos novos apagaria o histórico do que foi aceito.
+  termsAcceptedAt      DateTime?
+  termsAcceptedVersion String?
+
   events Event[]
 
   @@map("users")

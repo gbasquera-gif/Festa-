@@ -14,10 +14,17 @@ import { ReservationsModule } from "./modules/reservations/reservations.module";
 import { PartnersModule } from "./modules/partners/partners.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { AiMagicModule } from "./modules/ai-magic/ai-magic.module";
+import { LegalModule } from "./modules/legal/legal.module";
+import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Teto geral por IP. Folgado para o uso normal do app (navegar catálogo
+    // dispara várias chamadas por tela) e apertado o bastante para não deixar
+    // um script varrer a API à vontade. O login tem limite próprio, bem menor.
+    ThrottlerModule.forRoot([{ name: "default", ttl: 60_000, limit: 120 }]),
     AuthModule,
     UsersModule,
     ThemesModule,
@@ -32,6 +39,8 @@ import { AiMagicModule } from "./modules/ai-magic/ai-magic.module";
     PartnersModule,
     PaymentsModule,
     AiMagicModule,
+    LegalModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

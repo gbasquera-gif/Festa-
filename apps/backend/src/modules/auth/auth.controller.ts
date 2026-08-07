@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import { deleteAccountSchema, loginSchema, signupSchema } from "@festae/shared";
 import type { DeleteAccountInput, LoginInput, SignupInput } from "@festae/shared";
 import { AuthService } from "./auth.service";
@@ -16,11 +17,16 @@ export class AuthController {
     private readonly usersService: UsersService,
   ) {}
 
+  // Cadastro e login ficam bem abaixo do teto geral: são as portas que um
+  // ataque de força bruta tenta arrombar, e cinco tentativas por minuto por
+  // IP não atrapalham ninguém digitando de verdade.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("signup")
   signup(@Body(new ZodValidationPipe(signupSchema)) body: SignupInput) {
     return this.authService.signup(body);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("login")
   login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput) {
     return this.authService.login(body);
@@ -31,6 +37,17 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() user: AuthUser) {
     return this.usersService.findById(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Exporta todos os dados do usuário autenticado",
+    description: "Direito de acesso previsto na LGPD (art. 18, II).",
+  })
+  @UseGuards(JwtAuthGuard)
+  @Get("me/export")
+  exportData(@CurrentUser() user: AuthUser) {
+    return this.authService.exportData(user.userId);
   }
 
   @ApiBearerAuth()

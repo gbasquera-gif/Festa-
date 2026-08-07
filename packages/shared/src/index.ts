@@ -31,6 +31,17 @@ export type {
 export { BRAND_COLORS, BRAND_NAME, DEFAULT_CITY, DEFAULT_STATE } from "./brand";
 
 export {
+  TERMS_VERSION,
+  TERMS_UPDATED_AT,
+  COMPANY,
+  PRIVACY_POLICY,
+  TERMS_OF_USE,
+  LEGAL_DOCUMENTS,
+  formatLegalDate,
+} from "./legal";
+export type { LegalDocument, LegalSection } from "./legal";
+
+export {
   signupSchema,
   loginSchema,
   deleteAccountSchema,

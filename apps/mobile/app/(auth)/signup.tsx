@@ -5,6 +5,7 @@ import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
 import { BalloonsBackdrop, BALLOONS_HEIGHT } from "@/components/BalloonsBackdrop";
+import { TermsCheckbox } from "@/components/TermsCheckbox";
 import { useAuth, isApiError } from "@/lib/auth";
 import { track } from "@/lib/analytics";
 
@@ -14,6 +15,7 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -68,8 +70,10 @@ export default function Signup() {
           onChangeText={setPassword}
           placeholder="Mínimo 8 caracteres"
         />
+        <TermsCheckbox checked={acceptedTerms} onChange={setAcceptedTerms} />
+
         {error && <Text className="text-sm text-red-500">{error}</Text>}
-        <Button onPress={handleSubmit} loading={submitting}>
+        <Button onPress={handleSubmit} loading={submitting} disabled={!acceptedTerms}>
           Criar conta
         </Button>
       </View>

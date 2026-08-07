@@ -95,11 +95,13 @@ export default function Perfil() {
           onPress={() => router.push("/(tabs)/favoritos")}
         />
         <Row icon="logo-whatsapp" label="Falar com a Festaê" onPress={handleWhatsApp} />
+        {/* Documentos, exportação e exclusão ficam juntos em "Minha Conta":
+            é onde a pessoa (e o revisor da loja) espera encontrá-los. */}
         <Row
-          icon="trash-outline"
-          label="Excluir minha conta"
+          icon="person-circle-outline"
+          label="Minha Conta"
           last
-          onPress={() => router.push("/conta/excluir")}
+          onPress={() => router.push("/conta")}
         />
       </View>
 

@@ -211,11 +211,38 @@ Nenhuma variável é necessária: a URL da API já é o padrão do Dockerfile
 
 ---
 
-## 5. Política de privacidade e termos — você
+## 5. Política de privacidade e termos — CONCLUÍDO no código, revisão jurídica pendente
 
-Obrigatórios nas duas lojas, hospedados numa URL pública. O app coleta nome,
-e-mail, telefone e endereço de entrega — isso precisa estar declarado tanto no
-texto quanto nos formulários *App Privacy* (Apple) e *Data safety* (Google).
+O texto dos dois documentos já existe, já está no ar e já é exigido no
+cadastro. O que falta não é código: é um advogado ler e a empresa decidir
+quatro pontos comerciais.
+
+**Onde está no ar** (páginas públicas, sem login, servidas pela própria API):
+
+- https://festa-production.up.railway.app/legal/privacidade
+- https://festa-production.up.railway.app/legal/termos
+
+São essas as URLs que vão nos formulários da Apple e do Google. Quando a
+Festaê tiver site próprio, basta apontar as variáveis `PRIVACY_POLICY_URL` e
+`TERMS_OF_USE_URL` para lá — nenhum endereço está fixo no código.
+
+**O que ainda depende de você** (marcado como `PENDENTE` dentro do texto, e
+aparecendo assim para quem lê):
+
+1. Razão social, CNPJ e endereço completo conforme o cartão CNPJ.
+2. Política de cancelamento e reembolso — em quantos dias antes da festa o
+   cliente pode cancelar, e quanto é devolvido em cada prazo.
+3. Regra do sinal de 50% — se é devolvido, retido ou vira crédito.
+4. Área de entrega e como o frete é cobrado fora de Chapecó.
+5. Responsabilidade por danos ao material alugado.
+
+Enquanto esses pontos estiverem como `PENDENTE`, o texto está honesto (não
+promete o que a empresa não decidiu), mas não protege a Festaê num conflito.
+Preencher antes de publicar nas lojas.
+
+Depois de qualquer alteração no texto, suba a versão em
+`packages/shared/src/legal.ts` (`TERMS_VERSION`): o aceite de cada cliente
+guarda a versão que ele leu, e sem subir o número o histórico fica errado.
 
 ---
 
@@ -242,6 +269,29 @@ tamanhos exigidos, descrição, categoria e classificação etária.
       define a senha nova em *Clientes → Nova senha* e a combina com a pessoa.
       Trocar para recuperação automática por e-mail depois exige um provedor
       transacional (Resend, SendGrid, SES).
+- [x] **Documentos legais dentro do app e na web.** Mesmo texto nos dois
+      lugares, lido de `packages/shared/src/legal.ts`. No app abre sem
+      internet; na web é página pública para as fichas das lojas.
+- [x] **Aceite obrigatório no cadastro.** Caixa desmarcada por padrão, com os
+      dois documentos abrindo ao toque, e o botão *Criar conta* travado até
+      marcar. O backend recusa o cadastro sem o aceite — não adianta chamar a
+      API direto.
+- [x] **Registro de consentimento.** Data e versão dos termos ficam gravadas
+      na conta e aparecem em *Clientes → Aceite dos termos*, no painel.
+- [x] **Exportação de dados (LGPD).** Perfil → Minha Conta → *Solicitar
+      exportação dos meus dados*. Gera na hora um arquivo com perfil, festas,
+      pedidos, pagamentos e histórico de uso.
+- [x] **Rate limiting.** 120 requisições por minuto por IP em geral, e 5 por
+      minuto no login e no cadastro — o suficiente para inviabilizar
+      tentativa de senha por força bruta.
+- [x] **Cabeçalhos de segurança (helmet) e HSTS.**
+- [ ] **Refresh token.** Não existe. Hoje o token de sessão vale 7 dias e,
+      ao expirar, a pessoa faz login de novo. Nenhuma das duas lojas exige
+      refresh token; o ganho seria de conforto (sessão longa sem manter um
+      token de 7 dias no aparelho). Vale fazer na Sprint 3, junto com os
+      primeiros clientes reais.
+- [ ] **Recuperação de senha automática por e-mail.** Continua manual, pelo
+      WhatsApp (ver acima).
 - [ ] **Testes automatizados.** Não há nenhum. O CI roda build, typecheck e
       migrations. Vale cobrir ao menos o cálculo do orçamento, o split de
       pagamento e a disponibilidade de data.

@@ -3,6 +3,7 @@ import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/co
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { prisma } from "@festae/database";
+import { TERMS_VERSION } from "@festae/shared";
 import type { LoginInput, SignupInput } from "@festae/shared";
 
 @Injectable()
@@ -20,10 +21,53 @@ export class AuthService {
         email: input.email,
         phone: input.phone,
         passwordHash,
+        // Prova de consentimento: quando aceitou e qual versão do texto
+        // estava valendo. Publicar termos novos não apaga esse histórico.
+        termsAcceptedAt: new Date(),
+        termsAcceptedVersion: TERMS_VERSION,
       },
     });
 
     return this.buildAuthResponse(user);
+  }
+
+  /**
+   * Cópia de tudo que a Festaê guarda sobre a pessoa (LGPD, art. 18, II).
+   *
+   * Devolve o dado bruto de propósito, sem resumir: o direito é de acesso ao
+   * que existe, e um resumo esconderia campos.
+   */
+  async exportData(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        events: {
+          include: {
+            theme: true,
+            order: { include: { items: { include: { product: true } }, reservation: true, payments: true } },
+          },
+        },
+      },
+    });
+
+    if (!user || user.deletedAt) throw new UnauthorizedException("Conta não encontrada.");
+
+    // A senha sai fora (é hash, não tem como devolver em texto) e as festas
+    // saem do perfil para não aparecerem duas vezes no arquivo exportado.
+    const { passwordHash: _passwordHash, events, ...perfil } = user;
+    const usoDoApp = await prisma.analyticsEvent.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return {
+      geradoEm: new Date().toISOString(),
+      explicacao:
+        "Cópia completa dos dados que a Festaê guarda sobre você. A senha não aparece porque é armazenada como código embaralhado e não pode ser revertida.",
+      perfil,
+      festas: events,
+      usoDoApp,
+    };
   }
 
   async login(input: LoginInput) {
