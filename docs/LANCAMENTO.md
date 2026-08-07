@@ -5,7 +5,17 @@ O que falta para o app ir para as lojas. Cada item diz quem faz: **você**
 
 ---
 
-## 0. Fechar o acesso ao painel — você · antes de tudo
+## 0. Fechar o acesso ao painel — CONCLUÍDO
+
+`JWT_SECRET` rotacionado, administrador vindo de `SEED_ADMIN_*`, e as contas
+antigas do seed rebaixadas a cliente. Resta um único ADMIN, no e-mail oficial
+da empresa. O histórico abaixo fica registrado porque explica decisões que
+seguem valendo.
+
+---
+
+<details>
+<summary>Como era e o que foi feito</summary>
 
 O repositório é **público** e, até o commit que corrigiu isso, o seed criava
 dois administradores com senha fixa escrita no código (`festae-admin-123`),
@@ -39,6 +49,12 @@ produção** — o seed nunca apaga nada. Fechar o buraco depende destes passos:
 
 > Uma senha que já esteve num repositório público deve ser tratada como
 > conhecida para sempre. Não a reaproveite em nenhum outro serviço.
+
+</details>
+
+> **Recuperação de acesso:** com um único administrador, perder essa conta
+> deixaria o painel sem ninguém. A saída é trocar `SEED_ADMIN_PASSWORD` no
+> Railway e reimplantar — o seed reaplica a senha no próximo boot.
 
 ---
 
