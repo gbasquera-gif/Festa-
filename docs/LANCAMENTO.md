@@ -88,9 +88,20 @@ que não acelera com trabalho: são prazos de calendário. Comece por aqui.
 É o identificador da empresa exigido tanto pela Apple quanto pelo Google, e
 **o mesmo número serve para as duas** — pede-se uma vez só.
 
-**Situação: solicitado.** Aguardando o e-mail de confirmação da Dun &
-Bradstreet. Se não chegar em alguns dias úteis, confira a caixa de spam antes
-de pedir de novo — pedido duplicado atrasa em vez de acelerar.
+**Situação: emitido**, atrelado ao CNPJ matriz. Guarde o número num lugar
+privado (não neste repositório, que é público).
+
+Duas condições antes de abrir as contas:
+
+1. **Aguarde até 7 dias úteis** a partir da emissão. É o tempo de sincronizar
+   a base da Dun & Bradstreet com a da Apple e a do Google. Tentar cadastrar
+   antes disso dá erro de empresa não encontrada.
+2. **Se a natureza jurídica for "Empresário Individual"**, o D-U-N-S não é
+   aceito automaticamente: depois dos 7 dias é preciso ligar para o suporte
+   da Apple (https://developer.apple.com/contact/phone/) e pedir a liberação
+   manual. Confira a natureza jurídica no cartão CNPJ da Receita Federal.
+
+A Apple só reconhece a matriz — nunca use CNPJ de filial no cadastro.
 
 1. Consulte se a empresa já tem um, pelo
    [buscador da Apple](https://developer.apple.com/enroll/duns-lookup/).
