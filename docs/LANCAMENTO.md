@@ -211,11 +211,10 @@ Nenhuma variável é necessária: a URL da API já é o padrão do Dockerfile
 
 ---
 
-## 5. Política de privacidade e termos — CONCLUÍDO no código, revisão jurídica pendente
+## 5. Política de privacidade e termos — CONCLUÍDO, revisão jurídica recomendada
 
-O texto dos dois documentos já existe, já está no ar e já é exigido no
-cadastro. O que falta não é código: é um advogado ler e a empresa decidir
-quatro pontos comerciais.
+O texto dos dois documentos existe, está no ar, é exigido no cadastro e
+**já contém todas as decisões oficiais do negócio** (versão 1.1.0).
 
 **Onde está no ar** (páginas públicas, sem login, servidas pela própria API):
 
@@ -226,19 +225,26 @@ São essas as URLs que vão nos formulários da Apple e do Google. Quando a
 Festaê tiver site próprio, basta apontar as variáveis `PRIVACY_POLICY_URL` e
 `TERMS_OF_USE_URL` para lá — nenhum endereço está fixo no código.
 
-**O que ainda depende de você** (marcado como `PENDENTE` dentro do texto, e
-aparecendo assim para quem lê):
+**Decisões oficiais já incorporadas** (07/08/2026):
 
-1. Razão social, CNPJ e endereço completo conforme o cartão CNPJ.
-2. Política de cancelamento e reembolso — em quantos dias antes da festa o
-   cliente pode cancelar, e quanto é devolvido em cada prazo.
-3. Regra do sinal de 50% — se é devolvido, retido ou vira crédito.
-4. Área de entrega e como o frete é cobrado fora de Chapecó.
-5. Responsabilidade por danos ao material alugado.
+| Assunto | Decisão |
+| --- | --- |
+| Identificação | 68.155.380 MARIA LUIZA POCAI · CNPJ 68.155.380/0001-77 · Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, Chapecó/SC |
+| Pagamento | 50% na reserva + 50% na retirada. Pix no lançamento; cartão em versão futura |
+| Cancelamento | +15 dias: 100% · 15 a 8 dias: 75% · 7 a 3 dias: 50% · menos de 72h: sem reembolso |
+| Entrega | Retirada na sede. Entrega conforme disponibilidade, com taxa de deslocamento aprovada antes da reserva |
+| Danos | Cliente responde pelos itens da retirada até a devolução; reparo ou reposição conforme avaliação apresentada antes da cobrança |
+| Fotos / IA | Cláusula já publicada: uso exclusivo para gerar a visualização pedida, sem divulgação sem autorização específica |
 
-Enquanto esses pontos estiverem como `PENDENTE`, o texto está honesto (não
-promete o que a empresa não decidiu), mas não protege a Festaê num conflito.
-Preencher antes de publicar nas lojas.
+**O que ainda vale fazer:** um advogado ler o texto. Ele descreve o serviço
+corretamente; a revisão é para conferir se descreve de um jeito que proteja a
+Festaê num conflito real. Não bloqueia a publicação nas lojas.
+
+> ⚠️ **Pendência de produto, não de texto.** Os Termos dizem *retirada na
+> sede, entrega opcional com taxa*. O aplicativo ainda pede "Endereço de
+> entrega" e diz "A gente entrega, monta e recolhe". Alinhar o app ao modelo
+> oficial é item P0 da Sprint 3 — publicar com essa divergência é prometer o
+> que a operação não faz.
 
 Depois de qualquer alteração no texto, suba a versão em
 `packages/shared/src/legal.ts` (`TERMS_VERSION`): o aceite de cada cliente
@@ -285,11 +291,14 @@ tamanhos exigidos, descrição, categoria e classificação etária.
       minuto no login e no cadastro — o suficiente para inviabilizar
       tentativa de senha por força bruta.
 - [x] **Cabeçalhos de segurança (helmet) e HSTS.**
+- [x] **Trocar a senha derruba as sessões abertas.** Testado ponta a ponta:
+      admin redefine a senha → o token antigo passa a devolver 401 na
+      requisição seguinte. Sem isso, redefinir a senha de quem suspeita de
+      invasão não expulsaria o invasor.
 - [ ] **Refresh token.** Não existe. Hoje o token de sessão vale 7 dias e,
       ao expirar, a pessoa faz login de novo. Nenhuma das duas lojas exige
-      refresh token; o ganho seria de conforto (sessão longa sem manter um
-      token de 7 dias no aparelho). Vale fazer na Sprint 3, junto com os
-      primeiros clientes reais.
+      refresh token, e com a invalidação por troca de senha o risco residual
+      é pequeno. Backlog P3.
 - [ ] **Recuperação de senha automática por e-mail.** Continua manual, pelo
       WhatsApp (ver acima).
 - [ ] **Testes automatizados.** Não há nenhum. O CI roda build, typecheck e

@@ -13,6 +13,24 @@ mexer no console.
 - Política de Privacidade: `https://festa-production.up.railway.app/legal/privacidade`
 - Termos de Uso: `https://festa-production.up.railway.app/legal/termos`
 
+**Dados cadastrais que as duas lojas conferem** (têm que bater com o titular
+da conta de desenvolvedor, senão a conta trava na verificação):
+
+| Campo | Valor |
+| --- | --- |
+| Razão social | 68.155.380 MARIA LUIZA POCAI |
+| Nome fantasia / nome do app | Festaê |
+| CNPJ | 68.155.380/0001-77 |
+| Endereço | Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, Chapecó/SC, CEP 89802-080 |
+| D-U-N-S | 583908127 |
+| E-mail de contato | contato@festaechapeco.com.br |
+
+> O endereço acima é residencial e **fica público** — aparece na política de
+> privacidade, que é exigida em URL aberta, e a Apple exibe o endereço do
+> desenvolvedor na ficha da App Store. É o preço de publicar como empresa
+> individual e é assim para todo MEI. Se isso incomodar, a saída é um
+> endereço comercial no cartão CNPJ — decisão de negócio, não de código.
+
 ---
 
 ## O que o app coleta hoje
@@ -30,6 +48,17 @@ mexer no console.
 **O que o app NÃO coleta:** localização do aparelho, contatos, fotos da
 galeria, agenda, microfone, câmera, identificadores de publicidade, histórico
 de navegação fora do app. Nada é vendido, e não há rede de anúncios embutida.
+
+> **Fotos e a IA de decoração.** A política já traz a cláusula que rege o
+> envio de fotos para a simulação por inteligência artificial, publicada
+> antes do recurso existir para não obrigar a recolher o aceite de todo mundo
+> de novo no dia do lançamento. Enquanto o recurso não existir no app,
+> **"Photos" e "Photos and videos" ficam DESMARCADOS** nos dois formulários:
+> declarar coleta que não acontece é tão errado quanto omitir a que acontece,
+> e a Apple testa o app para conferir. No dia em que a IA entrar, marque
+> Apple → *User Content → Photos or Videos* (Purpose: App Functionality,
+> Linked: Yes, Tracking: No) e Google → *Photos and videos → Photos*
+> (opcional, finalidade App functionality) **antes** de publicar a versão.
 
 ---
 
@@ -116,8 +145,43 @@ serviço contratado, fora da regra de in-app purchase) nem conteúdo gerado
 por usuário.
 
 Vale registrar na revisão que os pagamentos são de **bens e serviços físicos
-entregues no mundo real** (aluguel de material de festa com entrega e
-montagem). Por isso o app usa Mercado Pago e não o in-app purchase da Apple —
-essa é exatamente a exceção prevista na regra 3.1.3(e) das App Store Review
-Guidelines. Se isso não estiver claro para o revisor, a rejeição por "uso de
-sistema de pagamento externo" é comum.
+entregues no mundo real** (aluguel de material de festa, retirado na sede ou
+entregue no local do evento). Por isso o app usa Mercado Pago e não o in-app
+purchase da Apple — essa é exatamente a exceção prevista na regra 3.1.3(e)
+das App Store Review Guidelines. Se isso não estiver claro para o revisor, a
+rejeição por "uso de sistema de pagamento externo" é comum.
+
+---
+
+## Nota de revisão sugerida (App Review / Play Console)
+
+Cole isto no campo de notas para o revisor, junto com uma conta de teste:
+
+> A Festaê aluga artigos para festas em Chapecó/SC. O cliente monta o
+> orçamento, reserva a data e paga 50% de sinal via Pix; os itens são
+> retirados na sede da empresa ou entregues no local mediante taxa. Todos os
+> pagamentos correspondem a bens e serviços físicos consumidos fora do
+> aplicativo (App Store Review Guidelines 3.1.3(e)).
+>
+> Exclusão de conta dentro do app: Perfil → Minha Conta → Solicitar exclusão
+> da conta. Exportação de dados no mesmo lugar. Política de Privacidade e
+> Termos de Uso acessíveis sem login, na tela de cadastro e em Minha Conta.
+
+---
+
+## Manutenção deste documento
+
+Este arquivo, a Política de Privacidade e os Termos de Uso descrevem o mesmo
+produto e precisam ser alterados juntos. Antes de publicar qualquer versão
+nova nas lojas, confira que os quatro estão dizendo a mesma coisa:
+
+| Assunto | Onde está | Valor atual |
+| --- | --- | --- |
+| Pagamento | Termos §Preços e pagamento | 50% na reserva + 50% na retirada, Pix |
+| Cancelamento | Termos §Cancelamento e reembolso | 100% / 75% / 50% / 0% por faixa |
+| Entrega | Termos §Retirada, entrega e devolução | Retirada na sede; entrega opcional com taxa |
+| Danos | Termos §Responsabilidade pelos itens alugados | Cliente responde da retirada à devolução |
+| Fotos/IA | Política §Fotos que você envia | Cláusula publicada, recurso ainda não existe |
+| Dados coletados | Política §Quais dados coletamos | Espelhado na tabela deste documento |
+
+Alterou o texto? Suba `TERMS_VERSION` em `packages/shared/src/legal.ts`.
