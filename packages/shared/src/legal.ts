@@ -2,10 +2,11 @@
  * Política de Privacidade e Termos de Uso da Festaê.
  *
  * ATENÇÃO: este texto foi escrito a partir do que o código realmente faz —
- * quais dados são coletados, para quê e por quanto tempo. Ele é factualmente
- * correto e serve de base, mas **precisa de revisão de um advogado antes de
- * ser publicado nas lojas**. Os campos marcados como PENDENTE dependem de
- * dados cadastrais da empresa que não estão no repositório.
+ * quais dados são coletados, para quê e por quanto tempo — e das decisões
+ * comerciais oficiais da empresa. É factualmente correto, mas **ainda merece
+ * revisão de um advogado antes de publicar nas lojas**: o que está aqui
+ * descreve corretamente o serviço, um advogado confere se descreve de forma
+ * que proteja a Festaê num conflito.
  *
  * Fonte única: o aplicativo e a página pública renderizam este mesmo
  * conteúdo. Alterar o texto exige subir TERMS_VERSION — é ela que fica
@@ -13,7 +14,7 @@
  */
 
 /** Sobe a cada alteração de conteúdo. Gravada no aceite do usuário. */
-export const TERMS_VERSION = "1.0.0";
+export const TERMS_VERSION = "1.1.0";
 
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
 export const TERMS_UPDATED_AT = "2026-08-07";
@@ -38,14 +39,13 @@ export interface LegalDocument {
   sections: LegalSection[];
 }
 
-// Dados cadastrais da empresa. PENDENTE: preencher com o cartão CNPJ antes
-// de publicar — as lojas conferem se o responsável declarado bate com o
-// titular da conta de desenvolvedor.
+// Dados cadastrais conforme o cartão CNPJ. As lojas conferem se o
+// responsável declarado aqui bate com o titular da conta de desenvolvedor.
 export const COMPANY = {
-  legalName: "PENDENTE — razão social conforme cartão CNPJ",
+  legalName: "68.155.380 MARIA LUIZA POCAI",
   tradeName: "Festaê",
-  taxId: "PENDENTE — CNPJ",
-  address: "PENDENTE — endereço completo",
+  taxId: "68.155.380/0001-77",
+  address: "Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, CEP 89802-080",
   city: "Chapecó",
   state: "SC",
   supportEmail: "contato@festaechapeco.com.br",
@@ -76,7 +76,8 @@ export const PRIVACY_POLICY: LegalDocument = {
         "Ao montar uma festa: data do evento, quantidade de convidados, orçamento desejado, tema escolhido e, quando você opta por entrega, o endereço e o bairro.",
         "Ao usar o aplicativo: registramos ações do seu percurso — cadastro, login, escolha de tema, escolha de kit, item adicionado, clique no WhatsApp, reserva criada, pagamento e desistência — para entender onde as pessoas travam e melhorar o serviço.",
         "Seu orçamento em construção fica guardado apenas no seu aparelho até virar um pedido.",
-        "Não coletamos CPF, data de nascimento nem localização por GPS. O aplicativo não pede acesso à sua localização, câmera, contatos ou fotos.",
+        "Não coletamos CPF, data de nascimento nem localização por GPS. Hoje o aplicativo não pede acesso à sua localização, câmera, contatos ou fotos.",
+        "Quando a simulação de decoração por inteligência artificial for lançada, passará a existir o envio de fotos do espaço da sua festa — sempre por escolha sua, com pedido de permissão no momento do envio. As regras desse uso estão na seção \"Fotos que você envia\", mais abaixo.",
       ],
     },
     {
@@ -97,11 +98,23 @@ export const PRIVACY_POLICY: LegalDocument = {
       ],
     },
     {
+      title: "Fotos que você envia",
+      paragraphs: [
+        "Esta seção descreve, desde já, como trataremos as fotos enviadas para a simulação de decoração por inteligência artificial. O recurso ainda não está disponível; publicamos a regra antes para que você saiba o compromisso no momento em que decidir usá-lo.",
+        "Finalidade: as imagens que você enviar serão utilizadas exclusivamente para gerar a visualização de decoração que você solicitou e para melhorar a experiência dessa ferramenta dentro do aplicativo.",
+        "Elas não serão utilizadas para nenhuma outra finalidade — divulgação, portfólio, redes sociais, material de venda ou treinamento de modelos de terceiros — sem a sua autorização expressa e específica, pedida em separado no momento em que fizer sentido.",
+        "O envio é sempre uma escolha sua, feito foto a foto. Base legal: consentimento. Você pode revogar esse consentimento a qualquer momento, e nesse caso apagamos as imagens.",
+        "As imagens não são vendidas nem compartilhadas com terceiros para fins próprios deles. Se um serviço de processamento de imagem for necessário para gerar a visualização, ele atuará como nosso operador, apenas executando a tarefa que pedimos.",
+        "Você pode excluir as imagens enviadas a qualquer momento pelo aplicativo, e a exclusão da sua conta apaga todas elas.",
+      ],
+    },
+    {
       title: "Por quanto tempo guardamos",
       paragraphs: [
         "Dados da conta: enquanto ela existir.",
         "Registros de pedidos, reservas e pagamentos: pelo prazo exigido pela legislação fiscal, mesmo após a exclusão da conta, porém sem vínculo com pessoa identificável.",
         "Ações de uso: por até 24 meses.",
+        "Fotos enviadas para simulação de decoração: até você apagá-las, revogar o consentimento ou excluir a conta.",
       ],
     },
     {
@@ -158,19 +171,41 @@ export const TERMS_OF_USE: LegalDocument = {
       ],
     },
     {
-      title: "Preços, pagamento e cancelamento",
+      title: "Preços e pagamento",
       paragraphs: [
-        "Os valores exibidos no aplicativo são uma estimativa. O valor final é confirmado após a definição da data, do endereço e das condições de entrega.",
-        "PENDENTE — condições de pagamento (percentual na reserva e percentual na entrega) a definir com o jurídico.",
-        "PENDENTE — política de cancelamento e reembolso por faixa de antecedência a definir com o jurídico.",
+        "Os valores exibidos no aplicativo são uma estimativa. O valor final é confirmado após a definição da data, dos itens e das condições de retirada ou entrega.",
+        "O pagamento é feito em duas parcelas iguais: 50% no ato da reserva, que é o que garante a data, e 50% na retirada dos itens.",
+        "A forma de pagamento aceita é Pix. Pagamento com cartão será oferecido em versão futura do aplicativo.",
+        "A data só fica reservada depois que o pagamento dos primeiros 50% for confirmado.",
       ],
     },
     {
-      title: "Entrega, montagem e devolução",
+      title: "Cancelamento e reembolso",
       paragraphs: [
-        "PENDENTE — definir se haverá apenas retirada, ou retirada e entrega, e se haverá cobrança de frete.",
-        "Os itens são cedidos em locação, não vendidos. Devem ser devolvidos nas condições em que foram entregues, ressalvado o desgaste natural de uso.",
-        "Danos, perdas ou devolução fora do prazo combinado podem gerar cobrança adicional, informada previamente.",
+        "Se você precisar cancelar, o reembolso do que já foi pago segue a antecedência em relação à data da festa:",
+        "Mais de 15 dias de antecedência: devolvemos 100% do valor pago.",
+        "De 15 a 8 dias de antecedência: devolvemos 75% do valor pago.",
+        "De 7 a 3 dias de antecedência: devolvemos 50% do valor pago.",
+        "Menos de 72 horas antes da festa: não há reembolso, porque a data já ficou bloqueada para outros clientes e os itens já foram separados.",
+        "A contagem considera a data e a hora em que você nos comunica o cancelamento, por escrito, pelo WhatsApp ou pelo e-mail de contato. O reembolso é feito por Pix na mesma chave usada no pagamento, em até 10 dias úteis.",
+        "Se quem cancelar for a Festaê, por qualquer motivo, devolvemos 100% do valor pago, independentemente da antecedência.",
+      ],
+    },
+    {
+      title: "Retirada, entrega e devolução",
+      paragraphs: [
+        "Os itens são retirados e devolvidos na sede da Festaê, nos horários combinados na confirmação da reserva.",
+        "Entrega no local da festa poderá ser oferecida conforme a disponibilidade da equipe, com cobrança de uma taxa de deslocamento informada e aprovada por você antes da confirmação da reserva. A entrega não é garantida: quando não houver disponibilidade, a retirada continua valendo.",
+        "Os itens são cedidos em locação, não vendidos. Devem ser devolvidos nas condições em que foram recebidos, ressalvado o desgaste natural de uso.",
+        "A devolução fora do prazo combinado pode gerar cobrança adicional pelo período extra, informada previamente.",
+      ],
+    },
+    {
+      title: "Responsabilidade pelos itens alugados",
+      paragraphs: [
+        "A responsabilidade pelos bens locados é sua desde o momento da retirada — ou da entrega, quando houver — até a devolução à Festaê.",
+        "Em caso de dano, perda ou extravio, a Festaê poderá cobrar o valor correspondente ao reparo ou à reposição do item, conforme avaliação. A avaliação é apresentada a você com a descrição do que ocorreu e o valor cobrado antes de qualquer cobrança.",
+        "Desgaste natural de uso não é considerado dano.",
       ],
     },
     {
@@ -183,7 +218,16 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       title: "Parceiros",
       paragraphs: [
-        "PENDENTE — definir se a Festaê apenas recomenda parceiros ou também intermedia pagamentos. Enquanto não houver definição, o aplicativo não exibe parceiros.",
+        "O aplicativo ainda não exibe parceiros. Quando exibir, deixaremos claro em cada indicação se a Festaê apenas recomenda o parceiro ou se também intermedia a contratação, e o que cabe a cada um em caso de problema.",
+      ],
+    },
+    {
+      title: "Simulação de decoração por inteligência artificial",
+      paragraphs: [
+        "Esta seção vale a partir do momento em que o recurso estiver disponível no aplicativo. Hoje ele ainda não existe, e o aplicativo não pede acesso às suas fotos.",
+        "Quando existir, você poderá enviar uma foto do espaço da sua festa para ver como ficaria com a nossa decoração. O envio é sempre uma escolha sua: nada é enviado automaticamente e o aplicativo funciona normalmente sem isso.",
+        "As imagens enviadas serão usadas exclusivamente para gerar a visualização que você pediu e para melhorar a qualidade dessa ferramenta dentro do aplicativo. Não serão usadas para nenhuma outra finalidade — incluindo divulgação, portfólio, redes sociais ou material de venda — sem a sua autorização expressa e específica.",
+        "As imagens não são vendidas, não são compartilhadas com terceiros para fins próprios deles e podem ser excluídas a qualquer momento por você. Excluir a conta apaga também as imagens enviadas.",
       ],
     },
     {

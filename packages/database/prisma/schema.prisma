@@ -100,6 +100,11 @@ model User {
   termsAcceptedAt      DateTime?
   termsAcceptedVersion String?
 
+  // Momento da última troca de senha. Token emitido antes disso para de
+  // valer: sem esta marca, redefinir a senha de quem teve a conta invadida
+  // não expulsaria o invasor — ele seguiria dentro até o token expirar.
+  passwordChangedAt DateTime?
+
   events Event[]
 
   @@map("users")

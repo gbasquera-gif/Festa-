@@ -8,6 +8,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  /** Emissão, em segundos. O passport preenche a partir do próprio token. */
+  iat?: number;
 }
 
 @Injectable()
@@ -26,10 +28,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, role: true, deletedAt: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        deletedAt: true,
+        passwordChangedAt: true,
+      },
     });
 
     if (!user || user.deletedAt) throw new UnauthorizedException("Sessão inválida.");
+
+    // Trocar a senha derruba as sessões abertas. É o que dá sentido a
+    // "redefinir a senha" quando alguém suspeita de invasão: sem isto, o
+    // invasor continuaria com o token dele até os 7 dias acabarem.
+    //
+    // A margem de 1 segundo cobre o arredondamento do `iat`, que vem em
+    // segundos: sem ela, o próprio token emitido no instante da troca
+    // poderia ser recusado.
+    if (user.passwordChangedAt && payload.iat) {
+      const issuedAt = payload.iat * 1000 + 1000;
+      if (issuedAt < user.passwordChangedAt.getTime()) {
+        throw new UnauthorizedException("Sua senha foi alterada. Entre novamente.");
+      }
+    }
 
     return { userId: user.id, email: user.email, role: user.role };
   }

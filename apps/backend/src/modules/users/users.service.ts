@@ -62,9 +62,14 @@ export class UsersService {
       throw new BadRequestException("Esta conta foi excluída e não pode ser reativada.");
     }
 
+    // `passwordChangedAt` invalida os tokens já emitidos: quem estava
+    // logado com a senha antiga cai fora na requisição seguinte.
     await prisma.user.update({
       where: { id },
-      data: { passwordHash: await bcrypt.hash(newPassword, 10) },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, 10),
+        passwordChangedAt: new Date(),
+      },
     });
 
     return { success: true };
