@@ -80,6 +80,7 @@ export interface PaymentRecord {
   pixQrCode: string | null;
   pixQrCodeBase64: string | null;
   checkoutUrl: string | null;
+  expiresAt: string | null;
   paidAt: string | null;
   createdAt: string;
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -45,6 +45,30 @@ export default function Pagamento() {
 
   const deposit = payments?.find((payment) => payment.type === "DEPOSIT");
   const paid = deposit?.status === "PAID";
+
+  /**
+   * Conta o tempo que resta do QR. O Pix vence, e sem mostrar isso a pessoa
+   * ficaria tentando pagar um código morto sem entender por quê.
+   */
+  const [restante, setRestante] = useState<number | null>(null);
+  useEffect(() => {
+    if (!deposit?.expiresAt || paid) {
+      setRestante(null);
+      return;
+    }
+    const alvo = new Date(deposit.expiresAt).getTime();
+    const tick = () => setRestante(Math.max(0, Math.round((alvo - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deposit?.expiresAt, paid]);
+
+  const expirado = restante === 0 || (deposit != null && deposit.status === "FAILED");
+  const pixAtivo = deposit != null && !expirado && Boolean(deposit.pixQrCode);
+  const contagem =
+    restante == null
+      ? null
+      : `${String(Math.floor(restante / 60)).padStart(2, "0")}:${String(restante % 60).padStart(2, "0")}`;
 
   const createPix = useMutation({
     mutationFn: () =>
@@ -133,10 +157,18 @@ export default function Pagamento() {
 
       {isLoading && <ActivityIndicator color={colors.coral} />}
 
-      {!isLoading && !deposit && (
+      {!isLoading && (!deposit || expirado) && (
         <>
+          {expirado && (
+            <View className="flex-row gap-2 rounded-2xl bg-linen p-3.5">
+              <Ionicons name="time-outline" size={18} color={colors.navy} />
+              <Text className="flex-1 text-sm leading-5 text-navy/70">
+                O código anterior venceu. Gere um novo — sua reserva continua guardada.
+              </Text>
+            </View>
+          )}
           <Button onPress={() => createPix.mutate()} loading={createPix.isPending}>
-            Gerar Pix do sinal
+            {expirado ? "Gerar novo Pix" : "Gerar Pix do sinal"}
           </Button>
           {error && (
             <Card className="gap-3">
@@ -156,8 +188,15 @@ export default function Pagamento() {
         </>
       )}
 
-      {deposit && (
+      {pixAtivo && deposit && (
         <>
+          {contagem && (
+            <View className="items-center gap-1 rounded-2xl border border-sand bg-white p-3.5">
+              <Text className="text-sm text-navy/60">Este código vale por</Text>
+              <Text className="font-sans-extrabold text-2xl text-coral">{contagem}</Text>
+            </View>
+          )}
+
           {deposit.pixQrCodeBase64 && (
             <View className="items-center gap-2 rounded-2xl border border-sand bg-white p-4">
               <Text className="font-sans-bold text-navy">Aponte a câmera do seu banco</Text>

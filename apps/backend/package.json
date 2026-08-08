@@ -6,7 +6,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1101.0",
@@ -36,6 +37,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^24.7.0",
     "@types/passport-jwt": "^4.0.1",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "vitest": "^2.1.4"
   }
 }

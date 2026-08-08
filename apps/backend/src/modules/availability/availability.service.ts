@@ -1,12 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "@festae/database";
+import { RESERVATION_HOLD_MINUTES } from "@festae/shared";
+import { getMaxReservationsPerDay } from "../../common/operations-config";
 
-/**
- * Regra de negócio confirmada com a operação (Maria Luiza): no máximo
- * 2 festas por dia. Fixo por enquanto — sem UI de configuração — porque
- * ainda não há necessidade real de variar por data/sazonalidade.
- */
-const MAX_RESERVATIONS_PER_DAY = 2;
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
  * tanto quanto CONFIRMED: a festa existe e o material está comprometido.
@@ -23,7 +19,54 @@ export interface DayAvailability {
 
 @Injectable()
 export class AvailabilityService {
+  private readonly logger = new Logger(AvailabilityService.name);
+
+  /**
+   * Devolve à agenda as reservas que ninguém pagou.
+   *
+   * Com capacidade de poucas festas por dia, uma reserva sem sinal é o
+   * recurso mais escasso da empresa parado: duas delas fecham uma data
+   * inteira sem um centavo ter entrado. A janela é maior que a validade do
+   * Pix de propósito — quando ela vence, o QR já morreu e não há risco de o
+   * pagamento chegar para uma vaga que já foi de outra pessoa.
+   *
+   * Roda junto das consultas de disponibilidade em vez de num agendador:
+   * a limpeza só importa na hora de decidir se um dia está livre, e um
+   * agendador seria mais uma peça para manter no ar.
+   */
+  private async releaseUnpaidHolds(): Promise<void> {
+    const deadline = new Date(Date.now() - RESERVATION_HOLD_MINUTES * 60_000);
+
+    const expired = await prisma.reservation.findMany({
+      where: {
+        status: "PENDING",
+        requestedAt: { lt: deadline },
+        order: { payments: { none: { status: "PAID" } } },
+      },
+      select: { id: true, orderId: true },
+    });
+    if (expired.length === 0) return;
+
+    await prisma.$transaction([
+      prisma.reservation.updateMany({
+        where: { id: { in: expired.map((r) => r.id) } },
+        data: { status: "CANCELLED" },
+      }),
+      prisma.order.updateMany({
+        where: { id: { in: expired.map((r) => r.orderId) } },
+        data: { status: "CANCELLED" },
+      }),
+    ]);
+
+    this.logger.log(
+      `${expired.length} reserva(s) sem sinal pago passaram do prazo e a data foi liberada.`,
+    );
+  }
+
   async getMonth(month: string): Promise<DayAvailability[]> {
+    await this.releaseUnpaidHolds();
+
+    const capacity = getMaxReservationsPerDay();
     const [year, monthNumber] = month.split("-").map(Number);
     const start = new Date(Date.UTC(year, monthNumber - 1, 1));
     const end = new Date(Date.UTC(year, monthNumber, 1));
@@ -51,8 +94,8 @@ export class AvailabilityService {
       days.push({
         date: key,
         reserved,
-        remaining: Math.max(0, MAX_RESERVATIONS_PER_DAY - reserved),
-        available: reserved < MAX_RESERVATIONS_PER_DAY,
+        remaining: Math.max(0, capacity - reserved),
+        available: reserved < capacity,
       });
     }
     return days;
@@ -67,6 +110,8 @@ export class AvailabilityService {
    * que não tem como cumprir — e teria que devolver o dinheiro e o cliente.
    */
   async isDateAvailable(date: Date): Promise<boolean> {
+    await this.releaseUnpaidHolds();
+
     const start = new Date(date);
     start.setUTCHours(0, 0, 0, 0);
     const end = new Date(start);
@@ -76,6 +121,6 @@ export class AvailabilityService {
       where: { eventDate: { gte: start, lt: end }, status: { in: [...COUNTED_STATUSES] } },
     });
 
-    return reserved < MAX_RESERVATIONS_PER_DAY;
+    return reserved < getMaxReservationsPerDay();
   }
 }

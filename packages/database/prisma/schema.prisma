@@ -311,6 +311,16 @@ model Payment {
   checkoutUrl        String?
   pixQrCode          String?
   pixQrCodeBase64    String?
+
+  /// Quando o QR deixa de ser pago. Um Pix vencido não pode ser quitado,
+  /// e é isso que torna seguro liberar a data reservada por ele.
+  expiresAt DateTime?
+
+  /// Última vez que perguntamos o status ao Mercado Pago. Existe para a
+  /// consulta ativa não virar uma chamada à API a cada 5 segundos por
+  /// cliente com a tela aberta.
+  syncedAt DateTime?
+
   paidAt             DateTime?
   createdAt          DateTime      @default(now())
 
