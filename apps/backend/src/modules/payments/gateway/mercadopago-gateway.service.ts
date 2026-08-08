@@ -54,7 +54,11 @@ export class MercadoPagoGateway implements PaymentGateway {
           description: input.description,
           payment_method_id: "pix",
           external_reference: input.paymentId,
-          payer: { email: input.payerEmail },
+          payer: {
+            email: input.payerEmail,
+            ...(input.payerFirstName ? { first_name: input.payerFirstName } : {}),
+            ...(input.payerLastName ? { last_name: input.payerLastName } : {}),
+          },
           ...(input.expiresAt
             ? { date_of_expiration: this.formatExpiration(input.expiresAt) }
             : {}),
@@ -70,6 +74,10 @@ export class MercadoPagoGateway implements PaymentGateway {
         externalReference: String(result.id),
         pixQrCode: pix?.qr_code,
         pixQrCodeBase64: pix?.qr_code_base64,
+        // Página oficial do Mercado Pago com o mesmo QR e as instruções.
+        // Guardada como plano B: se o QR não renderizar no aparelho de
+        // alguém, ainda existe um caminho para pagar.
+        checkoutUrl: pix?.ticket_url,
       };
     }
 

@@ -3,6 +3,9 @@ export interface CreateCheckoutInput {
   amount: number;
   description: string;
   payerEmail: string;
+  /** Nome do pagador, para conciliar o Pix com o cliente no extrato. */
+  payerFirstName?: string;
+  payerLastName?: string;
   method: "PIX" | "CARTAO";
   /** Quando o QR do Pix deixa de ser pagável. */
   expiresAt?: Date;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Pressable, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
@@ -229,6 +229,20 @@ export default function Pagamento() {
                 {copied ? "Código copiado!" : "Toque para copiar o código"}
               </Text>
             </View>
+          )}
+
+          {/* Plano B: se o QR não renderizar no aparelho, a página oficial
+              do Mercado Pago tem o mesmo código e as instruções. */}
+          {deposit.checkoutUrl && (
+            <Pressable
+              onPress={() => Linking.openURL(deposit.checkoutUrl!).catch(() => {})}
+              className="flex-row items-center justify-center gap-2 py-1"
+            >
+              <Ionicons name="open-outline" size={16} color={colors.navy} />
+              <Text className="text-sm font-sans-bold text-navy/70">
+                Abrir a página de pagamento
+              </Text>
+            </Pressable>
           )}
 
           <View className="flex-row items-center justify-center gap-2">

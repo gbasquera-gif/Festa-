@@ -84,7 +84,7 @@ export class PaymentsService {
   async createCheckout(eventId: string, input: CreateCheckoutBody, payerEmail: string) {
     const order = await prisma.order.findUnique({
       where: { eventId },
-      include: { payments: true },
+      include: { payments: true, event: { include: { user: true } } },
     });
     if (!order) throw new NotFoundException("Orçamento do evento não encontrado.");
     if (!order.kitId) {
@@ -135,11 +135,14 @@ export class PaymentsService {
 
     let checkout;
     try {
+      const [firstName, ...restOfName] = (order.event.user.name ?? "").trim().split(/\s+/);
       checkout = await this.gateway.createCheckout({
         paymentId: payment.id,
         amount,
         description: `${PAYMENT_TYPE_LABEL[input.type]} — Festaê`,
         payerEmail,
+        payerFirstName: firstName || undefined,
+        payerLastName: restOfName.join(" ") || undefined,
         method: input.method,
         expiresAt: input.method === "PIX" ? expiresAt : undefined,
       });
