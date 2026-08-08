@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.expo
+**/.turbo
+**/build
+.git
+**/.env
+**/.env.local
+packages/database/generated
+apps/site/android
+apps/site/ios
