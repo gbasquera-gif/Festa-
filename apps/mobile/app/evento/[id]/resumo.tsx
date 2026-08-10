@@ -110,7 +110,12 @@ export default function Resumo() {
         <Text className="font-bold text-navy">{EVENT_TYPE_LABEL[event.type]}</Text>
         <Text className="text-navy/70">{new Date(event.date).toLocaleDateString("pt-BR")}</Text>
         <Text className="text-navy/70">{event.guestCount} convidados</Text>
-        <Text className="text-navy/70">{event.theme?.name ?? "Sem tema definido"}</Text>
+        {/* O tema pode ter vindo do kit, e não do formulário: quem escolhe
+            "Kit Safari" na vitrine já disse qual é o tema, e mostrar "Sem
+            tema definido" logo abaixo faria o resumo parecer errado. */}
+        <Text className="text-navy/70">
+          {event.theme?.name ?? order.kit?.theme?.name ?? "Sem tema definido"}
+        </Text>
         <Text className="text-navy/70">
           {event.city}/{event.state}
         </Text>

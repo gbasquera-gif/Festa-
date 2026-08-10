@@ -10,7 +10,16 @@ import type { AuthUser } from "../../common/decorators/current-user.decorator";
 
 const eventInclude = {
   theme: true,
-  order: { include: { items: { include: { product: true } }, kit: true, reservation: true } },
+  order: {
+    include: {
+      items: { include: { product: true } },
+      // O tema do kit vem junto porque o resumo cai nele quando a festa não
+      // tem tema próprio: quem escolheu "Kit Safari" na vitrine já disse
+      // qual é o tema, e sem isto o resumo exibia "Sem tema definido".
+      kit: { include: { theme: true } },
+      reservation: true,
+    },
+  },
 } as const;
 
 @Injectable()

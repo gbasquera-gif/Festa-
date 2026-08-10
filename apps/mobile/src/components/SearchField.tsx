@@ -18,7 +18,10 @@ export function SearchField({
   onSubmit,
   onPress,
   autoFocus,
-  placeholder = "Busque por itens, kits ou fornecedores...",
+  // Fala das quatro coisas que a busca realmente encontra. Enquanto
+  // prometia "fornecedores", oferecia o que o app não tem — e escondia que
+  // dava para procurar pela ocasião, que é como a pessoa pensa a festa.
+  placeholder = "Busque por festa, tema, kit ou item...",
 }: SearchFieldProps) {
   const content = (
     <View className="h-14 flex-row items-center gap-3 rounded-2xl border border-sand bg-white px-4">
