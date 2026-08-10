@@ -27,9 +27,9 @@ const SLIDES = [
     body: "Conectamos você aos melhores fornecedores de todos os ramos.",
   },
   {
-    title: "Escolha item por item",
-    highlight: "ou leve um kit pronto.",
-    body: "Decoração, mesas, louças, iluminação e brinquedos no mesmo lugar.",
+    title: "Diga que festa vai fazer",
+    highlight: "e leve um kit pronto.",
+    body: "Aniversário, chá de bebê, chá revelação ou batizado — com tema e itens combinando.",
   },
   {
     title: "Reserve a data,",

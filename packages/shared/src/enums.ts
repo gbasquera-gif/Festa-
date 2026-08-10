@@ -1,7 +1,21 @@
 export const ROLES = ["CLIENT", "ADMIN", "OPS"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const EVENT_TYPES = ["FESTA_INFANTIL", "CHA_DE_BEBE", "CHA_REVELACAO", "OUTRO"] as const;
+/**
+ * Ocasiões que a Festaê atende. É por aqui que o cliente começa a jornada:
+ * ele pensa "vou fazer um chá de bebê", não "quero decoração".
+ *
+ * OUTRO fica fora da vitrine — festa fora dessas quatro é atendimento
+ * consultivo pelo WhatsApp, e o tipo só é usado quando a operação cria o
+ * pedido manualmente.
+ */
+export const EVENT_TYPES = [
+  "ANIVERSARIO",
+  "CHA_DE_BEBE",
+  "CHA_REVELACAO",
+  "BATIZADO",
+  "OUTRO",
+] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export const PRODUCT_CATEGORIES = [

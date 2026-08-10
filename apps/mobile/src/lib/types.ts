@@ -1,3 +1,4 @@
+import { EVENT_TYPES, EVENT_TYPE_META } from "@festae/shared";
 import type { EventType, Fulfillment, OrderStatus, ProductCategory, ReservationStatus } from "@festae/shared";
 
 export interface Theme {
@@ -7,6 +8,8 @@ export interface Theme {
   description: string | null;
   coverImageUrl: string | null;
   colorPalette: string[];
+  /** Ocasiões em que este tema aparece na vitrine. Vazio = aparece em todas. */
+  suggestedEventTypes: EventType[];
   active: boolean;
 }
 
@@ -111,12 +114,13 @@ export interface Payment {
   pixQrCodeBase64: string | null;
 }
 
-export const EVENT_TYPE_LABEL: Record<EventType, string> = {
-  FESTA_INFANTIL: "Festa Infantil",
-  CHA_DE_BEBE: "Chá de Bebê",
-  CHA_REVELACAO: "Chá de Revelação",
-  OUTRO: "Outro",
-};
+/**
+ * Rótulo derivado do pacote compartilhado, e não escrito de novo aqui: os
+ * mesmos nomes precisam aparecer no aplicativo e no painel da Maria Luiza.
+ */
+export const EVENT_TYPE_LABEL: Record<EventType, string> = Object.fromEntries(
+  EVENT_TYPES.map((type) => [type, EVENT_TYPE_META[type].label]),
+) as Record<EventType, string>;
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   CART: "Montando festa",

@@ -1,8 +1,21 @@
 import type { ProductCategory } from "@festae/shared";
 
+/** Remove acentos e caixa para "louça" casar com "louca". */
+export function normalize(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 /**
- * Metadados de apresentação das categorias do catálogo. O backend só guarda o
- * enum — rótulo, ícone e ordem de exibição são decisão de produto e vivem aqui.
+ * Metadados de apresentação das categorias de produto.
+ *
+ * A categoria saiu da navegação do cliente — quem chega pensa na ocasião
+ * ("chá de bebê"), não no tipo de peça. Ela continua existindo como
+ * organização interna do catálogo: serve para rotular a peça na tela de
+ * detalhe e para escolher os diferenciais certos de cada tipo de item.
  */
 export interface CategoryMeta {
   key: ProductCategory;

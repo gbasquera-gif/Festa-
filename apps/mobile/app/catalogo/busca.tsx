@@ -1,25 +1,20 @@
 import { useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { DetailHeader } from "@/components/DetailHeader";
 import { SearchField } from "@/components/SearchField";
-import { CategoryCircle } from "@/components/CategoryCircle";
+import { FestaCircle } from "@/components/FestaCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { CatalogGrid, type CatalogEntry } from "@/components/CatalogGrid";
+import { Icon } from "@/components/Icon";
 import { api } from "@/lib/api";
-import { CATEGORIES } from "@/lib/catalog";
-import type { Kit, Product } from "@/lib/types";
-
-/** Remove acentos e caixa para "louça" casar com "louca". */
-function normalize(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
+import { normalize } from "@/lib/catalog";
+import { FESTAS, type FestaMeta } from "@/lib/festas";
+import type { Kit, Product, Theme } from "@/lib/types";
+import { colors } from "@/theme";
 
 export default function Busca() {
   const [term, setTerm] = useState("");
@@ -29,22 +24,45 @@ export default function Busca() {
     queryFn: () => api<Product[]>("/products"),
   });
   const { data: kits } = useQuery({ queryKey: ["kits"], queryFn: () => api<Kit[]>("/kits") });
+  const { data: themes } = useQuery({ queryKey: ["themes"], queryFn: () => api<Theme[]>("/themes") });
 
   const query = normalize(term);
+  const searching = query.length >= 2;
+
+  /**
+   * Tipos de festa entram na busca junto com kits e itens.
+   *
+   * Quem digita "batizado" não está procurando um produto chamado batizado —
+   * está procurando por onde começar. Sem esta faixa, a busca respondia
+   * "nada encontrado" para o termo que melhor descreve o que a pessoa quer.
+   */
+  const matchedFestas: FestaMeta[] = useMemo(() => {
+    if (!searching) return [];
+    return FESTAS.filter((festa) =>
+      normalize(`${festa.label} ${festa.description}`).includes(query),
+    );
+  }, [query, searching]);
+
+  const matchedThemes = useMemo(() => {
+    if (!searching) return [];
+    return (themes ?? []).filter((theme) =>
+      normalize(`${theme.name} ${theme.description ?? ""}`).includes(query),
+    );
+  }, [themes, query, searching]);
 
   const matchedKits = useMemo(() => {
-    if (query.length < 2) return [];
+    if (!searching) return [];
     return (kits ?? []).filter((kit) =>
       normalize(`${kit.name} ${kit.description ?? ""} ${kit.theme?.name ?? ""}`).includes(query),
     );
-  }, [kits, query]);
+  }, [kits, query, searching]);
 
   const matchedProducts = useMemo(() => {
-    if (query.length < 2) return [];
+    if (!searching) return [];
     return (products ?? []).filter((product) =>
       normalize(`${product.name} ${product.description ?? ""}`).includes(query),
     );
-  }, [products, query]);
+  }, [products, query, searching]);
 
   const kitEntries: CatalogEntry[] = matchedKits.map((kit) => ({
     id: kit.id,
@@ -63,39 +81,112 @@ export default function Busca() {
     onPress: () => router.push(`/catalogo/produto/${product.id}`),
   }));
 
-  const searching = query.length >= 2;
-  const nothingFound = searching && kitEntries.length === 0 && productEntries.length === 0;
+  const nothingFound =
+    searching &&
+    matchedFestas.length === 0 &&
+    matchedThemes.length === 0 &&
+    kitEntries.length === 0 &&
+    productEntries.length === 0;
+
+  /**
+   * Um tema não tem tela própria: ele vive dentro de uma ocasião. Abrimos a
+   * primeira ocasião sugerida para o tema — e, quando não há nenhuma marcada,
+   * caímos em aniversário, que é a ocasião mais comum.
+   */
+  function abrirTema(theme: Theme) {
+    const tipo = theme.suggestedEventTypes[0] ?? "ANIVERSARIO";
+    const festa = FESTAS.find((item) => item.key === tipo) ?? FESTAS[0];
+    router.push(`/catalogo/festa/${festa.slug}`);
+  }
 
   return (
-    <Screen header={<DetailHeader title="Buscar" />} contentClassName="gap-5">
-      <SearchField value={term} onChangeText={setTerm} autoFocus />
+    <Screen header={<DetailHeader title="Buscar" showShare={false} />} contentClassName="gap-5">
+      <SearchField
+        value={term}
+        onChangeText={setTerm}
+        autoFocus
+        placeholder="Busque por festa, tema, kit ou item..."
+      />
 
       {!searching && (
         <View className="gap-4">
-          <SectionHeader title="Buscar por categoria" />
+          <SectionHeader title="Comece pela ocasião" />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             className="-mx-5"
             contentContainerClassName="gap-3 px-5"
           >
-            {CATEGORIES.map((category) => (
-              <CategoryCircle
-                key={category.key}
-                category={category}
-                onPress={() => router.push(`/catalogo/categoria/${category.key}`)}
+            {FESTAS.map((festa) => (
+              <FestaCircle
+                key={festa.key}
+                festa={festa}
+                onPress={() => router.push(`/catalogo/festa/${festa.slug}`)}
               />
             ))}
           </ScrollView>
-          <Text className="text-sm text-navy/60">Digite pelo menos 2 letras para buscar.</Text>
+          <Text className="text-sm text-navy/60">
+            Ou digite pelo menos 2 letras para buscar por tema, kit ou item.
+          </Text>
         </View>
       )}
 
       {nothingFound && (
         <View className="rounded-2xl border border-sand bg-white px-6 py-10">
           <Text className="text-center text-navy/70">
-            Nada encontrado para “{term.trim()}”. Tente outro termo ou navegue pelas categorias.
+            Nada encontrado para “{term.trim()}”. Tente outro termo ou comece escolhendo a ocasião.
           </Text>
+        </View>
+      )}
+
+      {matchedFestas.length > 0 && (
+        <View className="gap-3">
+          <SectionHeader title="Tipos de festa" />
+          {matchedFestas.map((festa) => (
+            <Pressable
+              key={festa.key}
+              onPress={() => router.push(`/catalogo/festa/${festa.slug}`)}
+              className="flex-row items-center gap-3 rounded-2xl border border-sand bg-white p-3"
+            >
+              <View className="h-11 w-11 items-center justify-center rounded-full bg-linen">
+                <Icon name={festa.icon} set={festa.iconSet} size={22} color={colors.navy} />
+              </View>
+              <View className="flex-1">
+                <Text className="font-sans-bold text-navy">{festa.label}</Text>
+                <Text className="text-xs text-navy/60" numberOfLines={1}>
+                  {festa.description}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {matchedThemes.length > 0 && (
+        <View className="gap-3">
+          <SectionHeader title={`Temas (${matchedThemes.length})`} />
+          {matchedThemes.map((theme) => (
+            <Pressable
+              key={theme.id}
+              onPress={() => abrirTema(theme)}
+              className="flex-row items-center gap-3 rounded-2xl border border-sand bg-white p-3"
+            >
+              <View className="flex-row">
+                {theme.colorPalette.slice(0, 3).map((color, index) => (
+                  <View
+                    key={index}
+                    style={{ backgroundColor: color, marginLeft: index > 0 ? -8 : 0 }}
+                    className="h-8 w-8 rounded-full border-2 border-white"
+                  />
+                ))}
+              </View>
+              <Text className="flex-1 font-sans-bold text-navy" numberOfLines={1}>
+                {theme.name}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </Pressable>
+          ))}
         </View>
       )}
 
@@ -108,7 +199,7 @@ export default function Busca() {
 
       {productEntries.length > 0 && (
         <View className="gap-3">
-          <SectionHeader title={`Itens (${productEntries.length})`} />
+          <SectionHeader title={`Itens adicionais (${productEntries.length})`} />
           <CatalogGrid entries={productEntries} emptyMessage="" />
         </View>
       )}

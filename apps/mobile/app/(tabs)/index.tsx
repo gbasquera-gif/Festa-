@@ -7,13 +7,16 @@ import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { SearchField } from "@/components/SearchField";
 import { SectionHeader } from "@/components/SectionHeader";
-import { CategoryCircle } from "@/components/CategoryCircle";
+import { FestaCircle, FestaPersonalizadaCard } from "@/components/FestaCard";
 import { CatalogCard } from "@/components/CatalogCard";
+import { FloatingCta } from "@/components/FloatingCta";
 import { PromoBanner, type Promo } from "@/components/PromoBanner";
 import { useAuth } from "@/lib/auth";
 import { goToLogin } from "@/lib/login-gate";
 import { api } from "@/lib/api";
-import { CATEGORIES } from "@/lib/catalog";
+import { track } from "@/lib/analytics";
+import { openWhatsApp } from "@/lib/contato";
+import { FESTAS, MENSAGEM_FESTA_PERSONALIZADA } from "@/lib/festas";
 import { EVENT_TYPE_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
 
@@ -24,7 +27,7 @@ const PROMOS: Promo[] = [
     subtitle: "Encontre, reserve e monte de forma rápida e segura.",
     cta: "Explorar agora",
     icon: "package-variant",
-    onPress: () => router.push("/(tabs)/categorias"),
+    onPress: () => router.push("/(tabs)/festas"),
   },
   {
     titleLines: ["Kits prontos", "para quem quer"],
@@ -64,8 +67,13 @@ export default function Home() {
   const ongoing = events?.find((event) => event.order.status === "CART");
   const hasUpdates = events?.some((event) => event.order.status === "REQUESTED") ?? false;
 
+  function abrirPersonalizada() {
+    track("CLIQUE_WHATSAPP", { origem: "festa-personalizada" });
+    openWhatsApp(MENSAGEM_FESTA_PERSONALIZADA);
+  }
+
   return (
-    <Screen contentClassName="gap-6">
+    <Screen contentClassName="gap-6" floating={<FloatingCta />}>
       <View className="flex-row items-start justify-between">
         <View className="flex-1">
           <Text className="font-sans-extrabold text-2xl text-navy">
@@ -116,21 +124,26 @@ export default function Home() {
       )}
 
       <View className="gap-4">
-        <SectionHeader title="Categorias" onAction={() => router.push("/(tabs)/categorias")} />
+        <SectionHeader
+          title="Que festa você vai fazer?"
+          actionLabel="Ver todas"
+          onAction={() => router.push("/(tabs)/festas")}
+        />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           className="-mx-5"
           contentContainerClassName="gap-3 px-5"
         >
-          {CATEGORIES.map((category) => (
-            <CategoryCircle
-              key={category.key}
-              category={category}
-              onPress={() => router.push(`/catalogo/categoria/${category.key}`)}
+          {FESTAS.map((festa) => (
+            <FestaCircle
+              key={festa.key}
+              festa={festa}
+              onPress={() => router.push(`/catalogo/festa/${festa.slug}`)}
             />
           ))}
         </ScrollView>
+        <FestaPersonalizadaCard onPress={abrirPersonalizada} />
       </View>
 
       <View className="gap-4">
@@ -161,7 +174,10 @@ export default function Home() {
 
       {products && products.length > 0 && (
         <View className="gap-4">
-          <SectionHeader title="Itens para alugar" onAction={() => router.push("/(tabs)/categorias")} />
+          <SectionHeader
+            title="Itens adicionais para alugar"
+            onAction={() => router.push("/catalogo/itens")}
+          />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}

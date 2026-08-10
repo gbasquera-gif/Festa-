@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { createKitSchema, updateKitSchema } from "@festae/shared";
+import { createKitSchema, isEventType, updateKitSchema } from "@festae/shared";
 import type { CreateKitInput, UpdateKitInput } from "@festae/shared";
 import { KitsService } from "./kits.service";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
@@ -14,16 +14,31 @@ export class KitsController {
   constructor(private readonly kitsService: KitsService) {}
 
   @Get()
-  findAll() {
-    return this.kitsService.findAll();
+  findAll(
+    @Query("eventType") eventType?: string,
+    @Query("themeId") themeId?: string,
+    @Query("search") search?: string,
+  ) {
+    return this.kitsService.findAll({
+      // Tipo desconhecido vira "sem filtro" em vez de erro: link velho ou
+      // digitado à mão devolve a vitrine inteira, e não uma tela quebrada.
+      eventType: eventType && isEventType(eventType) ? eventType : undefined,
+      themeId,
+      search,
+    });
   }
 
   // Must come before ":id" so "recommend" isn't captured as an id param.
   @Get("recommend")
-  recommend(@Query("guestCount") guestCount?: string, @Query("themeId") themeId?: string) {
+  recommend(
+    @Query("guestCount") guestCount?: string,
+    @Query("themeId") themeId?: string,
+    @Query("eventType") eventType?: string,
+  ) {
     return this.kitsService.recommend({
       guestCount: guestCount ? Number(guestCount) : undefined,
       themeId,
+      eventType: eventType && isEventType(eventType) ? eventType : undefined,
     });
   }
 

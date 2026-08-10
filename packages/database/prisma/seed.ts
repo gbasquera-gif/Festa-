@@ -75,7 +75,7 @@ async function seedDemoData() {
       slug: "reino-encantado",
       description: "Castelos, coroas e muito brilho para uma festa de princesa ou príncipe.",
       colorPalette: ["#F06853", "#C7A360", "#FDF9F4"],
-      suggestedEventTypes: ["FESTA_INFANTIL"],
+      suggestedEventTypes: ["ANIVERSARIO"],
     },
   });
 
@@ -87,7 +87,7 @@ async function seedDemoData() {
       slug: "safari-aventura",
       description: "Bichinhos da selva e tons terrosos para os pequenos exploradores.",
       colorPalette: ["#0F2A4F", "#C7A360", "#FDF9F4"],
-      suggestedEventTypes: ["FESTA_INFANTIL"],
+      suggestedEventTypes: ["ANIVERSARIO"],
     },
   });
 
@@ -112,6 +112,18 @@ async function seedDemoData() {
       description: "Confete duplo azul e rosa para revelar o mistério com estilo.",
       colorPalette: ["#F06853", "#0F2A4F", "#FDF9F4"],
       suggestedEventTypes: ["CHA_REVELACAO"],
+    },
+  });
+
+  const temaCeuDeAnjos = await prisma.theme.upsert({
+    where: { slug: "ceu-de-anjos" },
+    update: {},
+    create: {
+      name: "Céu de Anjos",
+      slug: "ceu-de-anjos",
+      description: "Branco, dourado e flores para uma celebração serena em família.",
+      colorPalette: ["#FDF9F4", "#C7A360", "#0F2A4F"],
+      suggestedEventTypes: ["BATIZADO"],
     },
   });
 
@@ -193,6 +205,20 @@ async function seedDemoData() {
     },
   });
 
+  const kitBatizado = await prisma.kit.upsert({
+    where: { slug: "kit-batizado" },
+    update: {},
+    create: {
+      name: "Kit Batizado",
+      slug: "kit-batizado",
+      description: "Mesa posta com toalha, painel e iluminação suave para a celebração.",
+      themeId: temaCeuDeAnjos.id,
+      basePrice: 480,
+      minGuests: 10,
+      maxGuests: 50,
+    },
+  });
+
   const linkKitProduct = async (kitId: string, productSlug: string, quantity: number) => {
     const product = products.find((p) => p.slug === productSlug)!;
     await prisma.kitProduct.upsert({
@@ -221,6 +247,10 @@ async function seedDemoData() {
   await linkKitProduct(kitRevelacao.id, "painel-festa-redondo", 1);
   await linkKitProduct(kitRevelacao.id, "kit-iluminacao-ambiente", 1);
 
+  await linkKitProduct(kitBatizado.id, "mesa-provencal-branca", 1);
+  await linkKitProduct(kitBatizado.id, "toalha-mesa-personalizada", 1);
+  await linkKitProduct(kitBatizado.id, "kit-iluminacao-ambiente", 1);
+
   // Evento de exemplo para validar o fluxo inteiro depois do seed. Diferente
   // do resto, `create` não é idempotente — sem esta guarda, cada boot do
   // container criava mais uma festa fantasma na lista do cliente.
@@ -233,7 +263,7 @@ async function seedDemoData() {
   const demoEvent = await prisma.event.create({
     data: {
       userId: demoClient.id,
-      type: "FESTA_INFANTIL",
+      type: "ANIVERSARIO",
       date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
       guestCount: 25,
       budgetGoal: 700,

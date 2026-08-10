@@ -32,10 +32,12 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="categorias"
+        name="festas"
         options={{
-          title: "Categorias",
-          tabBarIcon: ({ color, size }) => <Ionicons name="grid" color={color} size={size} />,
+          title: "Festas",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="balloon" color={color} size={size} />
+          ),
         }}
       />
       <Tabs.Screen

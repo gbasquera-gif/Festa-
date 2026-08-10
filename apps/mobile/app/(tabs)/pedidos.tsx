@@ -154,7 +154,7 @@ export default function Pedidos() {
             <Text className="text-center text-navy/70">
               Você ainda não pediu nenhuma festa. Monte um orçamento pelo catálogo.
             </Text>
-            <Button variant="navy" className="mt-1" onPress={() => router.push("/(tabs)/categorias")}>
+            <Button variant="navy" className="mt-1" onPress={() => router.push("/(tabs)/festas")}>
               Explorar o catálogo
             </Button>
           </View>

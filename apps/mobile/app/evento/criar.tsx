@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DELIVERY_CITY, EVENT_TYPES } from "@festae/shared";
+import { DELIVERY_CITY, type EventType } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
 import { Button } from "@/components/Button";
@@ -14,15 +14,23 @@ import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 import { api, ApiError } from "@/lib/api";
 import { track } from "@/lib/analytics";
 import { useOrcamento } from "@/lib/orcamento";
-import { EVENT_TYPE_LABEL, type EventRecord, type Theme } from "@/lib/types";
+import { FESTAS } from "@/lib/festas";
+import { type EventRecord, type Theme } from "@/lib/types";
 
 export default function CriarEvento() {
   const queryClient = useQueryClient();
   const { data: themes } = useQuery({ queryKey: ["themes"], queryFn: () => api<Theme[]>("/themes") });
-  const { kitId: draftKitId, items: draftItems, clear: clearOrcamento } = useOrcamento();
+  const {
+    kitId: draftKitId,
+    items: draftItems,
+    eventType: draftEventType,
+    clear: clearOrcamento,
+  } = useOrcamento();
   const hasDraft = Boolean(draftKitId) || draftItems.length > 0;
 
-  const [type, setType] = useState<(typeof EVENT_TYPES)[number]>("FESTA_INFANTIL");
+  // Quem entrou pela vitrine já disse qual é a ocasião: começar de novo em
+  // "Aniversário" faria a pessoa desfazer uma escolha que ela já tinha feito.
+  const [type, setType] = useState<EventType>(draftEventType ?? "ANIVERSARIO");
   const [date, setDate] = useState("");
   const [guestCount, setGuestCount] = useState("");
   const [inDeliveryCity, setInDeliveryCity] = useState(true);
@@ -33,6 +41,13 @@ export default function CriarEvento() {
   useEffect(() => {
     track("INICIO_CRIACAO_FESTA");
   }, []);
+
+  // O orçamento vem do armazenamento do aparelho e chega um instante depois
+  // do primeiro render: sem este ajuste, a ocasião escolhida na vitrine
+  // perderia para o valor inicial do formulário.
+  useEffect(() => {
+    if (draftEventType) setType(draftEventType);
+  }, [draftEventType]);
 
   // A cidade é perguntada aqui, e não junto da entrega, porque é dado da
   // festa — e é ela que define se a entrega chega a ser oferecida depois.
@@ -100,8 +115,13 @@ export default function CriarEvento() {
       <View className="gap-2">
         <Text className="text-sm font-bold text-navy">Tipo de evento</Text>
         <View className="flex-row flex-wrap gap-2">
-          {EVENT_TYPES.map((t) => (
-            <Chip key={t} label={EVENT_TYPE_LABEL[t]} selected={type === t} onPress={() => setType(t)} />
+          {FESTAS.map((festa) => (
+            <Chip
+              key={festa.key}
+              label={festa.label}
+              selected={type === festa.key}
+              onPress={() => setType(festa.key)}
+            />
           ))}
         </View>
       </View>

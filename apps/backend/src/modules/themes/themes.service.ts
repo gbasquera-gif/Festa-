@@ -1,11 +1,31 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import type { CreateThemeInput, UpdateThemeInput } from "@festae/shared";
+import type { CreateThemeInput, EventType, UpdateThemeInput } from "@festae/shared";
 
 @Injectable()
 export class ThemesService {
-  findAll() {
-    return prisma.theme.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+  /**
+   * Temas da vitrine, opcionalmente só os de uma ocasião.
+   *
+   * Tema sem ocasião marcada entra em todas: é o estado de um tema recém
+   * cadastrado, e sumir da vitrine por falta de uma caixinha marcada seria
+   * uma falha invisível para quem cadastrou.
+   */
+  findAll(eventType?: EventType) {
+    return prisma.theme.findMany({
+      where: {
+        active: true,
+        ...(eventType
+          ? {
+              OR: [
+                { suggestedEventTypes: { has: eventType } },
+                { suggestedEventTypes: { isEmpty: true } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+    });
   }
 
   async findById(id: string) {

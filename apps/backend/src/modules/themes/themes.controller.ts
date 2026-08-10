@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { createThemeSchema, updateThemeSchema } from "@festae/shared";
+import { createThemeSchema, isEventType, updateThemeSchema } from "@festae/shared";
 import type { CreateThemeInput, UpdateThemeInput } from "@festae/shared";
 import { ThemesService } from "./themes.service";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
@@ -14,8 +14,10 @@ export class ThemesController {
   constructor(private readonly themesService: ThemesService) {}
 
   @Get()
-  findAll() {
-    return this.themesService.findAll();
+  findAll(@Query("eventType") eventType?: string) {
+    return this.themesService.findAll(
+      eventType && isEventType(eventType) ? eventType : undefined,
+    );
   }
 
   @Get(":id")

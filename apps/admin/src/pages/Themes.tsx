@@ -5,9 +5,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { z } from "zod";
-import { createThemeSchema, type CreateThemeInput } from "@festae/shared";
+import {
+  STOREFRONT_EVENT_TYPES,
+  createThemeSchema,
+  type CreateThemeInput,
+  type EventType,
+} from "@festae/shared";
 import { ImageUploadField } from "@/components/image-upload-field";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -106,6 +112,40 @@ function ThemeForm({ theme, onSaved }: { theme?: Theme; onSaved: () => void }) {
         value={form.watch("coverImageUrl")}
         onChange={(url) => form.setValue("coverImageUrl", url)}
       />
+
+      {/* É esta escolha que decide onde o tema (e os kits dele) aparece na
+          vitrine. Sem marcar nada, o tema entra em todas as ocasiões — o
+          contrário faria um tema recém-criado sumir do app sem aviso. */}
+      <div className="flex flex-col gap-2">
+        <Label>Aparece em quais festas?</Label>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {STOREFRONT_EVENT_TYPES.map((meta) => {
+            const marcados = (form.watch("suggestedEventTypes") ?? []) as EventType[];
+            const marcado = marcados.includes(meta.key);
+            return (
+              <label key={meta.key} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={marcado}
+                  onCheckedChange={(valor) =>
+                    form.setValue(
+                      "suggestedEventTypes",
+                      valor
+                        ? [...marcados, meta.key]
+                        : marcados.filter((tipo) => tipo !== meta.key),
+                      { shouldDirty: true },
+                    )
+                  }
+                />
+                {meta.label}
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Deixe tudo desmarcado para o tema aparecer em todas as ocasiões.
+        </p>
+      </div>
+
       <FormErrors errors={form.formState.errors} />
       <DialogFooter>
         <Button type="submit" disabled={mutation.isPending}>
@@ -164,6 +204,7 @@ export default function Themes() {
           <TableRow>
             <TableHead>Nome</TableHead>
             <TableHead>Slug</TableHead>
+            <TableHead>Aparece em</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Ações</TableHead>
           </TableRow>
@@ -171,13 +212,22 @@ export default function Themes() {
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={4}>Carregando...</TableCell>
+              <TableCell colSpan={5}>Carregando...</TableCell>
             </TableRow>
           )}
           {data?.map((theme) => (
             <TableRow key={theme.id}>
               <TableCell className="font-medium">{theme.name}</TableCell>
               <TableCell className="text-muted-foreground">{theme.slug}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {theme.suggestedEventTypes && theme.suggestedEventTypes.length > 0
+                  ? STOREFRONT_EVENT_TYPES.filter((meta) =>
+                      (theme.suggestedEventTypes as EventType[]).includes(meta.key),
+                    )
+                      .map((meta) => meta.label)
+                      .join(", ")
+                  : "Todas as festas"}
+              </TableCell>
               <TableCell>
                 <Badge variant={theme.active ? "default" : "secondary"}>
                   {theme.active ? "Ativo" : "Inativo"}

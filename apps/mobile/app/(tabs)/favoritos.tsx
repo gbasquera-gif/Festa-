@@ -58,7 +58,7 @@ export default function Favoritos() {
           <Text className="text-center text-navy/70">
             Toque no coração de um item ou kit para guardar aqui.
           </Text>
-          <Button variant="navy" className="mt-1" onPress={() => router.push("/(tabs)/categorias")}>
+          <Button variant="navy" className="mt-1" onPress={() => router.push("/(tabs)/festas")}>
             Explorar o catálogo
           </Button>
         </View>

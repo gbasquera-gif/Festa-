@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { EVENT_TYPE_META, isEventType } from "@festae/shared";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
@@ -15,12 +16,10 @@ interface EventRow {
   order: { status: string; total: string } | null;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  FESTA_INFANTIL: "Festa Infantil",
-  CHA_DE_BEBE: "Chá de Bebê",
-  CHA_REVELACAO: "Chá de Revelação",
-  OUTRO: "Outro",
-};
+/** O mesmo nome que o cliente viu no app, vindo do pacote compartilhado. */
+function typeLabel(type: string) {
+  return isEventType(type) ? EVENT_TYPE_META[type].label : type;
+}
 
 export default function Events() {
   const { data, isLoading } = useQuery({
@@ -58,7 +57,7 @@ export default function Events() {
                 <div className="font-medium">{event.user.name}</div>
                 <div className="text-xs text-muted-foreground">{event.user.email}</div>
               </TableCell>
-              <TableCell>{TYPE_LABEL[event.type] ?? event.type}</TableCell>
+              <TableCell>{typeLabel(event.type)}</TableCell>
               <TableCell>{event.theme?.name ?? "—"}</TableCell>
               <TableCell>{event.guestCount}</TableCell>
               <TableCell>{event.order ? `R$ ${Number(event.order.total).toFixed(2)}` : "—"}</TableCell>

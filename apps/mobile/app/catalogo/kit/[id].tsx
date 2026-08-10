@@ -10,17 +10,24 @@ import { DetailHeader } from "@/components/DetailHeader";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { HighlightGrid } from "@/components/HighlightGrid";
 import { ImageCover } from "@/components/ImageCover";
+import { QuantityStepper } from "@/components/QuantityStepper";
 import { api } from "@/lib/api";
 import { formatBRL, highlightsFor } from "@/lib/catalog";
 import { useFavoritos } from "@/lib/favoritos";
 import { useOrcamento } from "@/lib/orcamento";
 import { track } from "@/lib/analytics";
-import type { Kit } from "@/lib/types";
+import type { Kit, Product } from "@/lib/types";
 import { colors } from "@/theme";
+
+/** Quantas unidades a mais de um mesmo item o cliente pode pedir pelo app. */
+const EXTRA_MAXIMO = 30;
+
+/** Quantos itens de fora do kit a tela oferece antes do "ver todos". */
+const SUGESTOES = 6;
 
 export default function KitDetalhe() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { kitId, setKit } = useOrcamento();
+  const { kitId, setKit, quantityOf, setProductQuantity } = useOrcamento();
   const { isFavorite, toggle } = useFavoritos();
 
   const [added, setAdded] = useState(false);
@@ -28,6 +35,11 @@ export default function KitDetalhe() {
   const { data: kit, isLoading } = useQuery({
     queryKey: ["kit", id],
     queryFn: () => api<Kit>(`/kits/${id}`),
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => api<Product[]>("/products"),
   });
 
   useEffect(() => {
@@ -47,15 +59,55 @@ export default function KitDetalhe() {
   const chosen = kitId === kit.id;
   const images = [kit.coverImageUrl, ...kit.images].filter((image): image is string => Boolean(image));
 
+  const noKit = new Set(kit.products.map((link) => link.productId));
+  const sugestoes = (products ?? []).filter((product) => !noKit.has(product.id));
+
+  /**
+   * Mexer numa quantidade já escolhe o kit.
+   *
+   * Sem isso, quem subisse as cadeiras de 20 para 25 sem tocar no botão do
+   * rodapé levaria para o orçamento 5 cadeiras soltas e nenhum kit — e só
+   * descobriria na tela de resumo, com o preço errado.
+   */
+  function garantirKit() {
+    if (kitId === kit!.id) return;
+    setKit(kit!.id);
+    track("ESCOLHA_KIT", { kitId: kit!.id });
+    setAdded(true);
+  }
+
   function handleToggleKit() {
     if (chosen) {
       setKit(null);
       return;
     }
-    setKit(kit!.id);
-    track("ESCOLHA_KIT", { kitId: kit!.id });
-    setAdded(true);
+    garantirKit();
   }
+
+  /** Ajusta o total de um item do kit; o que passa do incluído vira extra. */
+  function ajustarItemDoKit(productId: string, incluido: number, total: number) {
+    garantirKit();
+    setProductQuantity(productId, Math.max(0, total - incluido));
+    if (total > incluido) {
+      track("EXTRA_ADICIONADO", { productId, quantity: total - incluido, kitId: kit!.id });
+    }
+  }
+
+  function ajustarItemDeFora(productId: string, quantidade: number) {
+    garantirKit();
+    setProductQuantity(productId, quantidade);
+    if (quantidade > 0) {
+      track("EXTRA_ADICIONADO", { productId, quantity: quantidade, kitId: kit!.id });
+    }
+  }
+
+  // Total parcial: base do kit + tudo que passou do que ele já inclui. Não
+  // entram entrega nem montagem — essas escolhas vêm depois, na logística.
+  const totalExtras = [...kit.products.map((link) => link.product), ...sugestoes].reduce(
+    (sum, product) => sum + quantityOf(product.id) * Number(product.unitPrice),
+    0,
+  );
+  const totalParcial = Number(kit.basePrice) + totalExtras;
 
   return (
     <Screen
@@ -81,9 +133,22 @@ export default function KitDetalhe() {
             </Pressable>
           )}
 
-          <Button variant={chosen ? "outline" : "primary"} onPress={handleToggleKit}>
-            {chosen ? "Remover do orçamento" : "Adicionar ao orçamento"}
-          </Button>
+          {chosen ? (
+            <>
+              <View className="flex-row items-baseline justify-between">
+                <Text className="text-sm text-navy/60">Total parcial</Text>
+                <Text className="font-sans-extrabold text-xl text-coral">
+                  {formatBRL(totalParcial)}
+                </Text>
+              </View>
+              <Button onPress={() => router.push("/evento/criar")}>Continuar para a data</Button>
+              <Pressable onPress={() => setKit(null)} hitSlop={8} className="items-center py-1">
+                <Text className="text-sm font-sans-bold text-navy/50">Remover kit do orçamento</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Button onPress={handleToggleKit}>Escolher este kit</Button>
+          )}
         </View>
       }
     >
@@ -111,21 +176,126 @@ export default function KitDetalhe() {
 
       {kit.products.length > 0 && (
         <View className="gap-3">
-          <Text className="font-sans-bold text-navy">O que vem no kit</Text>
-          {kit.products.map((link) => (
-            <Pressable
-              key={link.productId}
-              onPress={() => router.push(`/catalogo/produto/${link.productId}`)}
-              className="flex-row items-center gap-3 rounded-2xl border border-sand bg-white p-2.5"
-            >
-              <ImageCover uri={link.product.imageUrl} rounded="all" className="h-14 w-14" showPlaceholderLabel={false} />
-              <Text className="flex-1 font-sans-bold text-navy" numberOfLines={2}>
-                {link.product.name}
+          <View>
+            <Text className="font-sans-bold text-navy">O que vem no kit</Text>
+            <Text className="text-sm leading-5 text-navy/60">
+              Precisa de mais de alguma coisa? Ajuste a quantidade — as unidades acima do que já vem
+              no kit são cobradas à parte.
+            </Text>
+          </View>
+
+          {kit.products.map((link) => {
+            const extra = quantityOf(link.productId);
+            const total = link.quantity + extra;
+            return (
+              <View key={link.productId} className="gap-2 rounded-2xl border border-sand bg-white p-2.5">
+                <View className="flex-row items-center gap-3">
+                  <Pressable
+                    onPress={() => router.push(`/catalogo/produto/${link.productId}`)}
+                    className="flex-row items-center gap-3"
+                    style={{ flex: 1 }}
+                  >
+                    <ImageCover
+                      uri={link.product.imageUrl}
+                      rounded="all"
+                      className="h-14 w-14"
+                      showPlaceholderLabel={false}
+                    />
+                    <View className="flex-1">
+                      <Text className="font-sans-bold text-navy" numberOfLines={2}>
+                        {link.product.name}
+                      </Text>
+                      <Text className="text-xs text-navy/50">
+                        {link.quantity}x no kit · {formatBRL(link.product.unitPrice)} a unidade extra
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  <QuantityStepper
+                    value={total}
+                    min={link.quantity}
+                    max={link.quantity + EXTRA_MAXIMO}
+                    onChange={(value) => ajustarItemDoKit(link.productId, link.quantity, value)}
+                  />
+                </View>
+
+                {extra > 0 && (
+                  <View className="flex-row justify-between rounded-xl bg-linen px-3 py-2">
+                    <Text className="text-xs font-sans-bold text-navy">
+                      +{extra} {extra === 1 ? "unidade adicional" : "unidades adicionais"}
+                    </Text>
+                    <Text className="text-xs font-sans-bold text-coral">
+                      {formatBRL(extra * Number(link.product.unitPrice))}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {sugestoes.length > 0 && (
+        <View className="gap-3">
+          <View className="flex-row items-end justify-between">
+            <View className="flex-1">
+              <Text className="font-sans-bold text-navy">Quer acrescentar mais alguma coisa?</Text>
+              <Text className="text-sm leading-5 text-navy/60">
+                Itens adicionais para alugar junto com o kit.
               </Text>
-              <Text className="text-sm font-sans-bold text-navy/50">{link.quantity}x</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </View>
+            <Pressable onPress={() => router.push("/catalogo/itens")} hitSlop={8}>
+              <Text className="text-sm font-sans-bold text-coral">Ver todos</Text>
             </Pressable>
-          ))}
+          </View>
+
+          {sugestoes.slice(0, SUGESTOES).map((product) => {
+            const quantidade = quantityOf(product.id);
+            return (
+              <View
+                key={product.id}
+                className="flex-row items-center gap-3 rounded-2xl border border-sand bg-white p-2.5"
+              >
+                <Pressable
+                  onPress={() => router.push(`/catalogo/produto/${product.id}`)}
+                  className="flex-row items-center gap-3"
+                  style={{ flex: 1 }}
+                >
+                  <ImageCover
+                    uri={product.imageUrl}
+                    rounded="all"
+                    className="h-14 w-14"
+                    showPlaceholderLabel={false}
+                  />
+                  <View className="flex-1">
+                    <Text className="font-sans-bold text-navy" numberOfLines={2}>
+                      {product.name}
+                    </Text>
+                    <Text className="text-xs text-navy/50">
+                      {formatBRL(product.unitPrice)} a unidade
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {quantidade > 0 ? (
+                  <QuantityStepper
+                    value={quantidade}
+                    min={0}
+                    max={EXTRA_MAXIMO}
+                    onChange={(value) => ajustarItemDeFora(product.id, value)}
+                  />
+                ) : (
+                  <Pressable
+                    onPress={() => ajustarItemDeFora(product.id, 1)}
+                    accessibilityLabel={`Adicionar ${product.name}`}
+                    className="h-11 w-11 items-center justify-center rounded-2xl border border-coral"
+                  >
+                    <Ionicons name="add" size={20} color={colors.coral} />
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
     </Screen>

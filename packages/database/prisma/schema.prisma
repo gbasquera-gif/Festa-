@@ -17,9 +17,10 @@ enum Role {
 }
 
 enum EventType {
-  FESTA_INFANTIL
+  ANIVERSARIO
   CHA_DE_BEBE
   CHA_REVELACAO
+  BATIZADO
   OUTRO
 }
 

@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { EventType } from "@festae/shared";
 
 const STORAGE_KEY = "festae_orcamento";
 
@@ -11,9 +12,16 @@ export interface OrcamentoItem {
 interface OrcamentoState {
   kitId: string | null;
   items: OrcamentoItem[];
+  /**
+   * Ocasião escolhida na vitrine. Guardada aqui para o formulário de criar a
+   * festa já vir com ela marcada: quem entrou por "Chá de bebê" e teve de
+   * escolher de novo no passo seguinte tinha razão em achar que o app não
+   * estava prestando atenção.
+   */
+  eventType: EventType | null;
 }
 
-const EMPTY: OrcamentoState = { kitId: null, items: [] };
+const EMPTY: OrcamentoState = { kitId: null, items: [], eventType: null };
 
 interface OrcamentoContextValue extends OrcamentoState {
   /** Total de peças (soma das quantidades) + 1 se houver kit escolhido. */
@@ -24,6 +32,7 @@ interface OrcamentoContextValue extends OrcamentoState {
   setProductQuantity: (productId: string, quantity: number) => void;
   removeProduct: (productId: string) => void;
   setKit: (kitId: string | null) => void;
+  setEventType: (eventType: EventType | null) => void;
   clear: () => void;
 }
 
@@ -95,6 +104,10 @@ export function OrcamentoProvider({ children }: { children: ReactNode }) {
     setState((current) => ({ ...current, kitId }));
   }, []);
 
+  const setEventType = useCallback((eventType: EventType | null) => {
+    setState((current) => (current.eventType === eventType ? current : { ...current, eventType }));
+  }, []);
+
   const clear = useCallback(() => setState(EMPTY), []);
 
   const value = useMemo<OrcamentoContextValue>(() => {
@@ -108,9 +121,10 @@ export function OrcamentoProvider({ children }: { children: ReactNode }) {
       setProductQuantity,
       removeProduct,
       setKit,
+      setEventType,
       clear,
     };
-  }, [state, ready, addProduct, setProductQuantity, removeProduct, setKit, clear]);
+  }, [state, ready, addProduct, setProductQuantity, removeProduct, setKit, setEventType, clear]);
 
   return <OrcamentoContext.Provider value={value}>{children}</OrcamentoContext.Provider>;
 }
