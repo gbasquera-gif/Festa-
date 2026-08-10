@@ -9,6 +9,7 @@ import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { DetailHeader } from "@/components/DetailHeader";
+import { CelebrationBackdrop } from "@/components/CelebrationBackdrop";
 import { api, ApiError } from "@/lib/api";
 import { formatBRL } from "@/lib/catalog";
 import { track } from "@/lib/analytics";
@@ -94,20 +95,28 @@ export default function Pagamento() {
 
   const total = Number(event?.order.total ?? 0);
   const { deposit: depositAmount, balance } = splitPayment(total);
+  const festaEm = event ? new Date(event.date).toLocaleDateString("pt-BR") : null;
 
   if (paid) {
     return (
-      <Screen header={<DetailHeader title="Pagamento" showShare={false} />} contentClassName="gap-5">
+      <Screen
+        header={<DetailHeader title="Pagamento" showShare={false} />}
+        contentClassName="gap-5"
+        backdrop={<CelebrationBackdrop />}
+      >
         <View className="items-center gap-3 pt-6">
-          <View className="h-20 w-20 items-center justify-center rounded-full bg-green-100">
-            <Ionicons name="checkmark-circle" size={64} color="#16A34A" />
-          </View>
-          <Text className="text-center font-sans-extrabold text-2xl text-navy">
-            Pagamento confirmado!
+          <Text className="text-5xl">🎉</Text>
+          <Text className="text-center font-sans-extrabold text-3xl leading-9 text-navy">
+            Sua festa está
           </Text>
-          <Text className="text-center text-navy/70">
-            Recebemos seu sinal de {formatBRL(depositAmount)}. Sua data está garantida — a Festaê
-            vai confirmar os detalhes com você.
+          <Text className="-mt-3 text-center font-sans-extrabold text-4xl text-coral">
+            garantida!
+          </Text>
+          <Text className="text-center text-base leading-6 text-navy/70">
+            {festaEm
+              ? `Recebemos seu sinal de ${formatBRL(depositAmount)} e a data ${festaEm} é sua. `
+              : `Recebemos seu sinal de ${formatBRL(depositAmount)} e a data é sua. `}
+            Agora é só esperar o grande dia — a gente cuida do resto. 🎈
           </Text>
         </View>
 

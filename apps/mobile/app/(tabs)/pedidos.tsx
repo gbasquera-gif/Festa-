@@ -12,6 +12,7 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { api } from "@/lib/api";
 import { formatBRL } from "@/lib/catalog";
 import { useOrcamento } from "@/lib/orcamento";
+import { DiscardEventButton } from "@/components/DiscardEventButton";
 import { useAuth } from "@/lib/auth";
 import { goToLogin, goToSignup } from "@/lib/login-gate";
 import { EVENT_TYPE_LABEL, ORDER_STATUS_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
@@ -173,6 +174,15 @@ export default function Pedidos() {
             </Text>
             <Text className="text-navy/70">{event.theme?.name ?? "Tema não escolhido"}</Text>
             <Text className="mt-2 font-sans-bold text-coral">{formatBRL(event.order.total)}</Text>
+
+            {/* Só enquanto o pedido não foi enviado: depois de solicitado há
+                reserva e possivelmente sinal, e aí cancelar é conversa com a
+                Festaê, não um toque. */}
+            {event.order.status === "CART" && (
+              <View className="mt-2 border-t border-sand pt-1">
+                <DiscardEventButton eventId={event.id} onDiscarded={() => {}} />
+              </View>
+            )}
           </Card>
         ))}
       </View>

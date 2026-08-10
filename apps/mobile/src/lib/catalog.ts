@@ -75,8 +75,13 @@ export function isProductCategory(value: string): value is ProductCategory {
 }
 
 /**
- * Diferenciais exibidos na tela de detalhe. São promessas de serviço da Festaê
- * (valem para todo o catálogo), variando só pela categoria do item.
+ * Diferenciais exibidos na tela de detalhe.
+ *
+ * São promessas de serviço, então precisam ser verdade. Já foram por água
+ * abaixo "Montagem inclusa" e "Entrega rápida": desde que entrega e montagem
+ * viraram opcionais e pagas, esses selos contradiziam o resumo do pedido e
+ * os Termos de Uso — o cliente lia "inclusa" na vitrine e via "+ R$ 50" no
+ * checkout. Antes de acrescentar um selo aqui, confira se a operação cumpre.
  */
 export interface Highlight {
   icon: string;
@@ -85,56 +90,41 @@ export interface Highlight {
 }
 
 const DEFAULT_HIGHLIGHTS: Highlight[] = [
-  { icon: "tools", iconSet: "mci", label: "Montagem\ninclusa" },
-  { icon: "truck-fast-outline", iconSet: "mci", label: "Entrega\nrápida" },
-  { icon: "calendar-clock", iconSet: "mci", label: "Retirada\nflexível" },
-  { icon: "spray-bottle", iconSet: "mci", label: "Limpeza\ninclusa" },
+  { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
+  { icon: "truck-outline", iconSet: "mci", label: "Entrega\nopcional" },
+  { icon: "tools", iconSet: "mci", label: "Montagem\nopcional" },
+  { icon: "spray-bottle", iconSet: "mci", label: "Higienizado\na cada uso" },
 ];
 
 const HIGHLIGHTS_BY_CATEGORY: Partial<Record<ProductCategory, Highlight[]>> = {
   MOBILIARIO: [
     { icon: "table-furniture", iconSet: "mci", label: "Estrutura\nreforçada" },
-    { icon: "seat-outline", iconSet: "mci", label: "Conforto\ngarantido" },
     { icon: "party-popper", iconSet: "mci", label: "Ideal para\neventos" },
     { icon: "spray-bottle", iconSet: "mci", label: "Higienizadas\ne cuidadas" },
+    { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
   ],
   LOUCA: [
     { icon: "dishwasher", iconSet: "mci", label: "Higienizadas\ne cuidadas" },
-    { icon: "truck-fast-outline", iconSet: "mci", label: "Entrega\nrápida" },
     { icon: "package-variant-closed", iconSet: "mci", label: "Embalagem\nsegura" },
-    { icon: "calendar-clock", iconSet: "mci", label: "Retirada\nflexível" },
+    { icon: "counter", iconSet: "mci", label: "Quantidade\nconferida" },
+    { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
   ],
   ILUMINACAO: [
-    { icon: "tools", iconSet: "mci", label: "Instalação\ninclusa" },
     { icon: "shield-check-outline", iconSet: "mci", label: "Cabos\ntestados" },
-    { icon: "truck-fast-outline", iconSet: "mci", label: "Entrega\nrápida" },
-    { icon: "calendar-clock", iconSet: "mci", label: "Retirada\nflexível" },
+    { icon: "lightbulb-on-outline", iconSet: "mci", label: "Lâmpadas\nconferidas" },
+    { icon: "tools", iconSet: "mci", label: "Montagem\nopcional" },
+    { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
   ],
   BRINQUEDO: [
     { icon: "shield-check-outline", iconSet: "mci", label: "Seguro para\ncrianças" },
-    { icon: "tools", iconSet: "mci", label: "Montagem\ninclusa" },
     { icon: "spray-bottle", iconSet: "mci", label: "Higienizado\na cada uso" },
-    { icon: "calendar-clock", iconSet: "mci", label: "Retirada\nflexível" },
+    { icon: "tools", iconSet: "mci", label: "Montagem\nopcional" },
+    { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
   ],
 };
 
 export function highlightsFor(category: ProductCategory): Highlight[] {
   return HIGHLIGHTS_BY_CATEGORY[category] ?? DEFAULT_HIGHLIGHTS;
-}
-
-/**
- * Cores em que o item aparece no catálogo. O produto não guarda cor própria —
- * a informação real vem da paleta dos temas dos kits que o incluem.
- */
-export function paletteForProduct(
-  productId: string,
-  kits: { theme: { colorPalette: string[] } | null; products: { productId: string }[] }[],
-) {
-  const palette = kits
-    .filter((kit) => kit.products.some((link) => link.productId === productId))
-    .flatMap((kit) => kit.theme?.colorPalette ?? []);
-
-  return [...new Set(palette)];
 }
 
 export function formatBRL(value: string | number) {

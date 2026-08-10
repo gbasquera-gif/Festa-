@@ -9,7 +9,6 @@ import { Badge } from "@/components/Badge";
 import { DetailHeader } from "@/components/DetailHeader";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { HighlightGrid } from "@/components/HighlightGrid";
-import { ColorSwatches } from "@/components/ColorSwatches";
 import { ImageCover } from "@/components/ImageCover";
 import { api } from "@/lib/api";
 import { formatBRL, highlightsFor } from "@/lib/catalog";
@@ -47,7 +46,6 @@ export default function KitDetalhe() {
 
   const chosen = kitId === kit.id;
   const images = [kit.coverImageUrl, ...kit.images].filter((image): image is string => Boolean(image));
-  const palette = kit.theme?.colorPalette ?? [];
 
   function handleToggleKit() {
     if (chosen) {
@@ -110,8 +108,6 @@ export default function KitDetalhe() {
       </View>
 
       <HighlightGrid highlights={highlightsFor("DECORACAO")} />
-
-      {palette.length > 0 && <ColorSwatches colors={palette} />}
 
       {kit.products.length > 0 && (
         <View className="gap-3">

@@ -8,10 +8,9 @@ import { Button } from "@/components/Button";
 import { DetailHeader } from "@/components/DetailHeader";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { HighlightGrid } from "@/components/HighlightGrid";
-import { ColorSwatches } from "@/components/ColorSwatches";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { api } from "@/lib/api";
-import { CATEGORY_BY_KEY, formatBRL, highlightsFor, paletteForProduct } from "@/lib/catalog";
+import { CATEGORY_BY_KEY, formatBRL, highlightsFor } from "@/lib/catalog";
 import { useFavoritos } from "@/lib/favoritos";
 import { useOrcamento } from "@/lib/orcamento";
 import { track } from "@/lib/analytics";
@@ -48,7 +47,6 @@ export default function ProdutoDetalhe() {
   }
 
   const category = CATEGORY_BY_KEY[product.category];
-  const palette = paletteForProduct(product.id, kits ?? []);
   const images = product.imageUrl ? [product.imageUrl] : [];
 
   function handleAdd() {
@@ -105,8 +103,6 @@ export default function ProdutoDetalhe() {
       )}
 
       <HighlightGrid highlights={highlightsFor(product.category)} />
-
-      {palette.length > 0 && <ColorSwatches colors={palette} />}
     </Screen>
   );
 }

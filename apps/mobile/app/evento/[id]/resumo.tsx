@@ -11,6 +11,7 @@ import { Badge } from "@/components/Badge";
 import { TextField } from "@/components/TextField";
 import { StepProgress } from "@/components/StepProgress";
 import { HelpLink } from "@/components/WhatsAppButton";
+import { DiscardEventButton } from "@/components/DiscardEventButton";
 import { api, ApiError } from "@/lib/api";
 import { formatBRL } from "@/lib/catalog";
 import { track } from "@/lib/analytics";
@@ -232,6 +233,11 @@ export default function Resumo() {
             </Text>
           </View>
           <HelpLink message="Oi! Tenho uma dúvida sobre o orçamento da minha festa." />
+          <DiscardEventButton
+            eventId={id}
+            label="Descartar e começar do zero"
+            onDiscarded={() => router.replace("/(tabs)")}
+          />
         </>
       )}
     </Screen>

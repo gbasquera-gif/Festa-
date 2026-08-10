@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { createEventSchema, updateEventSchema } from "@festae/shared";
 import type { CreateEventInput, UpdateEventInput } from "@festae/shared";
@@ -45,5 +45,10 @@ export class EventsController {
     @Body(new ZodValidationPipe(updateEventSchema)) body: UpdateEventInput,
   ) {
     return this.eventsService.update(id, user.userId, body);
+  }
+
+  @Delete(":id")
+  discard(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.eventsService.discard(id, user);
   }
 }
