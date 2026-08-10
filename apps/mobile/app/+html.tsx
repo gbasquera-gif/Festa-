@@ -30,6 +30,19 @@ export default function Root({ children }: PropsWithChildren) {
         {/* Cor da barra do navegador no celular — o mesmo azul da marca. */}
         <meta name="theme-color" content="#12314F" />
 
+        {/* O cartão que o WhatsApp monta quando alguém encaminha o link.
+            Sem isto ele mostra a URL crua do Railway, que não diz nada e
+            ainda parece link suspeito — justo no canal por onde o teste
+            com pessoas de fora vai circular. */}
+        <meta property="og:title" content="Festaê — Locação de artigos para festas" />
+        <meta
+          property="og:description"
+          content="Monte sua festa, reserve a data e pague o sinal pelo aplicativo. Chapecó/SC."
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:locale" content="pt_BR" />
+        <meta property="og:site_name" content="Festaê" />
+
         {/* Permite "adicionar à tela de início" no iPhone e no Android, que é
             como as pessoas do teste vão querer voltar ao app. */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
