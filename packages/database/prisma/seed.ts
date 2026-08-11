@@ -127,14 +127,18 @@ async function seedDemoData() {
     },
   });
 
+  // Catálogo de exemplo, só decoração — o mesmo recorte do acervo real.
+  // Antes tinha louça, cadeira de convidado e caixa de brinquedos, itens que
+  // a Festaê não aluga: um catálogo de demonstração que descreve outro
+  // negócio ensina errado quem abre o projeto pela primeira vez.
   const productsData = [
     { name: "Mesa Provençal Branca", slug: "mesa-provencal-branca", category: "MOBILIARIO", unitPrice: 180, stockQuantity: 12 },
     { name: "Painel de Festa Redondo", slug: "painel-festa-redondo", category: "DECORACAO", unitPrice: 220, stockQuantity: 8 },
     { name: "Arco de Balões Temático", slug: "arco-baloes-tematico", category: "DECORACAO", unitPrice: 150, stockQuantity: 15 },
-    { name: "Conjunto de Louça Infantil", slug: "conjunto-louca-infantil", category: "LOUCA", unitPrice: 90, stockQuantity: 20 },
-    { name: "Cadeira Infantil Decorada (unid.)", slug: "cadeira-infantil-decorada", category: "MOBILIARIO", unitPrice: 25, stockQuantity: 40 },
+    { name: "Trio de Cilindros Decorativos", slug: "trio-cilindros-decorativos", category: "DECORACAO", unitPrice: 90, stockQuantity: 20 },
+    { name: "Vaso com Arranjo (unid.)", slug: "vaso-com-arranjo", category: "DECORACAO", unitPrice: 25, stockQuantity: 40 },
     { name: "Kit Iluminação Ambiente", slug: "kit-iluminacao-ambiente", category: "ILUMINACAO", unitPrice: 110, stockQuantity: 10 },
-    { name: "Caixa de Brinquedos Temática", slug: "caixa-brinquedos-tematica", category: "BRINQUEDO", unitPrice: 70, stockQuantity: 14 },
+    { name: "Placa de Nome Personalizada", slug: "placa-nome-personalizada", category: "DECORACAO", unitPrice: 70, stockQuantity: 14 },
     { name: "Toalha de Mesa Personalizada", slug: "toalha-mesa-personalizada", category: "DECORACAO", unitPrice: 60, stockQuantity: 18 },
   ] as const;
 
@@ -167,7 +171,7 @@ async function seedDemoData() {
     create: {
       name: "Kit Completo",
       slug: "kit-completo",
-      description: "Tudo incluso: mobiliário, decoração, louças e iluminação para uma experiência completa.",
+      description: "Tudo incluso: painel, arco, mesa posta e iluminação para uma decoração completa.",
       themeId: temaSafari.id,
       basePrice: 890,
     },
@@ -225,8 +229,8 @@ async function seedDemoData() {
   await linkKitProduct(kitCompleto.id, "mesa-provencal-branca", 2);
   await linkKitProduct(kitCompleto.id, "painel-festa-redondo", 1);
   await linkKitProduct(kitCompleto.id, "arco-baloes-tematico", 2);
-  await linkKitProduct(kitCompleto.id, "conjunto-louca-infantil", 1);
-  await linkKitProduct(kitCompleto.id, "cadeira-infantil-decorada", 20);
+  await linkKitProduct(kitCompleto.id, "trio-cilindros-decorativos", 1);
+  await linkKitProduct(kitCompleto.id, "vaso-com-arranjo", 20);
   await linkKitProduct(kitCompleto.id, "kit-iluminacao-ambiente", 1);
 
   await linkKitProduct(kitChaDeBebe.id, "mesa-provencal-branca", 1);

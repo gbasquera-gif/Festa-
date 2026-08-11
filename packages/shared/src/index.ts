@@ -39,6 +39,8 @@ export {
 } from "./event-types";
 export type { EventTypeMeta } from "./event-types";
 
+export { PRODUCT_CATEGORY_OPTIONS, PRODUCT_CATEGORY_LABEL } from "./product-categories";
+
 export { BRAND_COLORS, BRAND_NAME, DEFAULT_CITY, DEFAULT_STATE } from "./brand";
 
 export {

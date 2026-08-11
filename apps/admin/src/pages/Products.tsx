@@ -5,7 +5,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { z } from "zod";
-import { createProductSchema, PRODUCT_CATEGORIES, type CreateProductInput } from "@festae/shared";
+import {
+  createProductSchema,
+  PRODUCT_CATEGORY_LABEL,
+  PRODUCT_CATEGORY_OPTIONS,
+  type CreateProductInput,
+} from "@festae/shared";
 import { ImageUploadField } from "@/components/image-upload-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +57,7 @@ function ProductForm({ product, onSaved }: { product?: Product; onSaved: () => v
       name: "",
       slug: "",
       description: "",
-      category: "OUTRO",
+      category: "DECORACAO",
       unitPrice: 0,
       stockQuantity: 0,
       active: true,
@@ -100,9 +105,11 @@ function ProductForm({ product, onSaved }: { product?: Product; onSaved: () => v
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PRODUCT_CATEGORIES.map((c) => (
+              {/* Só as categorias que o acervo usa — ver
+                  PRODUCT_CATEGORY_OPTIONS no pacote compartilhado. */}
+              {PRODUCT_CATEGORY_OPTIONS.map((c) => (
                 <SelectItem key={c} value={c}>
-                  {c}
+                  {PRODUCT_CATEGORY_LABEL[c]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -204,7 +211,7 @@ export default function Products() {
             <TableRow key={product.id}>
               <TableCell className="font-medium">{product.name}</TableCell>
               <TableCell>
-                <Badge variant="secondary">{product.category}</Badge>
+                <Badge variant="secondary">{PRODUCT_CATEGORY_LABEL[product.category]}</Badge>
               </TableCell>
               <TableCell>R$ {Number(product.unitPrice).toFixed(2)}</TableCell>
               <TableCell>{product.stockQuantity}</TableCell>

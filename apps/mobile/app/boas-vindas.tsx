@@ -20,11 +20,20 @@ import { ONBOARDING_KEY } from "@/lib/onboarding";
 
 const SLIDE_WIDTH = Dimensions.get("window").width;
 
+/**
+ * A apresentação promete o que a Festaê faz de verdade.
+ *
+ * O primeiro slide dizia "conectamos você aos melhores fornecedores de todos
+ * os ramos" — descrição de marketplace, e a Festaê não é isso: é acervo
+ * próprio de decoração, alugado direto. Prometer intermediação de terceiros
+ * cria expectativa de bolo, buffet e DJ na primeira tela, e a segunda tela
+ * já desmente.
+ */
 const SLIDES = [
   {
-    title: "Tudo para a sua festa,",
-    highlight: "com agilidade e praticidade.",
-    body: "Conectamos você aos melhores fornecedores de todos os ramos.",
+    title: "Decoração de festa",
+    highlight: "para alugar em Chapecó.",
+    body: "Painéis, arcos de balões e mesa posta do nosso acervo, prontos para a sua data.",
   },
   {
     title: "Diga que festa vai fazer",

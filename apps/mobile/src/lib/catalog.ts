@@ -10,84 +10,6 @@ export function normalize(value: string) {
 }
 
 /**
- * Metadados de apresentação das categorias de produto.
- *
- * A categoria saiu da navegação do cliente — quem chega pensa na ocasião
- * ("chá de bebê"), não no tipo de peça. Ela continua existindo como
- * organização interna do catálogo: serve para rotular a peça na tela de
- * detalhe e para escolher os diferenciais certos de cada tipo de item.
- */
-export interface CategoryMeta {
-  key: ProductCategory;
-  label: string;
-  /** Nome curto usado nos círculos da home, onde não cabe o rótulo inteiro. */
-  shortLabel: string;
-  icon: string;
-  /** "ion" = Ionicons, "mci" = MaterialCommunityIcons. */
-  iconSet: "ion" | "mci";
-  description: string;
-}
-
-export const CATEGORIES: CategoryMeta[] = [
-  {
-    key: "DECORACAO",
-    label: "Decoração",
-    shortLabel: "Decoração",
-    icon: "balloon",
-    iconSet: "mci",
-    description: "Painéis, arcos, balões e tudo que dá cara de festa ao ambiente.",
-  },
-  {
-    key: "MOBILIARIO",
-    label: "Mesas e Cadeiras",
-    shortLabel: "Mesas e\nCadeiras",
-    icon: "table-chair",
-    iconSet: "mci",
-    description: "Mesas, cadeiras, aparadores e mobiliário para acomodar os convidados.",
-  },
-  {
-    key: "LOUCA",
-    label: "Louças",
-    shortLabel: "Louças",
-    icon: "silverware-fork-knife",
-    iconSet: "mci",
-    description: "Pratos, taças, talheres e travessas para servir com capricho.",
-  },
-  {
-    key: "ILUMINACAO",
-    label: "Iluminação",
-    shortLabel: "Iluminação",
-    icon: "bulb-outline",
-    iconSet: "ion",
-    description: "Cordões de luz, spots e luminárias para dar clima à celebração.",
-  },
-  {
-    key: "BRINQUEDO",
-    label: "Brinquedos",
-    shortLabel: "Brinquedos",
-    icon: "teddy-bear",
-    iconSet: "mci",
-    description: "Pula-pula, piscina de bolinhas e diversão garantida para a criançada.",
-  },
-  {
-    key: "OUTRO",
-    label: "Outros",
-    shortLabel: "Outros",
-    icon: "sparkles-outline",
-    iconSet: "ion",
-    description: "Itens complementares que fazem a diferença no dia da festa.",
-  },
-];
-
-export const CATEGORY_BY_KEY = Object.fromEntries(
-  CATEGORIES.map((category) => [category.key, category]),
-) as Record<ProductCategory, CategoryMeta>;
-
-export function isProductCategory(value: string): value is ProductCategory {
-  return value in CATEGORY_BY_KEY;
-}
-
-/**
  * Diferenciais exibidos na tela de detalhe.
  *
  * São promessas de serviço, então precisam ser verdade. Já foram por água
@@ -109,6 +31,9 @@ const DEFAULT_HIGHLIGHTS: Highlight[] = [
   { icon: "spray-bottle", iconSet: "mci", label: "Higienizado\na cada uso" },
 ];
 
+// Só as categorias que o acervo tem. Louças e brinquedos tinham selos
+// prontos aqui, prometendo "quantidade conferida" e "seguro para crianças"
+// para itens que a Festaê não aluga.
 const HIGHLIGHTS_BY_CATEGORY: Partial<Record<ProductCategory, Highlight[]>> = {
   MOBILIARIO: [
     { icon: "table-furniture", iconSet: "mci", label: "Estrutura\nreforçada" },
@@ -116,21 +41,9 @@ const HIGHLIGHTS_BY_CATEGORY: Partial<Record<ProductCategory, Highlight[]>> = {
     { icon: "spray-bottle", iconSet: "mci", label: "Higienizadas\ne cuidadas" },
     { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
   ],
-  LOUCA: [
-    { icon: "dishwasher", iconSet: "mci", label: "Higienizadas\ne cuidadas" },
-    { icon: "package-variant-closed", iconSet: "mci", label: "Embalagem\nsegura" },
-    { icon: "counter", iconSet: "mci", label: "Quantidade\nconferida" },
-    { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
-  ],
   ILUMINACAO: [
     { icon: "shield-check-outline", iconSet: "mci", label: "Cabos\ntestados" },
     { icon: "lightbulb-on-outline", iconSet: "mci", label: "Lâmpadas\nconferidas" },
-    { icon: "tools", iconSet: "mci", label: "Montagem\nopcional" },
-    { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
-  ],
-  BRINQUEDO: [
-    { icon: "shield-check-outline", iconSet: "mci", label: "Seguro para\ncrianças" },
-    { icon: "spray-bottle", iconSet: "mci", label: "Higienizado\na cada uso" },
     { icon: "tools", iconSet: "mci", label: "Montagem\nopcional" },
     { icon: "store-outline", iconSet: "mci", label: "Retirada\ngrátis" },
   ],

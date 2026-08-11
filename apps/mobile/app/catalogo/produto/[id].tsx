@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
+import { PRODUCT_CATEGORY_LABEL } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Button } from "@/components/Button";
 import { DetailHeader } from "@/components/DetailHeader";
@@ -10,7 +11,7 @@ import { ImageCarousel } from "@/components/ImageCarousel";
 import { HighlightGrid } from "@/components/HighlightGrid";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { api } from "@/lib/api";
-import { CATEGORY_BY_KEY, formatBRL, highlightsFor } from "@/lib/catalog";
+import { formatBRL, highlightsFor } from "@/lib/catalog";
 import { useFavoritos } from "@/lib/favoritos";
 import { useOrcamento } from "@/lib/orcamento";
 import { track } from "@/lib/analytics";
@@ -46,7 +47,6 @@ export default function ProdutoDetalhe() {
     );
   }
 
-  const category = CATEGORY_BY_KEY[product.category];
   const images = product.imageUrl ? [product.imageUrl] : [];
 
   function handleAdd() {
@@ -59,7 +59,7 @@ export default function ProdutoDetalhe() {
     <Screen
       header={
         <DetailHeader
-          title={category?.label ?? "Item"}
+          title={PRODUCT_CATEGORY_LABEL[product.category] ?? "Item"}
           favorite={isFavorite("product", product.id)}
           onToggleFavorite={() => toggle("product", product.id)}
           shareMessage={`Olha esse item na Festaê: ${product.name} — ${formatBRL(product.unitPrice)}`}
