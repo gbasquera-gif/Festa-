@@ -20,32 +20,18 @@ import { FESTAS, MENSAGEM_FESTA_PERSONALIZADA } from "@/lib/festas";
 import { EVENT_TYPE_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
 
-const PROMOS: Promo[] = [
-  {
-    titleLines: ["Sua festa,", "com tudo que"],
-    highlight: "você precisa!",
-    subtitle: "Encontre, reserve e monte de forma rápida e segura.",
-    cta: "Explorar agora",
-    icon: "package-variant",
-    onPress: () => router.push("/(tabs)/festas"),
-  },
-  {
-    titleLines: ["Kits prontos", "para quem quer"],
-    highlight: "resolver rápido.",
-    subtitle: "Decoração, mesa e louças combinando, num pacote só.",
-    cta: "Ver os kits",
-    icon: "party-popper",
-    onPress: () => router.push("/catalogo/kits"),
-  },
-  {
-    titleLines: ["Reserve a data", "e escolha como"],
-    highlight: "quer receber.",
-    subtitle: "Retirada grátis na Festaê. Entrega e montagem opcionais em Chapecó.",
-    cta: "Reservar data",
-    icon: "calendar-heart",
-    onPress: () => router.push("/evento/criar"),
-  },
-];
+/**
+ * O destaque da home diz o que a Festaê faz e manda escolher a ocasião —
+ * que é onde a jornada começa de verdade.
+ */
+const PROMO: Promo = {
+  titleLines: ["Sua festa,", "com tudo que"],
+  highlight: "você precisa!",
+  subtitle: "Encontre, reserve e monte de forma rápida e segura.",
+  cta: "Explorar agora",
+  icon: "package-variant",
+  onPress: () => router.push("/(tabs)/festas"),
+};
 
 export default function Home() {
   const { user } = useAuth();
@@ -105,7 +91,7 @@ export default function Home() {
 
       <SearchField onPress={() => router.push("/catalogo/busca")} />
 
-      <PromoBanner promos={PROMOS} />
+      <PromoBanner promo={PROMO} />
 
       {ongoing && (
         <Card
