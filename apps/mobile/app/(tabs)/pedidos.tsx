@@ -10,7 +10,7 @@ import { ImageCover } from "@/components/ImageCover";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { SectionHeader } from "@/components/SectionHeader";
 import { api } from "@/lib/api";
-import { formatBRL } from "@/lib/catalog";
+import { formatBRL, formatConvidados } from "@/lib/catalog";
 import { useOrcamento } from "@/lib/orcamento";
 import { DiscardEventButton } from "@/components/DiscardEventButton";
 import { useAuth } from "@/lib/auth";
@@ -170,7 +170,7 @@ export default function Pedidos() {
               />
             </View>
             <Text className="mt-1 text-navy/70">
-              {new Date(event.date).toLocaleDateString("pt-BR")} · {event.guestCount} convidados
+              {new Date(event.date).toLocaleDateString("pt-BR")} · {formatConvidados(event.guestCount)}
             </Text>
             <Text className="text-navy/70">{event.theme?.name ?? "Tema não escolhido"}</Text>
             <Text className="mt-2 font-sans-bold text-coral">{formatBRL(event.order.total)}</Text>

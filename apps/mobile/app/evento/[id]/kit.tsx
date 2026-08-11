@@ -45,8 +45,14 @@ export default function EscolherKit() {
 
       <View>
         <Text className="font-sans-extrabold text-2xl text-navy">Kit ideal para sua festa</Text>
+        {/* Sem número de convidados não há recomendação por tamanho — a
+            lista sai completa, e a frase precisa dizer isso em vez de
+            prometer um recorte que não aconteceu. */}
         <Text className="text-navy/70">
-          Recomendado para {event?.guestCount ?? "—"} convidados{event?.theme ? ` · ${event.theme.name}` : ""}.
+          {event?.guestCount
+            ? `Recomendado para ${event.guestCount} convidados`
+            : "Todos os kits disponíveis"}
+          {event?.theme ? ` · ${event.theme.name}` : ""}.
         </Text>
       </View>
 

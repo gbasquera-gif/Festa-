@@ -8,7 +8,7 @@ interface EventRow {
   id: string;
   type: string;
   date: string;
-  guestCount: number;
+  guestCount: number | null;
   budgetGoal: string | null;
   city: string;
   theme: { name: string } | null;
@@ -59,7 +59,7 @@ export default function Events() {
               </TableCell>
               <TableCell>{typeLabel(event.type)}</TableCell>
               <TableCell>{event.theme?.name ?? "—"}</TableCell>
-              <TableCell>{event.guestCount}</TableCell>
+              <TableCell>{event.guestCount ?? "A combinar"}</TableCell>
               <TableCell>{event.order ? `R$ ${Number(event.order.total).toFixed(2)}` : "—"}</TableCell>
               <TableCell>
                 <Badge variant="secondary">{event.order?.status ?? "—"}</Badge>

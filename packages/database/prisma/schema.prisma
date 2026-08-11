@@ -145,7 +145,10 @@ model Event {
   userId      String
   type        EventType
   date        DateTime
-  guestCount  Int
+  // Opcional: perguntar quantos convidados logo no primeiro passo travava
+  // quem ainda não fechou a lista. Vazio significa "a combinar", e a
+  // operação acerta o número pelo WhatsApp antes de separar os itens.
+  guestCount  Int?
   budgetGoal  Decimal?  @db.Decimal(10, 2)
   themeId     String?
   address     String?

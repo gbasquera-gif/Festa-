@@ -37,7 +37,7 @@ interface ReservationRow {
       paidAt: string | null;
     }[];
     event: {
-      guestCount: number;
+      guestCount: number | null;
       address: string | null;
       neighborhood: string | null;
       city: string;
@@ -182,7 +182,9 @@ function Detail({ row }: { row: ReservationRow }) {
         <h3 className="text-sm font-bold text-navy">Evento e logística</h3>
         <dl className="space-y-2 text-sm">
           <Field label="Data" value={eventDate} />
-          <Field label="Convidados" value={event.guestCount} />
+          {/* Pode vir em branco: o cliente reserva a data antes de fechar a
+              lista, e a Festaê acerta o número antes de separar os itens. */}
+          <Field label="Convidados" value={event.guestCount ?? "A combinar"} />
           <Field label="Tema" value={event.theme?.name ?? "—"} />
           <Field
             label="Entrega"

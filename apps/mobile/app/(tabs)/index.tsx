@@ -14,6 +14,7 @@ import { PromoBanner, type Promo } from "@/components/PromoBanner";
 import { useAuth } from "@/lib/auth";
 import { goToLogin } from "@/lib/login-gate";
 import { api } from "@/lib/api";
+import { formatConvidados } from "@/lib/catalog";
 import { track } from "@/lib/analytics";
 import { openWhatsApp } from "@/lib/contato";
 import { FESTAS, MENSAGEM_FESTA_PERSONALIZADA } from "@/lib/festas";
@@ -104,7 +105,7 @@ export default function Home() {
           <Badge label="Continuar de onde parou" variant="coral" />
           <Text className="mt-2 text-lg font-sans-bold text-navy">{EVENT_TYPE_LABEL[ongoing.type]}</Text>
           <Text className="text-navy/70">
-            {new Date(ongoing.date).toLocaleDateString("pt-BR")} · {ongoing.guestCount} convidados
+            {new Date(ongoing.date).toLocaleDateString("pt-BR")} · {formatConvidados(ongoing.guestCount)}
           </Text>
         </Card>
       )}

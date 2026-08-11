@@ -9,7 +9,12 @@ export type AvailabilityQuery = z.infer<typeof availabilityQuerySchema>;
 export const createEventSchema = z.object({
   type: z.enum(EVENT_TYPES),
   date: z.coerce.date(),
-  guestCount: z.coerce.number().int().min(1).max(2000),
+  /**
+   * Quantos convidados. Opcional de propósito: muita gente reserva a data
+   * antes de fechar a lista, e exigir o número no primeiro passo parava
+   * quem ainda não sabia. Vazio vira "a combinar".
+   */
+  guestCount: z.coerce.number().int().min(1).max(2000).optional(),
   budgetGoal: z.coerce.number().min(0).optional(),
   themeId: z.string().cuid().optional(),
   address: z.string().max(255).optional(),

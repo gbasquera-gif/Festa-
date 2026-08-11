@@ -140,6 +140,16 @@ export function highlightsFor(category: ProductCategory): Highlight[] {
   return HIGHLIGHTS_BY_CATEGORY[category] ?? DEFAULT_HIGHLIGHTS;
 }
 
+/**
+ * "30 convidados" ou "convidados a combinar".
+ *
+ * A frase inteira muda, e não só o número: "— convidados" ou "0 convidados"
+ * leem como erro do aplicativo, não como uma resposta que ainda vai vir.
+ */
+export function formatConvidados(guestCount: number | null | undefined) {
+  return guestCount ? `${guestCount} convidados` : "convidados a combinar";
+}
+
 export function formatBRL(value: string | number) {
   return Number(value).toLocaleString("pt-BR", {
     style: "currency",

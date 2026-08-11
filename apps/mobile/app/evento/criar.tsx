@@ -60,7 +60,10 @@ export default function CriarEvento() {
         body: JSON.stringify({
           type,
           date,
-          guestCount: Number(guestCount),
+          // Campo em branco vai como ausente, e não como 0: zero convidados
+          // é um número, e apareceria no painel como se a pessoa tivesse
+          // respondido isso.
+          guestCount: guestCount.trim() ? Number(guestCount) : undefined,
           themeId,
           city,
         }),
@@ -112,32 +115,44 @@ export default function CriarEvento() {
         </Text>
       </View>
 
-      <View className="gap-2">
-        <Text className="text-sm font-bold text-navy">Tipo de evento</Text>
-        <View className="flex-row flex-wrap gap-2">
-          {FESTAS.map((festa) => (
-            <Chip
-              key={festa.key}
-              label={festa.label}
-              selected={type === festa.key}
-              onPress={() => setType(festa.key)}
-            />
-          ))}
+      {/* A ocasião só é perguntada aqui para quem não passou pela vitrine —
+          quem entrou por "Chá de bebê" já respondeu, e repetir a pergunta
+          faz o fluxo parecer que não prestou atenção. Sem essa ressalva a
+          festa sairia gravada como aniversário, que é só o valor inicial do
+          formulário, sem ninguém ter escolhido. */}
+      {!draftEventType && (
+        <View className="gap-2">
+          <Text className="text-sm font-bold text-navy">Tipo de evento</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {FESTAS.map((festa) => (
+              <Chip
+                key={festa.key}
+                label={festa.label}
+                selected={type === festa.key}
+                onPress={() => setType(festa.key)}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      )}
 
       <View className="gap-2">
         <Text className="text-sm font-bold text-navy">Data da festa</Text>
         <AvailabilityCalendar value={date} onChange={setDate} />
       </View>
 
-      <TextField
-        label="Quantidade de convidados"
-        placeholder="Ex: 30"
-        value={guestCount}
-        onChangeText={setGuestCount}
-        keyboardType="number-pad"
-      />
+      <View className="gap-1">
+        <TextField
+          label="Quantidade de convidados (opcional)"
+          placeholder="Ex: 30"
+          value={guestCount}
+          onChangeText={setGuestCount}
+          keyboardType="number-pad"
+        />
+        <Text className="text-xs leading-4 text-navy/60">
+          Não sabe ainda? Deixe em branco — a gente acerta o número antes de separar os itens.
+        </Text>
+      </View>
 
       <View className="gap-2">
         <Text className="text-sm font-bold text-navy">Onde vai ser a festa?</Text>
@@ -214,7 +229,7 @@ export default function CriarEvento() {
       <Button
         onPress={() => mutation.mutate()}
         loading={mutation.isPending}
-        disabled={!date || !guestCount || missingCity}
+        disabled={!date || missingCity}
       >
         {hasDraft ? "Continuar" : "Ver kits recomendados"}
       </Button>

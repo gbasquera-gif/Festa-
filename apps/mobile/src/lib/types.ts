@@ -92,7 +92,8 @@ export interface EventRecord {
   id: string;
   type: EventType;
   date: string;
-  guestCount: number;
+  /** Pode ficar em branco: quem ainda não fechou a lista reserva assim mesmo. */
+  guestCount: number | null;
   budgetGoal: string | null;
   themeId: string | null;
   theme: Theme | null;
