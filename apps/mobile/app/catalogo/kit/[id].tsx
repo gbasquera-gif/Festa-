@@ -163,14 +163,14 @@ export default function KitDetalhe() {
 
       {kit.description && <Text className="text-base leading-6 text-navy/70">{kit.description}</Text>}
 
-      <View className="flex-row flex-wrap gap-2">
-        {/* Kits sem faixa definida ficam com o default 0–9999 no banco: mostrar
-            isso como "0 a 9999 convidados" não diz nada ao cliente. */}
-        {kit.minGuests > 0 && kit.maxGuests < 9999 && (
-          <Badge label={`${kit.minGuests} a ${kit.maxGuests} convidados`} variant="neutral" />
-        )}
-        {kit.theme && <Badge label={kit.theme.name} variant="coral" />}
-      </View>
+      {/* Sem faixa de convidados: o catálogo é de decoração, e painel, arco e
+          mesa não mudam porque a festa tem 20 ou 200 pessoas. O selo dizia
+          "10 a 30 convidados" como se houvesse um limite que não existe. */}
+      {kit.theme && (
+        <View className="flex-row flex-wrap gap-2">
+          <Badge label={kit.theme.name} variant="coral" />
+        </View>
+      )}
 
       <HighlightGrid highlights={highlightsFor("DECORACAO")} />
 

@@ -9,7 +9,7 @@ import { StepProgress } from "@/components/StepProgress";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { api } from "@/lib/api";
 import { track } from "@/lib/analytics";
-import type { EventRecord, Kit } from "@/lib/types";
+import { EVENT_TYPE_LABEL, type EventRecord, type Kit } from "@/lib/types";
 
 export default function EscolherKit() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -20,11 +20,15 @@ export default function EscolherKit() {
     queryFn: () => api<EventRecord>(`/events/${id}`),
   });
 
+  // Os kits saem pela ocasião da festa e, quando houver, pelo tema — o
+  // mesmo recorte da vitrine. Antes o filtro era por número de convidados,
+  // que num catálogo só de decoração não separa nada: painel e arco são os
+  // mesmos para 20 ou 200 pessoas.
   const { data: kits, isLoading } = useQuery({
-    queryKey: ["kits-recommend", event?.guestCount, event?.themeId],
+    queryKey: ["kits", event?.type, event?.themeId],
     queryFn: () =>
       api<Kit[]>(
-        `/kits/recommend?guestCount=${event?.guestCount ?? ""}&themeId=${event?.themeId ?? ""}`,
+        `/kits?eventType=${event!.type}${event?.themeId ? `&themeId=${event.themeId}` : ""}`,
       ),
     enabled: !!event,
   });
@@ -44,14 +48,9 @@ export default function EscolherKit() {
       <StepProgress step={2} />
 
       <View>
-        <Text className="font-sans-extrabold text-2xl text-navy">Kit ideal para sua festa</Text>
-        {/* Sem número de convidados não há recomendação por tamanho — a
-            lista sai completa, e a frase precisa dizer isso em vez de
-            prometer um recorte que não aconteceu. */}
+        <Text className="font-sans-extrabold text-2xl text-navy">Escolha seu kit</Text>
         <Text className="text-navy/70">
-          {event?.guestCount
-            ? `Recomendado para ${event.guestCount} convidados`
-            : "Todos os kits disponíveis"}
+          {event ? EVENT_TYPE_LABEL[event.type] : "Kits"}
           {event?.theme ? ` · ${event.theme.name}` : ""}.
         </Text>
       </View>

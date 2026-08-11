@@ -77,6 +77,10 @@ function KitForm({
       slug: "",
       description: "",
       basePrice: 0,
+      // Faixa aberta: o catálogo é de decoração, e painel ou arco não mudam
+      // com o tamanho da festa. As colunas continuam no banco para o dia em
+      // que entrar algo que dependa disso (cadeira, louça), mas ninguém
+      // preenche e nada filtra por elas.
       minGuests: 0,
       maxGuests: 9999,
       active: true,
@@ -154,16 +158,6 @@ function KitForm({
           <Input id="basePrice" type="number" step="0.01" {...form.register("basePrice", { valueAsNumber: true })} />
         </div>
         <div className="flex flex-col gap-2" />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="minGuests">Mín. convidados</Label>
-          <Input id="minGuests" type="number" {...form.register("minGuests", { valueAsNumber: true })} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="maxGuests">Máx. convidados</Label>
-          <Input id="maxGuests" type="number" {...form.register("maxGuests", { valueAsNumber: true })} />
-        </div>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="description">Descrição</Label>
@@ -280,7 +274,6 @@ export default function Kits() {
             <TableHead>Nome</TableHead>
             <TableHead>Tema</TableHead>
             <TableHead>Preço base</TableHead>
-            <TableHead>Convidados</TableHead>
             <TableHead>Itens</TableHead>
             <TableHead className="text-right">Ações</TableHead>
           </TableRow>
@@ -288,7 +281,7 @@ export default function Kits() {
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={6}>Carregando...</TableCell>
+              <TableCell colSpan={5}>Carregando...</TableCell>
             </TableRow>
           )}
           {kits?.map((kit) => (
@@ -296,9 +289,6 @@ export default function Kits() {
               <TableCell className="font-medium">{kit.name}</TableCell>
               <TableCell className="text-muted-foreground">{kit.theme?.name ?? "—"}</TableCell>
               <TableCell>R$ {Number(kit.basePrice).toFixed(2)}</TableCell>
-              <TableCell>
-                {kit.minGuests}–{kit.maxGuests}
-              </TableCell>
               <TableCell>{kit.products.length}</TableCell>
               <TableCell className="flex justify-end gap-2">
                 <Button

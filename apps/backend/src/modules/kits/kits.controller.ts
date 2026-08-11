@@ -28,20 +28,6 @@ export class KitsController {
     });
   }
 
-  // Must come before ":id" so "recommend" isn't captured as an id param.
-  @Get("recommend")
-  recommend(
-    @Query("guestCount") guestCount?: string,
-    @Query("themeId") themeId?: string,
-    @Query("eventType") eventType?: string,
-  ) {
-    return this.kitsService.recommend({
-      guestCount: guestCount ? Number(guestCount) : undefined,
-      themeId,
-      eventType: eventType && isEventType(eventType) ? eventType : undefined,
-    });
-  }
-
   @Get(":id")
   findOne(@Param("id") id: string) {
     return this.kitsService.findById(id);

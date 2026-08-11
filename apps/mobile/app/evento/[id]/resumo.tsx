@@ -13,7 +13,7 @@ import { StepProgress } from "@/components/StepProgress";
 import { HelpLink } from "@/components/WhatsAppButton";
 import { DiscardEventButton } from "@/components/DiscardEventButton";
 import { api, ApiError } from "@/lib/api";
-import { formatBRL, formatConvidados } from "@/lib/catalog";
+import { formatBRL } from "@/lib/catalog";
 import { track } from "@/lib/analytics";
 import { EVENT_TYPE_LABEL, ORDER_STATUS_LABEL, type EventRecord } from "@/lib/types";
 import { colors } from "@/theme";
@@ -109,7 +109,6 @@ export default function Resumo() {
       <Card>
         <Text className="font-bold text-navy">{EVENT_TYPE_LABEL[event.type]}</Text>
         <Text className="text-navy/70">{new Date(event.date).toLocaleDateString("pt-BR")}</Text>
-        <Text className="text-navy/70">{formatConvidados(event.guestCount)}</Text>
         {/* O tema pode ter vindo do kit, e não do formulário: quem escolhe
             "Kit Safari" na vitrine já disse qual é o tema, e mostrar "Sem
             tema definido" logo abaixo faria o resumo parecer errado. */}

@@ -32,7 +32,6 @@ export default function CriarEvento() {
   // "Aniversário" faria a pessoa desfazer uma escolha que ela já tinha feito.
   const [type, setType] = useState<EventType>(draftEventType ?? "ANIVERSARIO");
   const [date, setDate] = useState("");
-  const [guestCount, setGuestCount] = useState("");
   const [inDeliveryCity, setInDeliveryCity] = useState(true);
   const [otherCity, setOtherCity] = useState("");
   const [themeId, setThemeId] = useState<string | undefined>(undefined);
@@ -60,10 +59,6 @@ export default function CriarEvento() {
         body: JSON.stringify({
           type,
           date,
-          // Campo em branco vai como ausente, e não como 0: zero convidados
-          // é um número, e apareceria no painel como se a pessoa tivesse
-          // respondido isso.
-          guestCount: guestCount.trim() ? Number(guestCount) : undefined,
           themeId,
           city,
         }),
@@ -111,7 +106,7 @@ export default function CriarEvento() {
         <Text className="text-navy/70">
           {hasDraft
             ? "Falta só a data para fecharmos seu orçamento."
-            : "Essas informações ajudam a gente a recomendar o kit ideal."}
+            : "Escolha a data e a gente mostra os kits disponíveis."}
         </Text>
       </View>
 
@@ -139,19 +134,6 @@ export default function CriarEvento() {
       <View className="gap-2">
         <Text className="text-sm font-bold text-navy">Data da festa</Text>
         <AvailabilityCalendar value={date} onChange={setDate} />
-      </View>
-
-      <View className="gap-1">
-        <TextField
-          label="Quantidade de convidados (opcional)"
-          placeholder="Ex: 30"
-          value={guestCount}
-          onChangeText={setGuestCount}
-          keyboardType="number-pad"
-        />
-        <Text className="text-xs leading-4 text-navy/60">
-          Não sabe ainda? Deixe em branco — a gente acerta o número antes de separar os itens.
-        </Text>
       </View>
 
       <View className="gap-2">

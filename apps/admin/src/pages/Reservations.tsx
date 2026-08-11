@@ -182,9 +182,10 @@ function Detail({ row }: { row: ReservationRow }) {
         <h3 className="text-sm font-bold text-navy">Evento e logística</h3>
         <dl className="space-y-2 text-sm">
           <Field label="Data" value={eventDate} />
-          {/* Pode vir em branco: o cliente reserva a data antes de fechar a
-              lista, e a Festaê acerta o número antes de separar os itens. */}
-          <Field label="Convidados" value={event.guestCount ?? "A combinar"} />
+          {/* O app não pergunta mais: a Festaê aluga decoração, e painel ou
+              arco não mudam com o tamanho da festa. Festas antigas guardam
+              o número e seguem exibindo. */}
+          <Field label="Convidados" value={event.guestCount ?? "—"} />
           <Field label="Tema" value={event.theme?.name ?? "—"} />
           <Field
             label="Entrega"

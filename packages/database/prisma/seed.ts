@@ -158,8 +158,6 @@ async function seedDemoData() {
       description: "O básico bem feito: mesa, painel e arco de balões para uma festa linda sem complicação.",
       themeId: temaEncantado.id,
       basePrice: 450,
-      minGuests: 10,
-      maxGuests: 30,
     },
   });
 
@@ -172,8 +170,6 @@ async function seedDemoData() {
       description: "Tudo incluso: mobiliário, decoração, louças e iluminação para uma experiência completa.",
       themeId: temaSafari.id,
       basePrice: 890,
-      minGuests: 20,
-      maxGuests: 60,
     },
   });
 
@@ -186,8 +182,6 @@ async function seedDemoData() {
       description: "Delicadeza em cada detalhe para celebrar a chegada do bebê.",
       themeId: temaNuvem.id,
       basePrice: 520,
-      minGuests: 10,
-      maxGuests: 40,
     },
   });
 
@@ -200,8 +194,6 @@ async function seedDemoData() {
       description: "O suspense da revelação com decoração impecável.",
       themeId: temaSera.id,
       basePrice: 560,
-      minGuests: 10,
-      maxGuests: 40,
     },
   });
 
@@ -214,8 +206,6 @@ async function seedDemoData() {
       description: "Mesa posta com toalha, painel e iluminação suave para a celebração.",
       themeId: temaCeuDeAnjos.id,
       basePrice: 480,
-      minGuests: 10,
-      maxGuests: 50,
     },
   });
 
@@ -265,7 +255,6 @@ async function seedDemoData() {
       userId: demoClient.id,
       type: "ANIVERSARIO",
       date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
-      guestCount: 25,
       budgetGoal: 700,
       themeId: temaSafari.id,
     },

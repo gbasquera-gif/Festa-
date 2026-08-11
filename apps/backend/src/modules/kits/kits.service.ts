@@ -46,7 +46,6 @@ export interface KitQuery {
   eventType?: EventType;
   themeId?: string;
   search?: string;
-  guestCount?: number;
 }
 
 @Injectable()
@@ -62,18 +61,11 @@ export class KitsService {
       where: {
         active: true,
         ...(query.themeId ? { themeId: query.themeId } : {}),
-        ...(query.guestCount
-          ? { minGuests: { lte: query.guestCount }, maxGuests: { gte: query.guestCount } }
-          : {}),
         ...(conditions.length > 0 ? { AND: conditions } : {}),
       },
       include: kitInclude,
       orderBy: { basePrice: "asc" },
     });
-  }
-
-  recommend(params: { guestCount?: number; themeId?: string; eventType?: EventType }) {
-    return this.findAll(params);
   }
 
   async findById(id: string) {

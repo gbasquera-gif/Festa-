@@ -141,13 +141,16 @@ export function highlightsFor(category: ProductCategory): Highlight[] {
 }
 
 /**
- * "30 convidados" ou "convidados a combinar".
+ * " · 30 convidados", ou nada.
  *
- * A frase inteira muda, e não só o número: "— convidados" ou "0 convidados"
- * leem como erro do aplicativo, não como uma resposta que ainda vai vir.
+ * O aplicativo não pergunta mais quantos convidados — a Festaê aluga
+ * decoração, e painel ou arco não mudam porque a festa tem 20 ou 200
+ * pessoas. Festas criadas antes disso guardam o número, e continuam
+ * mostrando; as novas simplesmente não exibem a linha, em vez de anunciar
+ * "a combinar" para algo que ninguém vai combinar.
  */
-export function formatConvidados(guestCount: number | null | undefined) {
-  return guestCount ? `${guestCount} convidados` : "convidados a combinar";
+export function sufixoConvidados(guestCount: number | null | undefined) {
+  return guestCount ? ` · ${guestCount} convidados` : "";
 }
 
 export function formatBRL(value: string | number) {
