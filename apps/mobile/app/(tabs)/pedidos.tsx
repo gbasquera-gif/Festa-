@@ -14,7 +14,7 @@ import { formatBRL, sufixoConvidados } from "@/lib/catalog";
 import { useOrcamento } from "@/lib/orcamento";
 import { DiscardEventButton } from "@/components/DiscardEventButton";
 import { useAuth } from "@/lib/auth";
-import { goToLogin, goToSignup } from "@/lib/login-gate";
+import { goToLogin } from "@/lib/login-gate";
 import { EVENT_TYPE_LABEL, ORDER_STATUS_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
 
@@ -120,7 +120,9 @@ export default function Pedidos() {
 
           {/* O orçamento fica guardado no aparelho: quem monta sem conta não
               perde nada ao criar uma na hora de fechar. */}
-          <Button onPress={() => (user ? router.push("/evento/criar") : goToSignup("/evento/criar"))}>
+          {/* Montar a festa não pede conta: o cadastro vem no fim, quando
+              a reserva é fechada. */}
+          <Button onPress={() => router.push("/montar/data")}>
             {user ? "Fechar orçamento" : "Criar conta e fechar orçamento"}
           </Button>
           {!user && (

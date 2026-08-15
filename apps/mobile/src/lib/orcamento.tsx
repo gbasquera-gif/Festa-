@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { EventType } from "@festae/shared";
+import type { EventType, Fulfillment } from "@festae/shared";
 
 const STORAGE_KEY = "festae_orcamento";
 
@@ -9,19 +9,47 @@ export interface OrcamentoItem {
   quantity: number;
 }
 
+/**
+ * A festa inteira, montada no aparelho antes de existir conta.
+ *
+ * Guarda tudo: ocasião, kit, itens, data, cidade e logística. É isso que
+ * permite pedir o cadastro só no fim — quem monta a festa toda e só então
+ * cria conta já investiu tempo e sabe o preço, e a chance de desistir no
+ * formulário é muito menor do que na primeira tela.
+ */
 interface OrcamentoState {
   kitId: string | null;
   items: OrcamentoItem[];
-  /**
-   * Ocasião escolhida na vitrine. Guardada aqui para o formulário de criar a
-   * festa já vir com ela marcada: quem entrou por "Chá de bebê" e teve de
-   * escolher de novo no passo seguinte tinha razão em achar que o app não
-   * estava prestando atenção.
-   */
+  /** Ocasião escolhida na vitrine. */
   eventType: EventType | null;
+  /** Data da festa, no formato AAAA-MM-DD. */
+  date: string | null;
+  city: string | null;
+  fulfillment: Fulfillment;
+  assembly: boolean;
+  address: string | null;
+  neighborhood: string | null;
 }
 
-const EMPTY: OrcamentoState = { kitId: null, items: [], eventType: null };
+const EMPTY: OrcamentoState = {
+  kitId: null,
+  items: [],
+  eventType: null,
+  date: null,
+  city: null,
+  fulfillment: "PICKUP",
+  assembly: false,
+  address: null,
+  neighborhood: null,
+};
+
+/** Parte da festa que as telas de data e logística gravam. */
+export type DadosDaFesta = Partial<
+  Pick<
+    OrcamentoState,
+    "eventType" | "date" | "city" | "fulfillment" | "assembly" | "address" | "neighborhood"
+  >
+>;
 
 interface OrcamentoContextValue extends OrcamentoState {
   /** Total de peças (soma das quantidades) + 1 se houver kit escolhido. */
@@ -33,6 +61,8 @@ interface OrcamentoContextValue extends OrcamentoState {
   removeProduct: (productId: string) => void;
   setKit: (kitId: string | null) => void;
   setEventType: (eventType: EventType | null) => void;
+  /** Grava data, cidade e logística — o que as telas do fluxo preenchem. */
+  setDadosDaFesta: (dados: DadosDaFesta) => void;
   clear: () => void;
 }
 
@@ -108,6 +138,10 @@ export function OrcamentoProvider({ children }: { children: ReactNode }) {
     setState((current) => (current.eventType === eventType ? current : { ...current, eventType }));
   }, []);
 
+  const setDadosDaFesta = useCallback((dados: DadosDaFesta) => {
+    setState((current) => ({ ...current, ...dados }));
+  }, []);
+
   const clear = useCallback(() => setState(EMPTY), []);
 
   const value = useMemo<OrcamentoContextValue>(() => {
@@ -122,9 +156,20 @@ export function OrcamentoProvider({ children }: { children: ReactNode }) {
       removeProduct,
       setKit,
       setEventType,
+      setDadosDaFesta,
       clear,
     };
-  }, [state, ready, addProduct, setProductQuantity, removeProduct, setKit, setEventType, clear]);
+  }, [
+    state,
+    ready,
+    addProduct,
+    setProductQuantity,
+    removeProduct,
+    setKit,
+    setEventType,
+    setDadosDaFesta,
+    clear,
+  ]);
 
   return <OrcamentoContext.Provider value={value}>{children}</OrcamentoContext.Provider>;
 }

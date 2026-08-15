@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { DELIVERY_CITY, splitPayment } from "@festae/shared";
+import { calculateOrderPricing } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Badge } from "@/components/Badge";
 import { TextField } from "@/components/TextField";
 import { StepProgress } from "@/components/StepProgress";
+import { CartaoServicos, CartaoValores, Line } from "@/components/ResumoValores";
 import { HelpLink } from "@/components/WhatsAppButton";
 import { DiscardEventButton } from "@/components/DiscardEventButton";
 import { api, ApiError } from "@/lib/api";
@@ -17,38 +18,6 @@ import { formatBRL } from "@/lib/catalog";
 import { track } from "@/lib/analytics";
 import { EVENT_TYPE_LABEL, ORDER_STATUS_LABEL, type EventRecord } from "@/lib/types";
 import { colors } from "@/theme";
-
-/** Linha de valor. `strong` destaca o total; `muted` suaviza os itens grátis. */
-function Line({
-  label,
-  value,
-  strong,
-  muted,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <View className="flex-row items-baseline justify-between">
-      <Text className={strong ? "font-sans-extrabold text-lg text-navy" : "text-navy/70"}>
-        {label}
-      </Text>
-      <Text
-        className={
-          strong
-            ? "font-sans-extrabold text-lg text-coral"
-            : muted
-              ? "text-navy/50"
-              : "font-sans-bold text-navy"
-        }
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
 
 export default function Resumo() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -89,13 +58,18 @@ export default function Resumo() {
 
   const order = event.order;
   const alreadyRequested = order.status !== "CART";
-  const total = Number(order.total);
-  const { deposit, balance } = splitPayment(total);
-  const deliveryFee = Number(order.deliveryFee);
-  const assemblyFee = Number(order.assemblyFee);
-  const subtotalProducts = Number(order.subtotalKit) + Number(order.subtotalExtras);
-  const isDelivery = order.fulfillment === "DELIVERY";
   const address = [event.address, event.neighborhood].filter(Boolean).join(", ");
+
+  // Recalcula com o motor compartilhado a partir do que o pedido gravou, em
+  // vez de somar aqui: é a mesma função que a API usou para fechar o total,
+  // então resumo e Pix nunca divergem por arredondamento.
+  const pricing = calculateOrderPricing({
+    subtotalKit: Number(order.subtotalKit),
+    subtotalExtras: Number(order.subtotalExtras),
+    fulfillment: order.fulfillment,
+    assembly: order.assembly,
+    city: event.city,
+  });
 
   return (
     <Screen>
@@ -141,64 +115,24 @@ export default function Resumo() {
         )}
 
         <View className="mt-3 border-t border-sand pt-3">
-          <Line label="Subtotal dos produtos" value={formatBRL(subtotalProducts)} />
+          <Line label="Subtotal dos produtos" value={formatBRL(pricing.subtotalProducts)} />
         </View>
       </Card>
 
       {/* A logística fica em cartão próprio e editável: é a escolha que o
           cliente mais volta para revisar antes de confirmar. */}
-      <Card>
-        <View className="mb-2 flex-row items-center justify-between">
-          <Text className="font-bold text-navy">Serviços adicionais</Text>
-          {!alreadyRequested && (
-            <Pressable onPress={() => router.push(`/evento/${id}/logistica`)} hitSlop={8}>
-              <Text className="text-sm font-sans-bold text-coral">Alterar</Text>
-            </Pressable>
-          )}
-        </View>
+      <CartaoServicos
+        fulfillment={order.fulfillment}
+        assembly={order.assembly}
+        deliveryFee={pricing.deliveryFee}
+        assemblyFee={pricing.assemblyFee}
+        address={address}
+        onAlterar={
+          alreadyRequested ? undefined : () => router.push(`/evento/${id}/logistica`)
+        }
+      />
 
-        <Line
-          label={isDelivery ? `Entrega em ${DELIVERY_CITY}` : "Retirada na Festaê"}
-          value={deliveryFee > 0 ? formatBRL(deliveryFee) : "Grátis"}
-          muted={deliveryFee === 0}
-        />
-        {isDelivery && address && (
-          <Text className="mt-0.5 text-sm text-navy/50">{address}</Text>
-        )}
-
-        <View className="mt-1">
-          <Line
-            label={order.assembly ? "Montagem da festa" : "Sem montagem"}
-            value={assemblyFee > 0 ? formatBRL(assemblyFee) : "Grátis"}
-            muted={assemblyFee === 0}
-          />
-        </View>
-      </Card>
-
-      <Card>
-        <Text className="mb-3 font-bold text-navy">Valores</Text>
-        <Line label="Produtos" value={formatBRL(subtotalProducts)} />
-        <Line
-          label="Taxa de entrega"
-          value={deliveryFee > 0 ? formatBRL(deliveryFee) : "R$ 0,00"}
-          muted={deliveryFee === 0}
-        />
-        <Line
-          label="Taxa de montagem"
-          value={assemblyFee > 0 ? formatBRL(assemblyFee) : "R$ 0,00"}
-          muted={assemblyFee === 0}
-        />
-
-        <View className="mt-3 border-t border-sand pt-3">
-          <Line label="Total" value={formatBRL(total)} strong />
-        </View>
-
-        <View className="mt-4 gap-1 rounded-2xl bg-linen p-3.5">
-          <Text className="font-sans-bold text-navy">Pagamento em duas partes</Text>
-          <Line label="Sinal de 50% — agora, via Pix" value={formatBRL(deposit)} />
-          <Line label="Restante de 50% — na retirada/entrega" value={formatBRL(balance)} />
-        </View>
-      </Card>
+      <CartaoValores pricing={pricing} />
 
       {alreadyRequested ? (
         <>

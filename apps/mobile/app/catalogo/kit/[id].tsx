@@ -141,7 +141,7 @@ export default function KitDetalhe() {
                   {formatBRL(totalParcial)}
                 </Text>
               </View>
-              <Button onPress={() => router.push("/evento/criar")}>Continuar para a data</Button>
+              <Button onPress={() => router.push("/montar/data")}>Continuar para a data</Button>
               <Pressable onPress={() => setKit(null)} hitSlop={8} className="items-center py-1">
                 <Text className="text-sm font-sans-bold text-navy/50">Remover kit do orçamento</Text>
               </Pressable>

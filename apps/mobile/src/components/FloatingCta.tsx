@@ -31,7 +31,7 @@ export function FloatingCta({
 
   const temOrcamento = count > 0;
   const texto = label ?? (temOrcamento ? "Fechar minha festa" : "Montar minha festa");
-  const destino = () => router.push(temOrcamento ? "/evento/criar" : "/(tabs)/festas");
+  const destino = () => router.push(temOrcamento ? "/montar/data" : "/(tabs)/festas");
 
   return (
     <View className="absolute inset-x-5 bottom-5" pointerEvents="box-none">
