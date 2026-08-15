@@ -55,6 +55,12 @@ export default function RootLayout() {
     if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded]);
 
+  // Segura a tela até a fonte chegar, para o texto não piscar numa fonte e
+  // trocar para outra. Isso deixa o HTML da exportação estática sem conteúdo
+  // — tentei liberar a renderização na web para resolver, e o resultado foi
+  // erro de hidratação em toda página: o servidor renderiza sem as fontes, o
+  // cliente com elas, e os dois HTMLs não batem. Quem precisa de página legal
+  // legível sem JavaScript usa /legal/:slug da API, que é HTML de verdade.
   if (!fontsLoaded) return <TituloDaPagina />;
 
   return (

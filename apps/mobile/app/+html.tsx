@@ -42,6 +42,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="pt_BR" />
         <meta property="og:site_name" content="Festaê" />
+        <meta property="og:url" content="https://reservas.festaechapeco.com.br" />
 
         {/* Permite "adicionar à tela de início" no iPhone e no Android, que é
             como as pessoas do teste vão querer voltar ao app. */}

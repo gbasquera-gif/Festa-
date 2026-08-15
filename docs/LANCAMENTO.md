@@ -216,14 +216,20 @@ Nenhuma variável é necessária: a URL da API já é o padrão do Dockerfile
 O texto dos dois documentos existe, está no ar, é exigido no cadastro e
 **já contém todas as decisões oficiais do negócio** (versão 1.1.0).
 
-**Onde está no ar** (páginas públicas, sem login, servidas pela própria API):
+**Onde está no ar** (páginas públicas, sem login, no domínio da empresa):
 
-- https://festa-production.up.railway.app/legal/privacidade
-- https://festa-production.up.railway.app/legal/termos
+- https://reservas.festaechapeco.com.br/legal/privacidade
+- https://reservas.festaechapeco.com.br/legal/termos
 
-São essas as URLs que vão nos formulários da Apple e do Google. Quando a
-Festaê tiver site próprio, basta apontar as variáveis `PRIVACY_POLICY_URL` e
-`TERMS_OF_USE_URL` para lá — nenhum endereço está fixo no código.
+São essas as URLs que vão nos formulários da Apple e do Google. Estão no
+mesmo domínio do aplicativo e do e-mail da empresa, que é o que um revisor
+confere ao comparar a ficha da loja com a política.
+
+A API continua servindo o mesmo texto em HTML puro, sem depender de
+JavaScript, em `https://festa-production.up.railway.app/legal/privacidade` e
+`/legal/termos`. Se alguma loja exigir uma página legível sem JavaScript,
+aponte `EXPO_PUBLIC_LEGAL_BASE_URL` para lá — nenhum endereço está fixo no
+código.
 
 **Decisões oficiais já incorporadas** (07/08/2026):
 

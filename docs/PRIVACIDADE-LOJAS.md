@@ -10,8 +10,12 @@ mexer no console.
 
 **URLs que os dois formulários pedem:**
 
-- Política de Privacidade: `https://festa-production.up.railway.app/legal/privacidade`
-- Termos de Uso: `https://festa-production.up.railway.app/legal/termos`
+- Política de Privacidade: `https://reservas.festaechapeco.com.br/legal/privacidade`
+- Termos de Uso: `https://reservas.festaechapeco.com.br/legal/termos`
+
+(A API serve o mesmo texto em HTML puro em
+`https://festa-production.up.railway.app/legal/...`, caso alguma loja peça
+uma página que não dependa de JavaScript.)
 
 **Dados cadastrais que as duas lojas conferem** (têm que bater com o titular
 da conta de desenvolvedor, senão a conta trava na verificação):
