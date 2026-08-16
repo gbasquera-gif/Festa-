@@ -43,22 +43,12 @@ interface Theme extends CreateThemeInput {
 // lets the backend (which validates with the same schema) fill in defaults.
 type ThemeFormValues = z.input<typeof createThemeSchema>;
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
 function ThemeForm({ theme, onSaved }: { theme?: Theme; onSaved: () => void }) {
   const queryClient = useQueryClient();
   const form = useForm<ThemeFormValues>({
     resolver: zodResolver(createThemeSchema),
     defaultValues: theme ?? {
       name: "",
-      slug: "",
       description: "",
       colorPalette: [],
       suggestedEventTypes: [],
@@ -88,19 +78,11 @@ function ThemeForm({ theme, onSaved }: { theme?: Theme; onSaved: () => void }) {
         <Label htmlFor="name">Nome</Label>
         <Input
           id="name"
-          {...form.register("name", {
-            onChange: (e) => {
-              if (!theme) form.setValue("slug", slugify(e.target.value));
-            },
-          })}
+          {...form.register("name")}
         />
         {form.formState.errors.name && (
           <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
         )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="slug">Slug</Label>
-        <Input id="slug" {...form.register("slug")} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="description">Descrição</Label>
@@ -203,7 +185,6 @@ export default function Themes() {
         <TableHeader>
           <TableRow>
             <TableHead>Nome</TableHead>
-            <TableHead>Slug</TableHead>
             <TableHead>Aparece em</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Ações</TableHead>
@@ -212,13 +193,12 @@ export default function Themes() {
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={5}>Carregando...</TableCell>
+              <TableCell colSpan={4}>Carregando...</TableCell>
             </TableRow>
           )}
           {data?.map((theme) => (
             <TableRow key={theme.id}>
               <TableCell className="font-medium">{theme.name}</TableCell>
-              <TableCell className="text-muted-foreground">{theme.slug}</TableCell>
               <TableCell className="text-muted-foreground">
                 {theme.suggestedEventTypes && theme.suggestedEventTypes.length > 0
                   ? STOREFRONT_EVENT_TYPES.filter((meta) =>

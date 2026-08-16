@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import type { CreateKitInput, EventType, UpdateKitInput } from "@festae/shared";
+import { slugUnico } from "../../common/slug";
 
 const kitInclude = {
   theme: true,
@@ -74,11 +75,19 @@ export class KitsService {
     return kit;
   }
 
-  create(input: CreateKitInput) {
+  /** Confere se um slug já está em uso, inclusive por kit desativado. */
+  private slugEmUso(slug: string) {
+    return prisma.kit.findUnique({ where: { slug }, select: { id: true } });
+  }
+
+  async create(input: CreateKitInput) {
     const { products, ...data } = input;
+    const slug = await slugUnico(this.slugEmUso, input.slug ?? input.name);
+
     return prisma.kit.create({
       data: {
         ...data,
+        slug,
         products: {
           create: products.map((p) => ({ productId: p.productId, quantity: p.quantity })),
         },
@@ -91,6 +100,11 @@ export class KitsService {
     await this.findById(id);
     const { products, ...data } = input;
 
+    // Renomear o kit não mexe no slug: ele é o endereço do registro, e mudar
+    // endereço de coisa publicada quebra link já compartilhado. Só recalcula
+    // quando alguém manda um slug novo de propósito.
+    const slug = input.slug ? await slugUnico(this.slugEmUso, input.slug, id) : undefined;
+
     if (products) {
       await prisma.kitProduct.deleteMany({ where: { kitId: id } });
     }
@@ -99,6 +113,7 @@ export class KitsService {
       where: { id },
       data: {
         ...data,
+        ...(slug ? { slug } : {}),
         ...(products
           ? { products: { create: products.map((p) => ({ productId: p.productId, quantity: p.quantity })) } }
           : {}),

@@ -5,6 +5,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { PrismaExceptionFilter } from "./common/prisma-exception.filter";
 import { UPLOADS_ROOT } from "./modules/storage/local-disk-storage.service";
 
 async function bootstrap() {
@@ -29,6 +30,9 @@ async function bootstrap() {
       crossOriginResourcePolicy: { policy: "cross-origin" },
     }),
   );
+
+  // Erro de banco vira resposta legível em vez de "Internal server error".
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   app.useStaticAssets(UPLOADS_ROOT, { prefix: "/uploads" });
 

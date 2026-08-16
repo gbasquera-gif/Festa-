@@ -46,15 +46,6 @@ interface Kit extends Omit<CreateKitInput, "products"> {
 
 type KitFormValues = Omit<z.input<typeof createKitSchema>, "products">;
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
 function KitForm({
   kit,
   themes,
@@ -74,7 +65,6 @@ function KitForm({
     resolver: zodResolver(createKitSchema.omit({ products: true })),
     defaultValues: kit ?? {
       name: "",
-      slug: "",
       description: "",
       basePrice: 0,
       // Faixa aberta: o catálogo é de decoração, e painel ou arco não mudam
@@ -126,16 +116,8 @@ function KitForm({
         <Label htmlFor="name">Nome</Label>
         <Input
           id="name"
-          {...form.register("name", {
-            onChange: (e) => {
-              if (!kit) form.setValue("slug", slugify(e.target.value));
-            },
-          })}
+          {...form.register("name")}
         />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="slug">Slug</Label>
-        <Input id="slug" {...form.register("slug")} />
       </div>
       <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">

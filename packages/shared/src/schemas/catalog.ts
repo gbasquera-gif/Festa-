@@ -15,9 +15,16 @@ const optionalText = (max: number) =>
 const optionalUrl = () => z.string().url().or(z.literal("")).nullish().transform(emptyToNull);
 const optionalId = () => z.string().cuid().or(z.literal("")).nullish().transform(emptyToNull);
 
+// O slug é derivado do nome pela API, que também garante que não se repita.
+// Ele continua opcional aqui porque o painel não pede mais esse campo: era
+// um dado técnico que ninguém lê e que, digitado à mão, travava o cadastro
+// de dois kits com o mesmo nome — coisa que acontece o tempo todo, já que o
+// mesmo pacote é vendido em vários temas.
+const slugOpcional = () => z.string().min(2).max(180).optional();
+
 export const createThemeSchema = z.object({
   name: z.string().min(2).max(120),
-  slug: z.string().min(2).max(140),
+  slug: slugOpcional(),
   description: optionalText(1000),
   coverImageUrl: optionalUrl(),
   colorPalette: z.array(z.string()).default([]),
@@ -30,7 +37,7 @@ export type UpdateThemeInput = z.infer<typeof updateThemeSchema>;
 
 export const createProductSchema = z.object({
   name: z.string().min(2).max(160),
-  slug: z.string().min(2).max(180),
+  slug: slugOpcional(),
   description: optionalText(1000),
   category: z.enum(PRODUCT_CATEGORIES).default("OUTRO"),
   unitPrice: z.coerce.number().min(0),
@@ -50,7 +57,7 @@ export const kitProductInputSchema = z.object({
 
 export const createKitSchema = z.object({
   name: z.string().min(2).max(160),
-  slug: z.string().min(2).max(180),
+  slug: slugOpcional(),
   description: optionalText(1000),
   themeId: optionalId(),
   basePrice: z.coerce.number().min(0),
