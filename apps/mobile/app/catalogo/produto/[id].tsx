@@ -92,9 +92,14 @@ export default function ProdutoDetalhe() {
 
       <View className="gap-1">
         <Text className="font-sans-extrabold text-2xl leading-8 text-navy">{product.name}</Text>
+        {/* "a unidade", e não "/ diária": o preço é por peça alugada, e o
+            período de locação é o prazo combinado com a Festaê — é o que
+            dizem os Termos de Uso. Anunciar diária criava uma tabela de
+            preços que não existe, e ainda destoava do resto do app, que já
+            fala "a unidade" no detalhe do kit. */}
         <Text className="text-navy/60">
           <Text className="font-sans-extrabold text-xl text-coral">{formatBRL(product.unitPrice)}</Text>{" "}
-          / diária
+          a unidade
         </Text>
       </View>
 
