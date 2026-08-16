@@ -5,6 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { uploadImage } from "@/lib/api";
 
+/**
+ * Tamanho recomendado, calculado a partir do maior espaço em que a imagem
+ * aparece no app: o carrossel do detalhe, que ocupa a largura da tela por
+ * 260 pontos de altura — cerca de 1170 × 780 pixels num celular 3x.
+ *
+ * A dica fica aqui, no momento do envio, porque o servidor não redimensiona:
+ * a imagem é entregue ao aplicativo exatamente como foi enviada. Uma foto
+ * direto da câmera tem uns 4 MB e seria baixada inteira para preencher um
+ * card de 150 pixels — com oito kits na home, são dezenas de megabytes por
+ * visita. Em dados móveis, é a diferença entre "abriu rápido" e "esse app
+ * trava".
+ */
+const TAMANHO_RECOMENDADO = "Ideal: 1200 × 900 px (4:3), até 300 KB. Máximo aceito: 5 MB.";
+
 interface ImageUploadFieldProps {
   label: string;
   folder: "themes" | "kits" | "products";
@@ -19,6 +33,16 @@ export function ImageUploadField({ label, folder, value, onChange }: ImageUpload
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
+
+    // Avisa, mas não impede: a foto grande funciona, só deixa o app pesado.
+    // Barrar seria pior — travaria o cadastro por um problema de desempenho.
+    if (file.size > 800 * 1024) {
+      toast.warning(
+        `Imagem de ${Math.round(file.size / 1024)} KB. Ela vai funcionar, mas deixa o app ` +
+          "lento no celular. O ideal é reduzir para 1200 × 900 px, até 300 KB.",
+      );
+    }
+
     setUploading(true);
     try {
       const { url } = await uploadImage(folder, file);
@@ -34,6 +58,7 @@ export function ImageUploadField({ label, folder, value, onChange }: ImageUpload
   return (
     <div className="flex flex-col gap-2">
       <Label>{label}</Label>
+      <p className="text-xs text-muted-foreground">{TAMANHO_RECOMENDADO}</p>
       <div className="flex items-center gap-3">
         <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
           {value ? (
