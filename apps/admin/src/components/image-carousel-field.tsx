@@ -76,8 +76,11 @@ export function ImageCarouselField({ label, folder, value, onChange }: ImageCaro
           </>
         )}
       </div>
+      {/* Esta é a regra que define onde a foto boa deve entrar: no carrossel
+          ela aparece inteira, e é lá que o cliente decide se quer o kit. */}
       <p className="text-xs text-muted-foreground">
-        Visão geral, detalhes da decoração, mesa principal, ambiente completo.
+        Aparecem inteiras, sem corte, na tela do kit — em pé ou deitadas. É aqui que entra a foto
+        da decoração montada. Visão geral, detalhes, mesa principal, ambiente completo.
       </p>
     </div>
   );

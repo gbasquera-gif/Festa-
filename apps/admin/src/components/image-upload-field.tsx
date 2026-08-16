@@ -19,6 +19,16 @@ import { uploadImage } from "@/lib/api";
  */
 const TAMANHO_RECOMENDADO = "Ideal: 1200 × 900 px (4:3), até 300 KB. Máximo aceito: 5 MB.";
 
+/**
+ * A capa é miniatura de lista, e lista só funciona com cards do mesmo
+ * tamanho — então ela é recortada num retângulo deitado. Dizer isso aqui
+ * evita a surpresa de enviar uma foto em pé bonita e ver no app só a faixa
+ * do meio dela. A foto inteira tem lugar: o carrossel, logo abaixo.
+ */
+const AVISO_DE_CORTE =
+  "Aparece recortada num retângulo deitado nas listas. Prefira foto deitada, com o " +
+  "principal no centro. Para mostrar a decoração inteira, use o carrossel abaixo.";
+
 interface ImageUploadFieldProps {
   label: string;
   folder: "themes" | "kits" | "products";
@@ -58,6 +68,7 @@ export function ImageUploadField({ label, folder, value, onChange }: ImageUpload
   return (
     <div className="flex flex-col gap-2">
       <Label>{label}</Label>
+      <p className="text-xs text-muted-foreground">{AVISO_DE_CORTE}</p>
       <p className="text-xs text-muted-foreground">{TAMANHO_RECOMENDADO}</p>
       <div className="flex items-center gap-3">
         <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
