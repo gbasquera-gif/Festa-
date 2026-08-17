@@ -8,6 +8,7 @@ import { DetailHeader } from "@/components/DetailHeader";
 import { SearchField } from "@/components/SearchField";
 import { FestaCircle } from "@/components/FestaCard";
 import { SectionHeader } from "@/components/SectionHeader";
+import { SolicitarTema } from "@/components/SolicitarTema";
 import { CatalogGrid, type CatalogEntry } from "@/components/CatalogGrid";
 import { Icon } from "@/components/Icon";
 import { api } from "@/lib/api";
@@ -132,10 +133,19 @@ export default function Busca() {
       )}
 
       {nothingFound && (
-        <View className="rounded-2xl border border-sand bg-white px-6 py-10">
-          <Text className="text-center text-navy/70">
-            Nada encontrado para “{term.trim()}”. Tente outro termo ou comece escolhendo a ocasião.
-          </Text>
+        <View className="gap-3">
+          <View className="rounded-2xl border border-sand bg-white px-6 py-10">
+            <Text className="text-center text-navy/70">
+              Nada encontrado para “{term.trim()}”. Tente outro termo ou comece escolhendo a
+              ocasião.
+            </Text>
+          </View>
+
+          {/* Busca sem resultado é o melhor momento para perguntar: a pessoa
+              acabou de dizer, com as próprias palavras, o tema que ela queria
+              e não existe no acervo. Levar isso para o WhatsApp com o termo
+              junto transforma uma venda perdida em pedido de compra. */}
+          <SolicitarTema procurado={term.trim()} />
         </View>
       )}
 

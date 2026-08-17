@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Screen } from "@/components/Screen";
 import { DetailHeader } from "@/components/DetailHeader";
 import { Chip } from "@/components/Chip";
+import { SolicitarTema } from "@/components/SolicitarTema";
 import { ImageCover } from "@/components/ImageCover";
 import { CatalogGrid, type CatalogEntry } from "@/components/CatalogGrid";
 import { FestaPersonalizadaCard } from "@/components/FestaCard";
@@ -136,6 +137,11 @@ export default function FestaPorTipo() {
               <Chip label={`Tema: ${temaEscolhido.name} ✕`} selected onPress={() => escolherTema(null)} />
             </View>
           )}
+
+          {/* Logo abaixo dos temas, que é onde a pessoa descobre que o que ela
+              queria não está ali. Mais para baixo na página ela já teria
+              desistido. */}
+          <SolicitarTema ocasiao={festa.label} compacto />
         </View>
       )}
 
