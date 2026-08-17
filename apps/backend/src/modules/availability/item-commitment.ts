@@ -19,6 +19,22 @@ export interface PedidoComprometido {
   itensAvulsos: { productId: string; quantity: number }[];
 }
 
+/**
+ * O estoque deste produto foi realmente preenchido?
+ *
+ * Zero é o valor padrão do cadastro, não uma afirmação de que o item acabou.
+ * Tratar zero como "esgotado" fechou o calendário inteiro na loja: nenhum
+ * produto tinha estoque digitado, então todo kit derrubava todas as datas —
+ * com a agenda vazia e nenhuma reserva existindo.
+ *
+ * Enquanto o campo não for preenchido, o item não participa da conferência.
+ * Barrar venda por causa de um campo em branco é pior que o risco que a
+ * conferência evita, e é o mesmo critério já usado para produto sem cadastro.
+ */
+export function temEstoqueCadastrado(estoque: number): boolean {
+  return estoque > 0;
+}
+
 /** Item que faltou, com o número que a operação precisa enxergar. */
 export interface Conflito {
   productId: string;
@@ -67,7 +83,7 @@ export function conflitosDoPedido(
 
   for (const [productId, quantidade] of pedido) {
     const produto = estoquePorProduto.get(productId);
-    if (!produto) continue;
+    if (!produto || !temEstoqueCadastrado(produto.estoque)) continue;
 
     const usado = jaComprometido.get(productId) ?? 0;
     if (usado + quantidade > produto.estoque) {

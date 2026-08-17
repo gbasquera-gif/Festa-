@@ -3,6 +3,7 @@ import {
   conflitosDoPedido,
   mensagemDeConflito,
   somarCompromisso,
+  temEstoqueCadastrado,
   type PedidoComprometido,
 } from "./item-commitment";
 
@@ -98,6 +99,53 @@ describe("conflitosDoPedido", () => {
   it("não barra produto sem estoque cadastrado", () => {
     const conflitos = conflitosDoPedido(pedidoDoPainel, new Map([[painel, 99]]), new Map());
     expect(conflitos).toEqual([]);
+  });
+
+  // O furo que fechou o calendário da loja em produção: zero é o valor padrão
+  // do cadastro, e era lido como "acabou". Com nenhum produto tendo estoque
+  // digitado, todo kit derrubava todas as datas — sem uma reserva sequer.
+  it("estoque zero é campo não preenchido, não item esgotado", () => {
+    const conflitos = conflitosDoPedido(
+      pedidoDoPainel,
+      new Map(),
+      estoque({ [painel]: ["Painel Redondo", 0] }),
+    );
+    expect(conflitos).toEqual([]);
+  });
+
+  it("kit inteiro passa quando nenhum item tem estoque digitado", () => {
+    const conflitos = conflitosDoPedido(
+      {
+        itensDoKit: [
+          { productId: painel, quantity: 1 },
+          { productId: mesa, quantity: 1 },
+        ],
+        itensAvulsos: [],
+      },
+      new Map(),
+      estoque({ [painel]: ["Painel Redondo", 0], [mesa]: ["Mesa Provençal", 0] }),
+    );
+    expect(conflitos).toEqual([]);
+  });
+
+  it("volta a conferir assim que o estoque é preenchido", () => {
+    const conflitos = conflitosDoPedido(
+      pedidoDoPainel,
+      new Map([[painel, 1]]),
+      estoque({ [painel]: ["Painel Redondo", 1] }),
+    );
+    expect(conflitos).toHaveLength(1);
+  });
+});
+
+describe("temEstoqueCadastrado", () => {
+  it("zero e negativo contam como não preenchido", () => {
+    expect(temEstoqueCadastrado(0)).toBe(false);
+    expect(temEstoqueCadastrado(-1)).toBe(false);
+  });
+
+  it("qualquer quantidade positiva é cadastro válido", () => {
+    expect(temEstoqueCadastrado(1)).toBe(true);
   });
 });
 

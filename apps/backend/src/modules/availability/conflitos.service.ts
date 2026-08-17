@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { somarCompromisso, type PedidoComprometido } from "./item-commitment";
+import { somarCompromisso, temEstoqueCadastrado, type PedidoComprometido } from "./item-commitment";
 
 /** Quantas unidades sobrando já contam como aperto e merecem aviso. */
 const MARGEM_DE_RISCO = 1;
@@ -99,8 +99,9 @@ export class ConflitosService {
       for (const [productId, quantidade] of comprometido) {
         const produto = catalogo.get(productId);
         // Sem estoque cadastrado não há o que comparar — o mesmo critério
-        // que a loja usa para não barrar venda por campo em branco.
-        if (!produto) continue;
+        // que a loja usa para não barrar venda por campo em branco. Zero é o
+        // padrão do cadastro, e não "acabou o item".
+        if (!produto || !temEstoqueCadastrado(produto.stockQuantity)) continue;
 
         const disponivel = produto.stockQuantity - quantidade;
         if (disponivel > MARGEM_DE_RISCO) continue;
