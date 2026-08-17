@@ -91,6 +91,13 @@ enum PaymentType {
 
 // ---------- Models ----------
 
+// Os campos @unique deste schema (User.email, Theme.slug, Product.slug,
+// Kit.slug) valem para o banco inteiro, o que está correto enquanto houver
+// uma empresa só. Se a plataforma um dia atender outras empresas, eles
+// precisam virar únicos por empresa — ver docs/VISAO-SAAS.md §6.1 e §6.2,
+// onde o caso de User.email tem consequência de produto, não só de banco.
+// Enquanto isso: não acrescente @unique global novo em tabela de catálogo.
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique

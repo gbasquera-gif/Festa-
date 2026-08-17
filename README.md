@@ -77,4 +77,6 @@ pnpm check   # turbo run check (tsc --noEmit em todos os packages)
 
 Ver histórico de commits para o racional das decisões de arquitetura (monorepo, stack por app, modelagem do banco). Em resumo, o MVP cobre: cadastro/login, criação de evento, recomendação de kit por convidados/tema, carrinho com orçamento automático, solicitação e confirmação de reserva — tanto pelo app mobile quanto gerenciável pelo painel admin.
 
+**Visão de longo prazo:** [`docs/VISAO-SAAS.md`](docs/VISAO-SAAS.md) registra a hipótese de transformar a plataforma em SaaS B2B multi-tenant para outras empresas de decoração — com o roadmap por fases, a auditoria do que hoje bloquearia essa evolução e as regras de higiene para não criar bloqueio novo. **Nada disso está em construção**; a prioridade é a Festaê Chapecó. Leia antes de mexer em unicidade de dados (`slug`, `email`) ou em regra de preço.
+
 Ganchos já modelados no banco para a evolução futura (ainda sem lógica real): `Partner` (marketplace de decoradores/docerias/fotógrafos/etc, com `Product.partnerId` opcional) e o módulo `ai-magic` no backend (visualização de festa por IA a partir de foto do ambiente).

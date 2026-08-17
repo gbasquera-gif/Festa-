@@ -11,6 +11,12 @@
  *   entrega     R$ 20,00, exclusivamente em Chapecó
  *   montagem    R$ 50,00, opcional e independente da entrega
  *   pagamento   50% de sinal na reserva, 50% na retirada/entrega
+ *
+ * Estes valores são constantes porque hoje existe uma empresa só. Se um dia a
+ * plataforma atender outras (ver docs/VISAO-SAAS.md), viram configuração de
+ * cada empresa — e a migração só continua barata enquanto ninguém ler estas
+ * constantes fora daqui. Precisou do valor em outro arquivo? Passe por
+ * `calculateOrderPricing`, não importe a constante.
  */
 
 /** Taxa fixa de entrega. Vale só para Chapecó. */
