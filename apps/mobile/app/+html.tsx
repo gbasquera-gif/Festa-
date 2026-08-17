@@ -44,10 +44,27 @@ export default function Root({ children }: PropsWithChildren) {
         <meta property="og:site_name" content="Festaê" />
         <meta property="og:url" content="https://reservas.festaechapeco.com.br" />
 
+        {/* A imagem do cartão. Sem ela o WhatsApp mostrava só texto sobre
+            fundo cinza — num canal onde o link é encaminhado de mãe para mãe,
+            é a diferença entre parecer uma loja e parecer um link solto.
+            1200 × 630 é a proporção que as redes recortam; endereço absoluto
+            porque quem monta o cartão é o servidor delas, não o navegador. */}
+        <meta
+          property="og:image"
+          content="https://reservas.festaechapeco.com.br/og-festae.png"
+        />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="Festaê — Pegue, monte, comemore" />
+        <meta name="twitter:card" content="summary_large_image" />
+
         {/* Permite "adicionar à tela de início" no iPhone e no Android, que é
             como as pessoas do teste vão querer voltar ao app. */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="Festaê" />
+        {/* O iPhone ignora o favicon ao salvar na tela de início e usa esta
+            imagem. Sem ela, o atalho vira uma miniatura da página. */}
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
         <ScrollViewStyleReset />
       </head>
