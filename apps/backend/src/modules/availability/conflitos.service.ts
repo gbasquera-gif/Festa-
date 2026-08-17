@@ -29,6 +29,13 @@ export interface DataComProblema {
   itens: ItemDaData[];
 }
 
+/** Kit que não cabe no acervo nem com a agenda vazia. */
+export interface KitImpossivel {
+  kitId: string;
+  kit: string;
+  itens: { produto: string; precisa: number; estoque: number }[];
+}
+
 /**
  * Onde o material vai faltar, para a operação enxergar antes do dia chegar.
  *
@@ -43,6 +50,52 @@ export interface DataComProblema {
  */
 @Injectable()
 export class ConflitosService {
+  /**
+   * Kits que não cabem no acervo nem com a agenda inteira vazia.
+   *
+   * É problema de cadastro, não de agenda: se o kit leva 3 mesas e a Festaê
+   * tem 1, nenhuma data vai funcionar nunca. Na loja isso aparece como um
+   * calendário todo vermelho, sem explicação — exatamente o sintoma de um
+   * defeito, e foi assim que a operação já se assustou uma vez.
+   *
+   * Fica separado dos conflitos de data porque a ação é outra: aqui se
+   * corrige o kit ou o número do estoque, não se remarca cliente nenhum.
+   */
+  async kitsQueNaoCabem(): Promise<KitImpossivel[]> {
+    const kits = await prisma.kit.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        name: true,
+        products: {
+          select: {
+            quantity: true,
+            product: { select: { name: true, stockQuantity: true } },
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return kits
+      .map((kit) => ({
+        kitId: kit.id,
+        kit: kit.name,
+        itens: kit.products
+          .filter(
+            (link) =>
+              temEstoqueCadastrado(link.product.stockQuantity) &&
+              link.quantity > link.product.stockQuantity,
+          )
+          .map((link) => ({
+            produto: link.product.name,
+            precisa: link.quantity,
+            estoque: link.product.stockQuantity,
+          })),
+      }))
+      .filter((kit) => kit.itens.length > 0);
+  }
+
   async listar(): Promise<DataComProblema[]> {
     const hoje = new Date();
     hoje.setUTCHours(0, 0, 0, 0);

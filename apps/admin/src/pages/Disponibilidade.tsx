@@ -27,6 +27,17 @@ interface DataComProblema {
   itens: ItemDaData[];
 }
 
+interface KitImpossivel {
+  kitId: string;
+  kit: string;
+  itens: { produto: string; precisa: number; estoque: number }[];
+}
+
+interface Resposta {
+  datas: DataComProblema[];
+  kitsQueNaoCabem: KitImpossivel[];
+}
+
 const ETAPA: Record<string, string> = {
   PENDING: "Solicitação",
   CONFIRMED: "Confirmada",
@@ -62,13 +73,15 @@ function dataLonga(iso: string) {
 export default function Disponibilidade() {
   const { data, isLoading } = useQuery({
     queryKey: ["conflitos"],
-    queryFn: () => api<DataComProblema[]>("/availability/conflitos"),
+    queryFn: () => api<Resposta>("/availability/conflitos"),
   });
 
   if (isLoading) return <p className="text-muted-foreground">Carregando...</p>;
 
-  const conflitos = data?.filter((d) => d.itens.some((i) => i.situacao === "conflito")) ?? [];
-  const riscos = data?.filter((d) => !d.itens.some((i) => i.situacao === "conflito")) ?? [];
+  const datas = data?.datas ?? [];
+  const kitsQueNaoCabem = data?.kitsQueNaoCabem ?? [];
+  const conflitos = datas.filter((d) => d.itens.some((i) => i.situacao === "conflito"));
+  const riscos = datas.filter((d) => !d.itens.some((i) => i.situacao === "conflito"));
 
   return (
     <div>
@@ -77,7 +90,53 @@ export default function Disponibilidade() {
         Datas em que algum item está no limite ou já passou do estoque cadastrado.
       </p>
 
-      {data?.length === 0 && (
+      {/* Antes de tudo: kit que não cabe no acervo fecha o calendário inteiro
+          da loja, sem nenhuma reserva existir. Quem vê o app acha que o
+          sistema quebrou — então este aviso vem primeiro e diz o que fazer. */}
+      {kitsQueNaoCabem.length > 0 && (
+        <Card className="mb-4 border-red-300">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="size-4 text-red-600" />
+              Kit maior que o acervo
+              <Badge variant="destructive">Bloqueia todas as datas</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Estes kits pedem mais peças do que existe em estoque. Enquanto isso não for
+              ajustado, eles aparecem na loja com <strong>todas as datas indisponíveis</strong>.
+              Corrija o estoque do produto ou a quantidade dentro do kit.
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Kit</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-right">O kit precisa</TableHead>
+                  <TableHead className="text-right">Estoque</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {kitsQueNaoCabem.flatMap((kit) =>
+                  kit.itens.map((item) => (
+                    <TableRow key={`${kit.kitId}-${item.produto}`}>
+                      <TableCell className="font-medium">{kit.kit}</TableCell>
+                      <TableCell>{item.produto}</TableCell>
+                      <TableCell className="text-right font-bold text-red-600">
+                        {item.precisa}
+                      </TableCell>
+                      <TableCell className="text-right">{item.estoque}</TableCell>
+                    </TableRow>
+                  )),
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {datas.length === 0 && kitsQueNaoCabem.length === 0 && (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             Nenhuma data com item apertado. Todas as reservas cabem no acervo.

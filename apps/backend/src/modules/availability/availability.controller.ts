@@ -42,8 +42,14 @@ export class AvailabilityController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN", "OPS")
   @Get("conflitos")
-  listarConflitos() {
-    return this.conflitos.listar();
+  async listarConflitos() {
+    // As duas listas vêm juntas porque a tela é uma só, e porque a pergunta
+    // que a operação faz é a mesma: "tem alguma coisa que não vai fechar?"
+    const [datas, kitsQueNaoCabem] = await Promise.all([
+      this.conflitos.listar(),
+      this.conflitos.kitsQueNaoCabem(),
+    ]);
+    return { datas, kitsQueNaoCabem };
   }
 
   @Get()
