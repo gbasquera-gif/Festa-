@@ -11,6 +11,8 @@ import Kits from "@/pages/Kits";
 import Reservations from "@/pages/Reservations";
 import Events from "@/pages/Events";
 import Users from "@/pages/Users";
+import Funil from "@/pages/Funil";
+import Disponibilidade from "@/pages/Disponibilidade";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -35,6 +37,16 @@ function Router() {
       <Route path="/">
         <Protected>
           <Dashboard />
+        </Protected>
+      </Route>
+      <Route path="/funil">
+        <Protected>
+          <Funil />
+        </Protected>
+      </Route>
+      <Route path="/disponibilidade">
+        <Protected>
+          <Disponibilidade />
         </Protected>
       </Route>
       <Route path="/temas">

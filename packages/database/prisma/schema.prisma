@@ -162,6 +162,17 @@ model Event {
   neighborhood String?
   city        String    @default("Chapecó")
   state       String    @default("SC")
+
+  /// De onde veio quem montou esta festa, lido do link de origem.
+  ///
+  /// Fica na festa, e não só no evento de visita, porque é o que liga a
+  /// origem ao dinheiro: sem isso dá para saber quantas pessoas o Instagram
+  /// trouxe, mas não quantas reservaram nem quanto gastaram — que é a única
+  /// versão da pergunta que ajuda a decidir onde divulgar.
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

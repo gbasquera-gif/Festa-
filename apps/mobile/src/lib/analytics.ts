@@ -1,10 +1,22 @@
 import type { AnalyticsEventType } from "@festae/shared";
 import { api } from "./api";
+import { origemComoMetadata, visitaJaContada } from "./origem";
 
-// Best-effort: nunca deixa uma falha de tracking quebrar a experiência do
-// usuário (ex: sem internet, backend fora do ar).
+/**
+ * Registra um passo do funil.
+ *
+ * A origem viaja junto em todos os eventos, e não só na visita: é assim que
+ * "o Instagram traz gente" vira "o Instagram traz gente que reserva". Sem
+ * isso, cada degrau do funil é um número solto, sem dizer de onde veio.
+ *
+ * Best-effort: falha de tracking nunca pode quebrar a jornada de quem está
+ * comprando (sem internet, backend fora do ar).
+ */
 export function track(type: AnalyticsEventType, metadata?: Record<string, unknown>) {
-  api("/analytics/events", { method: "POST", body: JSON.stringify({ type, metadata }) }).catch(() => {});
+  api("/analytics/events", {
+    method: "POST",
+    body: JSON.stringify({ type, metadata: { ...origemComoMetadata(), ...metadata } }),
+  }).catch(() => {});
 }
 
 /**
@@ -20,8 +32,11 @@ export function track(type: AnalyticsEventType, metadata?: Record<string, unknow
  */
 let visitaRegistrada = false;
 
-export function registrarVisita(origem?: string) {
+export function registrarVisita() {
   if (visitaRegistrada) return;
   visitaRegistrada = true;
-  track("VISITA_LOJA", origem ? { origem } : undefined);
+  // Recarregar a página não é visita nova: quem atualiza a tela três vezes
+  // viraria três visitas e faria a conversão parecer pior do que é.
+  if (visitaJaContada()) return;
+  track("VISITA_LOJA");
 }

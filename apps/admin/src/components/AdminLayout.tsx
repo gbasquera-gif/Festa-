@@ -8,6 +8,8 @@ import {
   CalendarCheck,
   CalendarDays,
   Users,
+  TriangleAlert,
+  TrendingUp,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,8 +21,10 @@ const NAV_ITEMS = [
   { href: "/produtos", label: "Produtos", icon: Package },
   { href: "/kits", label: "Kits", icon: Boxes },
   { href: "/reservas", label: "Reservas", icon: CalendarCheck },
+  { href: "/disponibilidade", label: "Disponibilidade", icon: TriangleAlert },
   { href: "/eventos", label: "Eventos", icon: CalendarDays },
   { href: "/clientes", label: "Clientes", icon: Users },
+  { href: "/funil", label: "Funil", icon: TrendingUp },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

@@ -15,8 +15,9 @@ import { api, ApiError } from "@/lib/api";
 import { formatBRL } from "@/lib/catalog";
 import { track } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
-import { goToLogin } from "@/lib/login-gate";
+import { goToSignup } from "@/lib/login-gate";
 import { useOrcamento } from "@/lib/orcamento";
+import { origemComoMetadata } from "@/lib/origem";
 import { EVENT_TYPE_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
 
@@ -116,7 +117,14 @@ export default function ResumoLocal() {
         ? { id: jaExiste }
         : await api<EventRecord>("/events", {
             method: "POST",
-            body: JSON.stringify({ type: eventType ?? "ANIVERSARIO", date, city }),
+            // A origem viaja junto: é o que liga "veio do Instagram" a
+            // "reservou e pagou R$ 520".
+            body: JSON.stringify({
+              type: eventType ?? "ANIVERSARIO",
+              date,
+              city,
+              ...origemComoMetadata(),
+            }),
           });
       eventoCriado.current = event.id;
 
@@ -167,9 +175,15 @@ export default function ResumoLocal() {
   function fecharFesta() {
     setError(null);
     // A conta é pedida só agora: a pessoa já escolheu tudo e sabe o preço.
-    // O login volta para esta mesma tela, com a festa intacta no aparelho.
+    // O cadastro volta para esta mesma tela, com a festa intacta no aparelho.
+    //
+    // Vai para o cadastro, e não para o login: quem chegou até aqui pela loja
+    // aberta quase nunca tem conta, e o botão promete "criar conta". Mandar
+    // para o login entregava um formulário pedindo uma senha que essa pessoa
+    // nunca criou — no passo de maior intenção da jornada inteira. Quem já
+    // tem conta acha o "Já tem conta? Entrar" na própria tela de cadastro.
     if (!user) {
-      goToLogin("/montar/resumo");
+      goToSignup("/montar/resumo");
       return;
     }
     fechar.mutate();

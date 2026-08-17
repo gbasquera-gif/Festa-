@@ -1,9 +1,13 @@
-import { Controller, Get, Query } from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
+import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { prisma } from "@festae/database";
 import { availabilityQuerySchema } from "@festae/shared";
 import type { AvailabilityQuery } from "@festae/shared";
 import { AvailabilityService } from "./availability.service";
+import { ConflitosService } from "./conflitos.service";
+import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../../common/guards/roles.guard";
+import { Roles } from "../../common/decorators/roles.decorator";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import type { PedidoComprometido } from "./item-commitment";
 
@@ -23,7 +27,24 @@ import type { PedidoComprometido } from "./item-commitment";
 @ApiTags("availability")
 @Controller("availability")
 export class AvailabilityController {
-  constructor(private readonly availabilityService: AvailabilityService) {}
+  constructor(
+    private readonly availabilityService: AvailabilityService,
+    private readonly conflitos: ConflitosService,
+  ) {}
+
+  /**
+   * Onde o material vai faltar — só para quem opera.
+   *
+   * Fica atrás de login porque expõe nome e telefone de cliente e o tamanho
+   * do acervo, ao contrário do calendário público, que só diz sim ou não.
+   */
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Get("conflitos")
+  listarConflitos() {
+    return this.conflitos.listar();
+  }
 
   @Get()
   async getMonth(@Query(new ZodValidationPipe(availabilityQuerySchema)) query: AvailabilityQuery) {

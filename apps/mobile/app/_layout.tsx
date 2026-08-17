@@ -17,7 +17,6 @@ import { AuthProvider } from "@/lib/auth";
 import { OrcamentoProvider } from "@/lib/orcamento";
 import { FavoritesProvider } from "@/lib/favoritos";
 import { registrarVisita } from "@/lib/analytics";
-import { origemDaVisita } from "@/lib/origem";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -61,7 +60,7 @@ export default function RootLayout() {
   // apontar direto para um tema ou um kit, e quem cai nessas telas conta
   // tanto quanto quem entra pela porta da frente.
   useEffect(() => {
-    registrarVisita(origemDaVisita());
+    registrarVisita();
   }, []);
 
   // Segura a tela até a fonte chegar, para o texto não piscar numa fonte e

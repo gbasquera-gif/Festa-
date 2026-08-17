@@ -44,6 +44,21 @@ export const createEventSchema = z.object({
    * perguntada logo no início, e não junto do endereço.
    */
   city: z.string().min(2).max(120).optional(),
+
+  /**
+   * De onde veio quem está montando esta festa.
+   *
+   * Vem do link (`?utm_source=instagram&utm_medium=organic&...`) e é gravado
+   * aqui para a reserva e o pagamento poderem ser atribuídos à divulgação
+   * que os trouxe. Sem isto só dá para contar visitas por origem, e visita
+   * não paga conta.
+   *
+   * Campos livres numa URL pública: limitados no tamanho e nunca usados em
+   * consulta, só guardados e exibidos no painel.
+   */
+  utmSource: z.string().max(60).optional(),
+  utmMedium: z.string().max(60).optional(),
+  utmCampaign: z.string().max(60).optional(),
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
