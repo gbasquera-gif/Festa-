@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { prisma } from "@festae/database";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
+import { mensagemDeConflito } from "../availability/item-commitment";
 
 @Injectable()
 export class ReservationsService {
@@ -10,7 +11,15 @@ export class ReservationsService {
   async requestReservation(eventId: string, input: CreateReservationInput) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      include: { order: { include: { reservation: true } } },
+      include: {
+        order: {
+          include: {
+            reservation: true,
+            kit: { include: { products: { select: { productId: true, quantity: true } } } },
+            items: { select: { productId: true, quantity: true } },
+          },
+        },
+      },
     });
     if (!event || !event.order) throw new NotFoundException("Orçamento do evento não encontrado.");
     if (!event.order.kitId) {
@@ -23,6 +32,17 @@ export class ReservationsService {
       throw new ConflictException(
         "Esta data acabou de ficar indisponível. Escolha outra data ou fale com a Festaê pelo WhatsApp.",
       );
+    }
+
+    // A agenda ter vaga não quer dizer que o material esteja livre: com duas
+    // festas por dia, as duas podem ter escolhido o mesmo painel. Sem esta
+    // conferência a Festaê recebe dois sinais por um item que ela tem um só.
+    const conflitos = await this.availability.conflitosDeItens(event.date, {
+      itensDoKit: event.order.kit?.products ?? [],
+      itensAvulsos: event.order.items,
+    });
+    if (conflitos.length > 0) {
+      throw new ConflictException(mensagemDeConflito(conflitos));
     }
 
     const [reservation] = await prisma.$transaction([

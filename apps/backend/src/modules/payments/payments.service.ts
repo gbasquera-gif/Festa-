@@ -211,6 +211,26 @@ export class PaymentsService {
             prisma.order.update({ where: { id: payment.orderId }, data: { status: "CONFIRMED" } }),
           ]
         : []),
+
+      // O último degrau do funil só pode ser registrado aqui: é o Mercado
+      // Pago que diz que o dinheiro entrou, não o aplicativo. Sem isto o
+      // relatório terminava sempre em zero pagamentos — a única linha que
+      // realmente responde se a loja vende.
+      ...(status === "PAID"
+        ? [
+            prisma.analyticsEvent.create({
+              data: {
+                type: "PAGAMENTO_REALIZADO",
+                metadata: {
+                  paymentId: payment.id,
+                  orderId: payment.orderId,
+                  tipo: payment.type,
+                  valor: payment.amount.toString(),
+                },
+              },
+            }),
+          ]
+        : []),
     ]);
   }
 

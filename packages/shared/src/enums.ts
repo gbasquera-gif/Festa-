@@ -67,6 +67,7 @@ export type PaymentType = (typeof PAYMENT_TYPES)[number];
 // Ordem representa o funil de conversão, do topo ao fundo — usado para
 // calcular abandono/drop-off entre etapas no resumo de analytics.
 export const ANALYTICS_EVENT_TYPES = [
+  "VISITA_LOJA",
   "CADASTRO",
   "LOGIN",
   "INICIO_CRIACAO_FESTA",
@@ -81,13 +82,25 @@ export const ANALYTICS_EVENT_TYPES = [
 ] as const;
 export type AnalyticsEventType = (typeof ANALYTICS_EVENT_TYPES)[number];
 
+/**
+ * O funil na ordem em que a loja Web realmente acontece.
+ *
+ * A ordem anterior começava em CADASTRO e LOGIN, de quando era preciso ter
+ * conta para ver qualquer coisa. Hoje o catálogo é aberto e a conta só é
+ * pedida no fim, então aqueles dois passos ficavam no topo com número baixo
+ * e faziam o relatório mostrar uma queda gigante que nunca existiu.
+ *
+ * VISITA_LOJA é o denominador: sem saber quantas pessoas chegaram, nenhuma
+ * taxa de conversão pode ser calculada — e "mandar gente do Instagram e ver
+ * quantas reservam" é exatamente o que se quer medir nesta fase.
+ */
 export const ANALYTICS_FUNNEL_ORDER: AnalyticsEventType[] = [
-  "CADASTRO",
-  "LOGIN",
-  "INICIO_CRIACAO_FESTA",
+  "VISITA_LOJA",
   "ESCOLHA_TEMA",
   "ESCOLHA_KIT",
+  "CADASTRO",
   "RESERVA_CRIADA",
+  "PAGAMENTO_INICIADO",
   "PAGAMENTO_REALIZADO",
 ];
 

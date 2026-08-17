@@ -2,12 +2,15 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useOrcamento } from "@/lib/orcamento";
 
 interface DayAvailability {
   date: string;
   reserved: number;
   remaining: number;
   available: boolean;
+  /** Nomes dos itens em falta, quando o dia caiu por material e não por agenda. */
+  itensIndisponiveis?: string[];
 }
 
 const WEEKDAY_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -29,13 +32,26 @@ export function AvailabilityCalendar({
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState(new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)));
+  const { kitId, items } = useOrcamento();
 
   const key = monthKey(cursor);
-  const { data, isLoading } = useQuery({
-    queryKey: ["availability", key],
-    queryFn: () => api<DayAvailability[]>(`/availability?month=${key}`),
+  // A consulta carrega o que a pessoa já escolheu: "este dia está livre?"
+  // depende do kit. A agenda pode ter vaga e o painel daquele tema já estar
+  // reservado — e é melhor ela descobrir aqui do que depois de criar conta.
+  const selecao = [
+    kitId ? `kitId=${kitId}` : "",
+    items.length > 0 ? `items=${items.map((i) => `${i.productId}:${i.quantity}`).join(",")}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["availability", key, selecao],
+    queryFn: () =>
+      api<DayAvailability[]>(`/availability?month=${key}${selecao ? `&${selecao}` : ""}`),
   });
 
+  const carregou = Boolean(data);
   const byDate = new Map((data ?? []).map((d) => [d.date, d]));
   const firstWeekday = cursor.getUTCDay();
   const daysInMonth = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0)).getUTCDate();
@@ -79,15 +95,20 @@ export function AvailabilityCalendar({
           const info = byDate.get(dateStr);
           const isPast = dateStr < todayKey;
           const isSelected = dateStr === value;
-          const available = info ? info.available : true;
-          const disabled = isPast || !available;
+          const available = info?.available ?? false;
+          // Enquanto a resposta não chega, o dia não é verde nem vermelho.
+          // Antes o padrão era "disponível", então uma consulta que falhava
+          // pintava o mês inteiro de verde e a recusa só vinha no fim da
+          // jornada, depois de a cliente já ter criado conta.
+          const desconhecido = !carregou && !isPast;
+          const disabled = isPast || desconhecido || !available;
 
           return (
             <View key={i} className="w-[14.28%] items-center py-1">
               <Pressable
                 disabled={disabled}
                 onPress={() => onChange(dateStr)}
-                className={cellClass(isSelected, isPast, available)}
+                className={cellClass(isSelected, isPast, available, desconhecido)}
               >
                 <Text className={textClass(isSelected, isPast, available)}>{Number(dateStr.slice(-2))}</Text>
               </Pressable>
@@ -97,6 +118,30 @@ export function AvailabilityCalendar({
       </View>
 
       {isLoading && <Text className="text-center text-xs text-navy/40">Carregando disponibilidade...</Text>}
+
+      {/* Falha de rede precisa aparecer: sem aviso, o calendário todo apagado
+          parece um mês sem nenhuma data livre — e a pessoa desiste achando
+          que a Festaê está lotada. */}
+      {isError && (
+        <Text className="text-center text-xs font-sans-bold text-coral">
+          Não conseguimos carregar as datas. Verifique a conexão e tente de novo.
+        </Text>
+      )}
+
+      {/* O motivo importa: "agenda cheia" e "o painel deste tema já saiu nesse
+          dia" levam a decisões diferentes — a segunda ainda pode virar venda
+          trocando o kit. */}
+      {(() => {
+        const escolhido = byDate.get(value);
+        const faltando = escolhido?.itensIndisponiveis;
+        if (!faltando || faltando.length === 0) return null;
+        return (
+          <Text className="text-center text-xs text-navy/60">
+            Nesta data já está reservado: {faltando.join(", ")}. Escolha outro dia ou volte e troque
+            o kit.
+          </Text>
+        );
+      })()}
 
       <View className="flex-row items-center justify-center gap-4 pt-1">
         <View className="flex-row items-center gap-1.5">
@@ -112,9 +157,12 @@ export function AvailabilityCalendar({
   );
 }
 
-function cellClass(selected: boolean, past: boolean, available: boolean) {
+function cellClass(selected: boolean, past: boolean, available: boolean, desconhecido = false) {
   if (selected) return "h-9 w-9 items-center justify-center rounded-full bg-coral";
   if (past) return "h-9 w-9 items-center justify-center rounded-full";
+  // Estado neutro enquanto não se sabe: verde seria promessa e vermelho seria
+  // mentira. Sem fundo, o dia lê como "ainda carregando".
+  if (desconhecido) return "h-9 w-9 items-center justify-center rounded-full";
   return `h-9 w-9 items-center justify-center rounded-full ${available ? "bg-green-50" : "bg-red-50"}`;
 }
 

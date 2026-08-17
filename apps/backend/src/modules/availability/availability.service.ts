@@ -2,6 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import { RESERVATION_HOLD_MINUTES } from "@festae/shared";
 import { getMaxReservationsPerDay } from "../../common/operations-config";
+import {
+  conflitosDoPedido,
+  somarCompromisso,
+  type Conflito,
+  type PedidoComprometido,
+} from "./item-commitment";
 
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
@@ -15,6 +21,8 @@ export interface DayAvailability {
   reserved: number;
   remaining: number;
   available: boolean;
+  /** Presente só quando o dia caiu por falta de material, não por agenda cheia. */
+  itensIndisponiveis?: string[];
 }
 
 @Injectable()
@@ -63,7 +71,15 @@ export class AvailabilityService {
     );
   }
 
-  async getMonth(month: string): Promise<DayAvailability[]> {
+  /**
+   * Disponibilidade do mês, opcionalmente para uma seleção específica.
+   *
+   * Sem seleção, responde só pela agenda (quantas festas cabem no dia). Com
+   * kit e itens, um dia também fica indisponível quando o material daquela
+   * escolha já está comprometido — que é a pergunta que a cliente realmente
+   * faz ao olhar o calendário depois de escolher o kit.
+   */
+  async getMonth(month: string, selecao?: PedidoComprometido): Promise<DayAvailability[]> {
     await this.releaseUnpaidHolds();
 
     const capacity = getMaxReservationsPerDay();
@@ -71,19 +87,47 @@ export class AvailabilityService {
     const start = new Date(Date.UTC(year, monthNumber - 1, 1));
     const end = new Date(Date.UTC(year, monthNumber, 1));
 
+    const temSelecao = Boolean(
+      selecao && selecao.itensDoKit.length + selecao.itensAvulsos.length > 0,
+    );
+
+    // Uma consulta só para o mês inteiro. Perguntar dia a dia seriam trinta
+    // idas ao banco para desenhar um calendário que a pessoa olha por segundos.
     const reservations = await prisma.reservation.findMany({
       where: {
         eventDate: { gte: start, lt: end },
         status: { in: [...COUNTED_STATUSES] },
       },
-      select: { eventDate: true },
+      select: {
+        eventDate: true,
+        order: {
+          select: {
+            kit: { select: { products: { select: { productId: true, quantity: true } } } },
+            items: { select: { productId: true, quantity: true } },
+          },
+        },
+      },
     });
 
     const countByDay = new Map<string, number>();
+    const pedidosPorDia = new Map<string, PedidoComprometido[]>();
     for (const reservation of reservations) {
       const key = reservation.eventDate.toISOString().slice(0, 10);
       countByDay.set(key, (countByDay.get(key) ?? 0) + 1);
+
+      const doDia = pedidosPorDia.get(key) ?? [];
+      doDia.push({
+        itensDoKit: reservation.order.kit?.products ?? [],
+        itensAvulsos: reservation.order.items,
+      });
+      pedidosPorDia.set(key, doDia);
     }
+
+    const estoque = temSelecao
+      ? await this.estoqueDe(
+          [...selecao!.itensDoKit, ...selecao!.itensAvulsos].map((i) => i.productId),
+        )
+      : new Map();
 
     const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     const days: DayAvailability[] = [];
@@ -91,11 +135,25 @@ export class AvailabilityService {
       const date = new Date(Date.UTC(year, monthNumber - 1, day));
       const key = date.toISOString().slice(0, 10);
       const reserved = countByDay.get(key) ?? 0;
+      const cabeNaAgenda = reserved < capacity;
+
+      const conflitos =
+        temSelecao && cabeNaAgenda
+          ? conflitosDoPedido(
+              selecao!,
+              somarCompromisso(pedidosPorDia.get(key) ?? []),
+              estoque,
+            )
+          : [];
+
       days.push({
         date: key,
         reserved,
         remaining: Math.max(0, capacity - reserved),
-        available: reserved < capacity,
+        available: cabeNaAgenda && conflitos.length === 0,
+        // Nomes dos itens em falta: é o que permite a loja dizer "o painel
+        // deste tema já está reservado neste dia" em vez de um vermelho mudo.
+        ...(conflitos.length > 0 ? { itensIndisponiveis: conflitos.map((c) => c.nome) } : {}),
       });
     }
     return days;
@@ -122,5 +180,80 @@ export class AvailabilityService {
     });
 
     return reserved < getMaxReservationsPerDay();
+  }
+
+  /** Início e fim do dia da data, em UTC. */
+  private limitesDoDia(date: Date): [Date, Date] {
+    const inicio = new Date(date);
+    inicio.setUTCHours(0, 0, 0, 0);
+    const fim = new Date(inicio);
+    fim.setUTCDate(fim.getUTCDate() + 1);
+    return [inicio, fim];
+  }
+
+  /**
+   * Tudo que os pedidos já reservados naquele dia comprometem de material.
+   *
+   * `ignorarOrderId` existe para a própria reserva não brigar consigo mesma
+   * quando o pedido for reconferido depois de já existir.
+   */
+  private async compromissoDoDia(date: Date, ignorarOrderId?: string) {
+    const [inicio, fim] = this.limitesDoDia(date);
+
+    const reservas = await prisma.reservation.findMany({
+      where: {
+        eventDate: { gte: inicio, lt: fim },
+        status: { in: [...COUNTED_STATUSES] },
+        ...(ignorarOrderId ? { orderId: { not: ignorarOrderId } } : {}),
+      },
+      select: {
+        order: {
+          select: {
+            kit: { select: { products: { select: { productId: true, quantity: true } } } },
+            items: { select: { productId: true, quantity: true } },
+          },
+        },
+      },
+    });
+
+    const pedidos: PedidoComprometido[] = reservas.map((reserva) => ({
+      itensDoKit: reserva.order.kit?.products ?? [],
+      itensAvulsos: reserva.order.items,
+    }));
+
+    return somarCompromisso(pedidos);
+  }
+
+  /** Nome e estoque dos produtos citados, para conferir e para explicar. */
+  private async estoqueDe(productIds: string[]) {
+    const produtos = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, stockQuantity: true },
+    });
+
+    return new Map(produtos.map((p) => [p.id, { nome: p.name, estoque: p.stockQuantity }]));
+  }
+
+  /**
+   * Os itens deste pedido cabem na data?
+   *
+   * Conferido no servidor mesmo quando a loja já mostrou o dia como livre:
+   * entre escolher a data e confirmar, outra pessoa pode ter levado a última
+   * mesa. É a mesma razão de `isDateAvailable` existir além do calendário.
+   */
+  async conflitosDeItens(
+    date: Date,
+    pedido: PedidoComprometido,
+    ignorarOrderId?: string,
+  ): Promise<Conflito[]> {
+    const idsDoPedido = [...pedido.itensDoKit, ...pedido.itensAvulsos].map((i) => i.productId);
+    if (idsDoPedido.length === 0) return [];
+
+    const [comprometido, estoque] = await Promise.all([
+      this.compromissoDoDia(date, ignorarOrderId),
+      this.estoqueDe(idsDoPedido),
+    ]);
+
+    return conflitosDoPedido(pedido, comprometido, estoque);
   }
 }

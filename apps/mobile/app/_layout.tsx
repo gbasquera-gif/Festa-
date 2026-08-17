@@ -16,6 +16,8 @@ import {
 import { AuthProvider } from "@/lib/auth";
 import { OrcamentoProvider } from "@/lib/orcamento";
 import { FavoritesProvider } from "@/lib/favoritos";
+import { registrarVisita } from "@/lib/analytics";
+import { origemDaVisita } from "@/lib/origem";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -54,6 +56,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded]);
+
+  // Conta a visita aqui, na raiz, e não na home: o link do Instagram pode
+  // apontar direto para um tema ou um kit, e quem cai nessas telas conta
+  // tanto quanto quem entra pela porta da frente.
+  useEffect(() => {
+    registrarVisita(origemDaVisita());
+  }, []);
 
   // Segura a tela até a fonte chegar, para o texto não piscar numa fonte e
   // trocar para outra. Isso deixa o HTML da exportação estática sem conteúdo
