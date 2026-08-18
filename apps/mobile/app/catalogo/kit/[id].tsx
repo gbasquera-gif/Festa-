@@ -198,6 +198,14 @@ export default function KitDetalhe() {
           {kit.products.map((link) => {
             const extra = quantityOf(link.productId);
             const total = link.quantity + extra;
+            // O teto é o acervo, não um número solto: se a Festaê tem uma
+            // mesa e o kit já leva ela, não há segunda mesa para vender como
+            // adicional. Antes o passo a mais era aceito aqui e só sumia a
+            // data no calendário, sem ninguém ligar uma coisa à outra.
+            const estoque = link.product.stockQuantity;
+            const teto = Math.min(link.quantity + EXTRA_MAXIMO, Math.max(estoque, link.quantity));
+            const noLimite = total >= teto && estoque > link.quantity;
+            const semSobra = estoque <= link.quantity;
             return (
               <View key={link.productId} className="gap-2 rounded-2xl border border-sand bg-white p-2.5">
                 <View className="flex-row items-center gap-3">
@@ -225,10 +233,31 @@ export default function KitDetalhe() {
                   <QuantityStepper
                     value={total}
                     min={link.quantity}
-                    max={link.quantity + EXTRA_MAXIMO}
+                    max={teto}
                     onChange={(value) => ajustarItemDoKit(link.productId, link.quantity, value)}
                   />
                 </View>
+
+                {/* O aviso aparece no lugar onde a pessoa está tentando
+                    aumentar, e não três telas depois. "Não temos mais" é a
+                    resposta que ela procura ao ver o botão parar de somar. */}
+                {semSobra ? (
+                  <View className="flex-row items-center gap-2 rounded-xl bg-linen px-3 py-2">
+                    <Ionicons name="information-circle-outline" size={15} color={colors.navy} />
+                    <Text className="flex-1 text-xs leading-4 text-navy/70">
+                      Temos {estoque === 1 ? "só uma unidade" : `só ${estoque} unidades`} deste item,
+                      e {link.quantity === 1 ? "ela já vem" : "elas já vêm"} no kit. Não é possível
+                      acrescentar mais.
+                    </Text>
+                  </View>
+                ) : noLimite ? (
+                  <View className="flex-row items-center gap-2 rounded-xl bg-linen px-3 py-2">
+                    <Ionicons name="information-circle-outline" size={15} color={colors.navy} />
+                    <Text className="flex-1 text-xs leading-4 text-navy/70">
+                      Você chegou ao máximo: temos {estoque} unidades deste item no total.
+                    </Text>
+                  </View>
+                ) : null}
 
                 {extra > 0 && (
                   <View className="flex-row justify-between rounded-xl bg-linen px-3 py-2">
@@ -314,7 +343,7 @@ export default function KitDetalhe() {
                     <QuantityStepper
                       value={quantidade}
                       min={0}
-                      max={EXTRA_MAXIMO}
+                      max={Math.min(EXTRA_MAXIMO, product.stockQuantity)}
                       onChange={(value) => ajustarItemDeFora(product.id, value)}
                     />
                   ) : (

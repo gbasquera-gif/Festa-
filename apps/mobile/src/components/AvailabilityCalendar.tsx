@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Modal, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -21,6 +21,16 @@ const MONTH_LABELS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
+/** "Sábado, 29 de agosto" — o jeito que a pessoa reconhece o dia que tocou. */
+function diaPorExtenso(iso: string) {
+  const [ano, mes, dia] = iso.split("-").map(Number);
+  const semana = new Date(Date.UTC(ano, mes - 1, dia)).toLocaleDateString("pt-BR", {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+  return `${semana.charAt(0).toUpperCase()}${semana.slice(1)}, ${dia} de ${MONTH_LABELS[mes - 1].toLowerCase()}`;
+}
+
 function monthKey(d: Date) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
@@ -34,6 +44,8 @@ export function AvailabilityCalendar({
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState(new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)));
+  /** Dia ocupado que a pessoa tocou para saber o motivo. */
+  const [motivo, setMotivo] = useState<DayAvailability | null>(null);
   const { kitId, items, setProductQuantity } = useOrcamento();
 
   const key = monthKey(cursor);
@@ -124,13 +136,19 @@ export function AvailabilityCalendar({
           // pintava o mês inteiro de verde e a recusa só vinha no fim da
           // jornada, depois de a cliente já ter criado conta.
           const desconhecido = !carregou && !isPast;
-          const disabled = isPast || desconhecido || !available;
+          const disabled = isPast || desconhecido;
 
           return (
             <View key={i} className="w-[14.28%] items-center py-1">
               <Pressable
                 disabled={disabled}
-                onPress={() => onChange(dateStr)}
+                // Dia ocupado continua clicável de propósito: tocar e nada
+                // acontecer não ensina nada. Aqui o toque abre o motivo, que
+                // é a pergunta que a pessoa está fazendo ao tocar.
+                onPress={() => (available ? onChange(dateStr) : setMotivo(info ?? null))}
+                accessibilityLabel={
+                  available ? undefined : `Dia ${Number(dateStr.slice(-2))} indisponível. Toque para saber o motivo.`
+                }
                 className={cellClass(isSelected, isPast, available, desconhecido)}
               >
                 <Text className={textClass(isSelected, isPast, available)}>{Number(dateStr.slice(-2))}</Text>
@@ -196,13 +214,82 @@ export function AvailabilityCalendar({
         </View>
       )}
 
+      {/* Era um texto cinza pequeno embaixo do calendário e passava batido:
+          a pessoa via o mês vermelho e não lia o motivo. Caixa com borda,
+          ícone e contraste — a mesma linguagem do aviso de item esgotado. */}
       {ocupadosNoDia.length > 0 && (
-        <Text className="text-center text-xs text-navy/60">
-          Nesta data já está reservado: {ocupadosNoDia.map((i) => i.nome).join(", ")}. Escolha outro
-          dia.
-        </Text>
+        <View className="flex-row gap-2 rounded-2xl border border-coral bg-coral/5 p-3.5">
+          <Ionicons name="calendar-outline" size={18} color={colors.coral} />
+          <Text className="flex-1 text-sm leading-5 text-navy">
+            <Text className="font-sans-bold">
+              {ocupadosNoDia.length === 1
+                ? `${ocupadosNoDia[0].nome} já está reservado nesta data.`
+                : `${ocupadosNoDia.map((i) => i.nome).join(", ")} já estão reservados nesta data.`}
+            </Text>{" "}
+            Escolha outro dia — os dias em verde estão livres para o que você montou.
+          </Text>
+        </View>
       )}
 
+      {/* Aviso na tela, e não só texto embaixo do calendário: tocar num dia
+          vermelho é a pergunta "por que não posso?" — a resposta precisa
+          aparecer na frente, e não numa linha que se perde na página. */}
+      <Modal
+        visible={motivo !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMotivo(null)}
+      >
+        <Pressable
+          onPress={() => setMotivo(null)}
+          className="flex-1 items-center justify-center bg-navy/50 px-6"
+        >
+          {/* Pressable interno segura o toque: sem ele, tocar no próprio
+              cartão fecharia o aviso junto com o fundo. */}
+          <Pressable onPress={() => {}} className="w-full gap-3 rounded-3xl bg-white p-5">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="alert-circle" size={22} color={colors.coral} />
+              <Text className="flex-1 font-sans-extrabold text-lg text-navy">
+                {motivo ? diaPorExtenso(motivo.date) : ""}
+              </Text>
+            </View>
+
+            {motivo && (motivo.itensIndisponiveis?.length ?? 0) > 0 ? (
+              <>
+                <Text className="text-base leading-6 text-navy/80">
+                  {motivo.itensIndisponiveis!.some((item) => item.esgotado)
+                    ? "Estes itens da sua festa estão sem estoque:"
+                    : "Estes itens já estão reservados para este dia:"}
+                </Text>
+                {motivo.itensIndisponiveis!.map((item) => (
+                  <View key={item.productId} className="flex-row items-center gap-2">
+                    <Ionicons name="close-circle" size={16} color={colors.coral} />
+                    <Text className="flex-1 font-sans-bold text-navy">{item.nome}</Text>
+                  </View>
+                ))}
+                <Text className="text-sm leading-5 text-navy/60">
+                  {motivo.itensIndisponiveis!.some((item) => item.esgotado)
+                    ? "Enquanto eles estiverem na sua festa, nenhuma data fica disponível."
+                    : "Escolha um dia em verde, ou fale com a Festaê pelo WhatsApp."}
+                </Text>
+              </>
+            ) : (
+              <Text className="text-base leading-6 text-navy/80">
+                A agenda deste dia já está completa. A Festaê atende poucas festas por dia para
+                entregar tudo montado com capricho — escolha um dia em verde.
+              </Text>
+            )}
+
+            <Pressable
+              onPress={() => setMotivo(null)}
+              className="mt-1 items-center rounded-2xl bg-coral py-3.5"
+              accessibilityRole="button"
+            >
+              <Text className="font-sans-bold text-white">Entendi</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
