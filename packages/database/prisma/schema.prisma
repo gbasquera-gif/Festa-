@@ -1,0 +1,365 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  CLIENT
+  ADMIN
+  OPS
+}
+
+enum EventType {
+  ANIVERSARIO
+  CHA_DE_BEBE
+  CHA_REVELACAO
+  BATIZADO
+  OUTRO
+}
+
+enum ProductCategory {
+  DECORACAO
+  MOBILIARIO
+  LOUCA
+  ILUMINACAO
+  BRINQUEDO
+  OUTRO
+}
+
+enum Fulfillment {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  CART
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+}
+
+/// Etapas operacionais de uma reserva, na ordem em que acontecem.
+/// Não guarda situação de pagamento: isso vive nos registros de Payment,
+/// porque uma reserva pode estar em PREPARING com ou sem o sinal pago, e
+/// juntar as duas coisas num enum só criaria estados impossíveis.
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum PartnerType {
+  DECORADOR
+  DOCERIA
+  FOTOGRAFO
+  DJ
+  BARTENDER
+  ESCOLA
+  EMPRESA
+  OUTRO
+}
+
+enum PaymentMethod {
+  PIX
+  CARTAO
+  BOLETO
+  OUTRO
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentType {
+  DEPOSIT
+  BALANCE
+}
+
+// ---------- Models ----------
+
+// Os campos @unique deste schema (User.email, Theme.slug, Product.slug,
+// Kit.slug) valem para o banco inteiro, o que está correto enquanto houver
+// uma empresa só. Se a plataforma um dia atender outras empresas, eles
+// precisam virar únicos por empresa — ver docs/VISAO-SAAS.md §6.1 e §6.2,
+// onde o caso de User.email tem consequência de produto, não só de banco.
+// Enquanto isso: não acrescente @unique global novo em tabela de catálogo.
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(CLIENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  // Conta excluída pelo próprio usuário. Os dados pessoais são apagados no
+  // ato (nome, e-mail, telefone, endereço); a linha permanece para não
+  // derrubar em cascata pedidos e reservas que a empresa ainda precisa
+  // cumprir e guardar por obrigação fiscal.
+  deletedAt DateTime?
+
+  // Prova de consentimento exigida pela LGPD: não basta saber que aceitou,
+  // é preciso saber QUANDO e QUAL versão do texto estava valendo. Sem a
+  // versão, publicar termos novos apagaria o histórico do que foi aceito.
+  termsAcceptedAt      DateTime?
+  termsAcceptedVersion String?
+
+  // Momento da última troca de senha. Token emitido antes disso para de
+  // valer: sem esta marca, redefinir a senha de quem teve a conta invadida
+  // não expulsaria o invasor — ele seguiria dentro até o token expirar.
+  passwordChangedAt DateTime?
+
+  events Event[]
+
+  @@map("users")
+}
+
+model Theme {
+  id                  String      @id @default(cuid())
+  name                String
+  slug                String      @unique
+  description         String?
+  coverImageUrl       String?
+  colorPalette        String[]    @default([])
+  suggestedEventTypes EventType[] @default([])
+  active              Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  kits   Kit[]
+  events Event[]
+
+  @@map("themes")
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  userId      String
+  type        EventType
+  date        DateTime
+  // Opcional: perguntar quantos convidados logo no primeiro passo travava
+  // quem ainda não fechou a lista. Vazio significa "a combinar", e a
+  // operação acerta o número pelo WhatsApp antes de separar os itens.
+  guestCount  Int?
+  budgetGoal  Decimal?  @db.Decimal(10, 2)
+  themeId     String?
+  address     String?
+  neighborhood String?
+  city        String    @default("Chapecó")
+  state       String    @default("SC")
+
+  /// De onde veio quem montou esta festa, lido do link de origem.
+  ///
+  /// Fica na festa, e não só no evento de visita, porque é o que liga a
+  /// origem ao dinheiro: sem isso dá para saber quantas pessoas o Instagram
+  /// trouxe, mas não quantas reservaram nem quanto gastaram — que é a única
+  /// versão da pergunta que ajuda a decidir onde divulgar.
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme Theme? @relation(fields: [themeId], references: [id])
+  order Order?
+
+  @@index([userId])
+  @@index([themeId])
+  @@map("events")
+}
+
+model Product {
+  id            String          @id @default(cuid())
+  name          String
+  slug          String          @unique
+  description   String?
+  category      ProductCategory @default(OUTRO)
+  unitPrice     Decimal         @db.Decimal(10, 2)
+  stockQuantity Int             @default(0)
+  imageUrl      String?
+  partnerId     String?
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  partner    Partner?    @relation(fields: [partnerId], references: [id])
+  kitLinks   KitProduct[]
+  orderItems OrderItem[]
+
+  @@index([partnerId])
+  @@map("products")
+}
+
+model Kit {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String?
+  themeId       String?
+  basePrice     Decimal  @db.Decimal(10, 2)
+  coverImageUrl String?
+  images        String[] @default([])
+  minGuests     Int      @default(0)
+  maxGuests     Int      @default(9999)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  theme    Theme?       @relation(fields: [themeId], references: [id])
+  products KitProduct[]
+  orders   Order[]
+
+  @@index([themeId])
+  @@map("kits")
+}
+
+model KitProduct {
+  id        String @id @default(cuid())
+  kitId     String
+  productId String
+  quantity  Int    @default(1)
+
+  kit     Kit     @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([kitId, productId])
+  @@map("kit_products")
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  eventId        String      @unique
+  kitId          String?
+  status         OrderStatus @default(CART)
+  subtotalKit    Decimal     @default(0) @db.Decimal(10, 2)
+  subtotalExtras Decimal     @default(0) @db.Decimal(10, 2)
+
+  /// Retirada na sede ou entrega no local. Padrão retirada: é o que a
+  /// operação faz sempre, entrega depende de disponibilidade e de a festa
+  /// ser em Chapecó.
+  fulfillment Fulfillment @default(PICKUP)
+  assembly    Boolean     @default(false)
+
+  /// Taxas gravadas no pedido, e não lidas da tabela de preços na hora de
+  /// exibir: se a Festaê reajustar a entrega, quem já reservou continua
+  /// pagando o que combinou.
+  deliveryFee Decimal @default(0) @db.Decimal(10, 2)
+  assemblyFee Decimal @default(0) @db.Decimal(10, 2)
+
+  total          Decimal     @default(0) @db.Decimal(10, 2)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  kit         Kit?         @relation(fields: [kitId], references: [id])
+  items       OrderItem[]
+  reservation Reservation?
+  payments    Payment[]
+
+  @@index([kitId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String @id @default(cuid())
+  orderId           String
+  productId         String
+  quantity          Int    @default(1)
+  unitPriceSnapshot Decimal @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId])
+  @@map("order_items")
+}
+
+model Reservation {
+  id          String            @id @default(cuid())
+  orderId     String            @unique
+  eventDate   DateTime
+  status      ReservationStatus @default(PENDING)
+  requestedAt DateTime          @default(now())
+  confirmedAt DateTime?
+  notes       String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([eventDate])
+  @@map("reservations")
+}
+
+model Partner {
+  id           String      @id @default(cuid())
+  name         String
+  type         PartnerType
+  contactEmail String?
+  contactPhone String?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  products Product[]
+
+  @@map("partners")
+}
+
+model Payment {
+  id                 String        @id @default(cuid())
+  orderId            String
+  type               PaymentType   @default(DEPOSIT)
+  amount             Decimal       @db.Decimal(10, 2)
+  method             PaymentMethod @default(PIX)
+  status             PaymentStatus @default(PENDING)
+  externalReference  String?
+  checkoutUrl        String?
+  pixQrCode          String?
+  pixQrCodeBase64    String?
+
+  /// Quando o QR deixa de ser pago. Um Pix vencido não pode ser quitado,
+  /// e é isso que torna seguro liberar a data reservada por ele.
+  expiresAt DateTime?
+
+  /// Última vez que perguntamos o status ao Mercado Pago. Existe para a
+  /// consulta ativa não virar uma chamada à API a cada 5 segundos por
+  /// cliente com a tela aberta.
+  syncedAt DateTime?
+
+  paidAt             DateTime?
+  createdAt          DateTime      @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  type      String
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("analytics_events")
+}
