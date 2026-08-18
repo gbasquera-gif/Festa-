@@ -71,7 +71,7 @@ export default function LogisticaLocal() {
 
       <View>
         <Text className="font-sans-extrabold text-2xl text-navy">Como você prefere receber?</Text>
-        <Text className="text-navy/70">Escolha a entrega e se quer a montagem por nossa conta.</Text>
+        <Text className="text-navy/70">A montagem é feita pela nossa equipe e vai junto com a entrega.</Text>
       </View>
 
       <OpcoesLogistica city={city} value={escolha} onChange={setEscolha} />

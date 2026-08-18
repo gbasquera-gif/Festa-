@@ -3,7 +3,7 @@ import {
   conflitosDoPedido,
   mensagemDeConflito,
   somarCompromisso,
-  temEstoqueCadastrado,
+  temPecaDisponivel,
   type PedidoComprometido,
 } from "./item-commitment";
 
@@ -101,31 +101,17 @@ describe("conflitosDoPedido", () => {
     expect(conflitos).toEqual([]);
   });
 
-  // O furo que fechou o calendário da loja em produção: zero é o valor padrão
-  // do cadastro, e era lido como "acabou". Com nenhum produto tendo estoque
-  // digitado, todo kit derrubava todas as datas — sem uma reserva sequer.
-  it("estoque zero é campo não preenchido, não item esgotado", () => {
+  // Com o acervo cadastrado, zero passou a significar "não tenho". O item é
+  // reportado com estoque 0 para a loja poder dizer "esgotado" — e não
+  // repetir o calendário vermelho sem explicação de antes.
+  it("estoque zero é item esgotado e vira conflito", () => {
     const conflitos = conflitosDoPedido(
       pedidoDoPainel,
       new Map(),
       estoque({ [painel]: ["Painel Redondo", 0] }),
     );
-    expect(conflitos).toEqual([]);
-  });
-
-  it("kit inteiro passa quando nenhum item tem estoque digitado", () => {
-    const conflitos = conflitosDoPedido(
-      {
-        itensDoKit: [
-          { productId: painel, quantity: 1 },
-          { productId: mesa, quantity: 1 },
-        ],
-        itensAvulsos: [],
-      },
-      new Map(),
-      estoque({ [painel]: ["Painel Redondo", 0], [mesa]: ["Mesa Provençal", 0] }),
-    );
-    expect(conflitos).toEqual([]);
+    expect(conflitos).toHaveLength(1);
+    expect(conflitos[0].estoque).toBe(0);
   });
 
   it("volta a conferir assim que o estoque é preenchido", () => {
@@ -138,14 +124,14 @@ describe("conflitosDoPedido", () => {
   });
 });
 
-describe("temEstoqueCadastrado", () => {
-  it("zero e negativo contam como não preenchido", () => {
-    expect(temEstoqueCadastrado(0)).toBe(false);
-    expect(temEstoqueCadastrado(-1)).toBe(false);
+describe("temPecaDisponivel", () => {
+  it("zero e negativo significam sem peça para alugar", () => {
+    expect(temPecaDisponivel(0)).toBe(false);
+    expect(temPecaDisponivel(-1)).toBe(false);
   });
 
-  it("qualquer quantidade positiva é cadastro válido", () => {
-    expect(temEstoqueCadastrado(1)).toBe(true);
+  it("qualquer quantidade positiva tem peça", () => {
+    expect(temPecaDisponivel(1)).toBe(true);
   });
 });
 

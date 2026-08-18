@@ -1,10 +1,10 @@
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  ASSEMBLY_FEE,
   DELIVERY_CITY,
   DELIVERY_FEE,
   DELIVERY_UNAVAILABLE_MESSAGE,
+  DELIVERY_WITH_ASSEMBLY_FEE,
   isDeliveryCity,
   type Fulfillment,
 } from "@festae/shared";
@@ -60,6 +60,9 @@ function Option({
   );
 }
 
+/** As três saídas possíveis, do jeito que a cliente enxerga. */
+type Escolhida = "RETIRADA" | "ENTREGA" | "ENTREGA_MONTAGEM";
+
 export interface EscolhaLogistica {
   fulfillment: Fulfillment;
   assembly: boolean;
@@ -86,18 +89,33 @@ export function OpcoesLogistica({
 }) {
   const canDeliver = isDeliveryCity(city);
 
+  // Uma escolha só, com três saídas. Antes eram duas perguntas separadas
+  // (entrega e montagem) e dava para pedir montagem com retirada — combinação
+  // que a operação não cumpre, porque quem monta é a equipe que leva.
+  const escolhida: Escolhida = value.fulfillment !== "DELIVERY" ? "RETIRADA" : value.assembly ? "ENTREGA_MONTAGEM" : "ENTREGA";
+
+  function escolher(opcao: Escolhida) {
+    if (opcao === "RETIRADA") {
+      onChange({ ...value, fulfillment: "PICKUP", assembly: false });
+      return;
+    }
+    onChange({
+      ...value,
+      fulfillment: "DELIVERY",
+      assembly: opcao === "ENTREGA_MONTAGEM",
+    });
+  }
+
   return (
     <>
       <View className="gap-3">
-        <Text className="text-sm font-sans-bold uppercase tracking-wide text-navy/50">Entrega</Text>
-
         <Option
           icon="business-outline"
           title="Retirar na Festaê"
           description="Você busca na nossa sede, no horário combinado."
           price="Grátis"
-          selected={value.fulfillment === "PICKUP"}
-          onPress={() => onChange({ ...value, fulfillment: "PICKUP" })}
+          selected={escolhida === "RETIRADA"}
+          onPress={() => escolher("RETIRADA")}
         />
 
         <Option
@@ -105,13 +123,27 @@ export function OpcoesLogistica({
           title={`Entrega em ${DELIVERY_CITY}`}
           description={
             canDeliver
-              ? "A gente leva tudo até o endereço da festa."
+              ? "A gente leva tudo até o endereço da festa. A montagem fica por sua conta."
               : `Disponível somente em ${DELIVERY_CITY}.`
           }
           price={`+ ${formatBRL(DELIVERY_FEE)}`}
-          selected={value.fulfillment === "DELIVERY"}
+          selected={escolhida === "ENTREGA"}
           disabled={!canDeliver}
-          onPress={() => onChange({ ...value, fulfillment: "DELIVERY" })}
+          onPress={() => escolher("ENTREGA")}
+        />
+
+        <Option
+          icon="construct-outline"
+          title="Entrega + montagem"
+          description={
+            canDeliver
+              ? "A gente leva e monta a decoração no local da festa."
+              : `Disponível somente em ${DELIVERY_CITY}.`
+          }
+          price={`+ ${formatBRL(DELIVERY_WITH_ASSEMBLY_FEE)}`}
+          selected={escolhida === "ENTREGA_MONTAGEM"}
+          disabled={!canDeliver}
+          onPress={() => escolher("ENTREGA_MONTAGEM")}
         />
 
         {!canDeliver && (
@@ -139,28 +171,6 @@ export function OpcoesLogistica({
             />
           </View>
         )}
-      </View>
-
-      <View className="gap-3">
-        <Text className="text-sm font-sans-bold uppercase tracking-wide text-navy/50">Montagem</Text>
-
-        <Option
-          icon="hand-left-outline"
-          title="Não quero montagem"
-          description="Você mesmo monta a decoração no local."
-          price="Grátis"
-          selected={!value.assembly}
-          onPress={() => onChange({ ...value, assembly: false })}
-        />
-
-        <Option
-          icon="construct-outline"
-          title="Quero montagem"
-          description="Nossa equipe monta tudo no local da festa."
-          price={`+ ${formatBRL(ASSEMBLY_FEE)}`}
-          selected={value.assembly}
-          onPress={() => onChange({ ...value, assembly: true })}
-        />
       </View>
     </>
   );

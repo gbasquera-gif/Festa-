@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { somarCompromisso, temEstoqueCadastrado, type PedidoComprometido } from "./item-commitment";
+import { somarCompromisso, type PedidoComprometido } from "./item-commitment";
 
 /** Quantas unidades sobrando já contam como aperto e merecem aviso. */
 const MARGEM_DE_RISCO = 1;
@@ -82,11 +82,7 @@ export class ConflitosService {
         kitId: kit.id,
         kit: kit.name,
         itens: kit.products
-          .filter(
-            (link) =>
-              temEstoqueCadastrado(link.product.stockQuantity) &&
-              link.quantity > link.product.stockQuantity,
-          )
+          .filter((link) => link.quantity > link.product.stockQuantity)
           .map((link) => ({
             produto: link.product.name,
             precisa: link.quantity,
@@ -151,10 +147,7 @@ export class ConflitosService {
 
       for (const [productId, quantidade] of comprometido) {
         const produto = catalogo.get(productId);
-        // Sem estoque cadastrado não há o que comparar — o mesmo critério
-        // que a loja usa para não barrar venda por campo em branco. Zero é o
-        // padrão do cadastro, e não "acabou o item".
-        if (!produto || !temEstoqueCadastrado(produto.stockQuantity)) continue;
+        if (!produto) continue;
 
         const disponivel = produto.stockQuantity - quantidade;
         if (disponivel > MARGEM_DE_RISCO) continue;

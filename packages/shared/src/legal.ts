@@ -13,10 +13,10 @@
  * gravada no aceite de cada usuário.
  */
 
-import { ASSEMBLY_FEE, DELIVERY_CITY, DELIVERY_FEE } from "./pricing";
+import { ASSEMBLY_FEE, DELIVERY_CITY, DELIVERY_FEE, DELIVERY_WITH_ASSEMBLY_FEE } from "./pricing";
 
 /** Sobe a cada alteração de conteúdo. Gravada no aceite do usuário. */
-export const TERMS_VERSION = "1.2.0";
+export const TERMS_VERSION = "1.3.0";
 
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
 export const TERMS_UPDATED_AT = "2026-08-07";
@@ -180,7 +180,7 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       title: "Preços e pagamento",
       paragraphs: [
-        "O valor final do pedido é a soma dos produtos escolhidos, mais a taxa de entrega e a taxa de montagem, quando você optar por elas. O resumo mostra cada parcela dessa conta antes de você confirmar.",
+        "O valor final do pedido é a soma dos produtos escolhidos, mais as taxas da forma de entrega que você escolher. O resumo mostra cada parcela dessa conta antes de você confirmar.",
         "O pagamento é feito em duas parcelas iguais: 50% no ato da reserva, que é o que garante a data, e 50% na retirada dos itens.",
         "A forma de pagamento aceita é Pix. Pagamento com cartão será oferecido em versão futura do aplicativo.",
         "A data só fica reservada depois que o pagamento dos primeiros 50% for confirmado.",
@@ -203,8 +203,8 @@ export const TERMS_OF_USE: LegalDocument = {
       paragraphs: [
         "A retirada na sede da Festaê é gratuita e é a forma padrão de receber os itens, nos horários combinados na confirmação da reserva.",
         `A entrega no local da festa custa ${formatBRL(DELIVERY_FEE)} e está disponível apenas em ${DELIVERY_CITY}. Para festas em outras cidades, a retirada é feita na sede. A taxa aparece no resumo antes de você confirmar, e a entrega depende da disponibilidade da equipe na data.`,
-        `A montagem da decoração no local é um serviço opcional de ${formatBRL(ASSEMBLY_FEE)}, independente de você escolher retirada ou entrega. Sem ela, a montagem fica por sua conta.`,
-        "As duas escolhas aparecem separadas no resumo do pedido, com o valor de cada uma, e entram no total antes do cálculo do sinal.",
+        `A montagem da decoração no local é feita pela equipe da Festaê e só está disponível junto com a entrega, pelo total de ${formatBRL(DELIVERY_WITH_ASSEMBLY_FEE)} — ${formatBRL(DELIVERY_FEE)} da entrega mais ${formatBRL(ASSEMBLY_FEE)} da montagem. Não há montagem para pedidos retirados na sede, porque quem monta é a equipe que leva os itens até o local.`,
+        "A opção escolhida aparece no resumo do pedido, com o valor de cada parcela, e entra no total antes do cálculo do sinal.",
         "Os itens são cedidos em locação, não vendidos. Devem ser devolvidos nas condições em que foram recebidos, ressalvado o desgaste natural de uso.",
         "A devolução fora do prazo combinado pode gerar cobrança adicional pelo período extra, informada previamente.",
       ],

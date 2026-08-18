@@ -20,6 +20,8 @@ export interface Product {
   category: ProductCategory;
   unitPrice: string;
   imageUrl: string | null;
+  /** Peças no acervo. Zero é item esgotado, e a loja não deixa adicionar. */
+  stockQuantity: number;
   active: boolean;
 }
 

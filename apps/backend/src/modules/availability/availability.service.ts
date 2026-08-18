@@ -21,8 +21,13 @@ export interface DayAvailability {
   reserved: number;
   remaining: number;
   available: boolean;
-  /** Presente só quando o dia caiu por falta de material, não por agenda cheia. */
-  itensIndisponiveis?: string[];
+  /**
+   * Presente só quando o dia caiu por falta de material, não por agenda cheia.
+   * Traz o id para a loja poder oferecer a remoção do item, e `esgotado` para
+   * separar "não temos essa peça" de "essa peça já saiu nesse dia" — são
+   * problemas diferentes e a saída para a cliente é diferente.
+   */
+  itensIndisponiveis?: { productId: string; nome: string; esgotado: boolean }[];
 }
 
 @Injectable()
@@ -153,7 +158,15 @@ export class AvailabilityService {
         available: cabeNaAgenda && conflitos.length === 0,
         // Nomes dos itens em falta: é o que permite a loja dizer "o painel
         // deste tema já está reservado neste dia" em vez de um vermelho mudo.
-        ...(conflitos.length > 0 ? { itensIndisponiveis: conflitos.map((c) => c.nome) } : {}),
+        ...(conflitos.length > 0
+          ? {
+              itensIndisponiveis: conflitos.map((c) => ({
+                productId: c.productId,
+                nome: c.nome,
+                esgotado: c.estoque === 0,
+              })),
+            }
+          : {}),
       });
     }
     return days;

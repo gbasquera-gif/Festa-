@@ -48,6 +48,7 @@ export default function ProdutoDetalhe() {
   }
 
   const images = product.imageUrl ? [product.imageUrl] : [];
+  const esgotado = product.stockQuantity <= 0;
 
   function handleAdd() {
     addProduct(product!.id, quantity);
@@ -79,12 +80,24 @@ export default function ProdutoDetalhe() {
             </Pressable>
           )}
 
-          <View className="flex-row items-center gap-3">
-            <QuantityStepper value={quantity} onChange={setQuantity} />
-            <Button className="flex-1 px-4" onPress={handleAdd}>
-              Adicionar ao orçamento
-            </Button>
-          </View>
+          {/* Sem peça no acervo não há o que adicionar. Antes o botão
+              funcionava e o único sinal vinha lá na frente, com o calendário
+              sem data — longe demais da causa. */}
+          {esgotado ? (
+            <View className="items-center rounded-2xl bg-linen px-4 py-3.5">
+              <Text className="font-sans-bold text-navy/60">Sem estoque no momento</Text>
+              <Text className="text-xs text-navy/50">
+                Fale com a Festaê pelo WhatsApp para saber quando volta.
+              </Text>
+            </View>
+          ) : (
+            <View className="flex-row items-center gap-3">
+              <QuantityStepper value={quantity} onChange={setQuantity} max={product.stockQuantity} />
+              <Button className="flex-1 px-4" onPress={handleAdd}>
+                Adicionar ao orçamento
+              </Button>
+            </View>
+          )}
         </View>
       }
     >
@@ -101,6 +114,9 @@ export default function ProdutoDetalhe() {
           <Text className="font-sans-extrabold text-xl text-coral">{formatBRL(product.unitPrice)}</Text>{" "}
           a unidade
         </Text>
+        {esgotado && (
+          <Text className="text-sm font-sans-bold text-coral">Sem estoque no momento</Text>
+        )}
       </View>
 
       {product.description && (

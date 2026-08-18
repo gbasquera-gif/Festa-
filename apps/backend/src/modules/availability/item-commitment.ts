@@ -20,18 +20,21 @@ export interface PedidoComprometido {
 }
 
 /**
- * O estoque deste produto foi realmente preenchido?
+ * Este produto tem peça para alugar?
  *
- * Zero é o valor padrão do cadastro, não uma afirmação de que o item acabou.
- * Tratar zero como "esgotado" fechou o calendário inteiro na loja: nenhum
- * produto tinha estoque digitado, então todo kit derrubava todas as datas —
- * com a agenda vazia e nenhuma reserva existindo.
+ * Zero passou a significar "não tenho", e não "não preenchi". A leitura
+ * anterior existia porque o campo nascia vazio e nenhum produto tinha número
+ * digitado — tratar zero como esgotado fechava o calendário inteiro sem
+ * explicação. Com o acervo cadastrado, o problema deixou de ser o campo em
+ * branco e passou a ser o oposto: item que a Festaê não tem sendo aceito na
+ * reserva.
  *
- * Enquanto o campo não for preenchido, o item não participa da conferência.
- * Barrar venda por causa de um campo em branco é pior que o risco que a
- * conferência evita, e é o mesmo critério já usado para produto sem cadastro.
+ * A troca só é honesta porque agora a loja diz o motivo — o item aparece como
+ * esgotado antes de ser adicionado, e o calendário nomeia o que está
+ * travando. Sem essa explicação, o zero voltaria a ser um calendário vermelho
+ * mudo.
  */
-export function temEstoqueCadastrado(estoque: number): boolean {
+export function temPecaDisponivel(estoque: number): boolean {
   return estoque > 0;
 }
 
@@ -83,7 +86,9 @@ export function conflitosDoPedido(
 
   for (const [productId, quantidade] of pedido) {
     const produto = estoquePorProduto.get(productId);
-    if (!produto || !temEstoqueCadastrado(produto.estoque)) continue;
+    // Sem peça nenhuma o item nunca cabe: o conflito é reportado com
+    // estoque 0 para a loja poder dizer "esgotado" em vez de "sem data".
+    if (!produto) continue;
 
     const usado = jaComprometido.get(productId) ?? 0;
     if (usado + quantidade > produto.estoque) {

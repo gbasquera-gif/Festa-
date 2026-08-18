@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ASSEMBLY_FEE,
   DELIVERY_FEE,
+  DELIVERY_WITH_ASSEMBLY_FEE,
   calculateOrderPricing,
   checkFulfillment,
   isDeliveryCity,
@@ -36,14 +37,17 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.balance).toBe(250);
   });
 
-  it("B) retirada com montagem: produtos + R$ 50", () => {
+  // Montagem só existe junto da entrega: quem monta é a equipe que foi até
+  // lá. Marcar montagem com retirada não cobra nada — e a validação recusa
+  // a combinação antes de gravar.
+  it("B) retirada com montagem marcada: a montagem não é cobrada", () => {
     const result = calculateOrderPricing({ ...base, assembly: true });
 
     expect(result.deliveryFee).toBe(0);
-    expect(result.assemblyFee).toBe(50);
-    expect(result.total).toBe(550);
-    expect(result.deposit).toBe(275);
-    expect(result.balance).toBe(275);
+    expect(result.assemblyFee).toBe(0);
+    expect(result.total).toBe(500);
+    expect(result.deposit).toBe(250);
+    expect(result.balance).toBe(250);
   });
 
   it("C) entrega sem montagem: produtos + R$ 20", () => {
@@ -180,11 +184,46 @@ describe("taxas oficiais", () => {
     expect(ASSEMBLY_FEE).toBe(50);
   });
 
-  it("montagem e entrega são independentes", () => {
-    const soMontagem = calculateOrderPricing({ ...base, assembly: true });
-    const soEntrega = calculateOrderPricing({ ...base, fulfillment: "DELIVERY" });
-    const ambos = calculateOrderPricing({ ...base, fulfillment: "DELIVERY", assembly: true });
+  // As três opções que a loja oferece hoje, com o preço que a cliente lê.
+  it("as três opções custam grátis, R$ 20 e R$ 70", () => {
+    const produtos = base.subtotalKit + base.subtotalExtras;
 
-    expect(ambos.total).toBe(soMontagem.total + soEntrega.total - base.subtotalKit - base.subtotalExtras);
+    const retirada = calculateOrderPricing(base);
+    const entrega = calculateOrderPricing({ ...base, fulfillment: "DELIVERY" });
+    const entregaComMontagem = calculateOrderPricing({
+      ...base,
+      fulfillment: "DELIVERY",
+      assembly: true,
+    });
+
+    expect(retirada.total - produtos).toBe(0);
+    expect(entrega.total - produtos).toBe(DELIVERY_FEE);
+    expect(entregaComMontagem.total - produtos).toBe(DELIVERY_WITH_ASSEMBLY_FEE);
+    expect(DELIVERY_WITH_ASSEMBLY_FEE).toBe(70);
+  });
+
+  it("montagem sem entrega é recusada pela validação", () => {
+    const recusa = checkFulfillment("PICKUP", "Chapecó", true);
+    expect(recusa.allowed).toBe(false);
+    if (!recusa.allowed) expect(recusa.reason).toContain("montagem só está disponível");
+  });
+
+  it("montagem com entrega é permitida", () => {
+    expect(checkFulfillment("DELIVERY", "Chapecó", true).allowed).toBe(true);
+  });
+
+  // Fora de Chapecó não há entrega, e sem entrega não há montagem: o total
+  // não pode carregar uma taxa de serviço que ninguém vai prestar.
+  it("cidade sem entrega não cobra entrega nem montagem", () => {
+    const fora = calculateOrderPricing({
+      ...base,
+      fulfillment: "DELIVERY",
+      assembly: true,
+      city: "Xanxerê",
+    });
+
+    expect(fora.deliveryFee).toBe(0);
+    expect(fora.assemblyFee).toBe(0);
+    expect(fora.total).toBe(base.subtotalKit + base.subtotalExtras);
   });
 });

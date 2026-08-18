@@ -79,7 +79,7 @@ export class OrdersService {
       );
     }
 
-    const allowed = checkFulfillment(input.fulfillment, order.event.city);
+    const allowed = checkFulfillment(input.fulfillment, order.event.city, input.assembly);
     if (!allowed.allowed) throw new BadRequestException(allowed.reason);
 
     if (input.fulfillment === "DELIVERY" && !input.address?.trim()) {

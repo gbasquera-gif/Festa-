@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useOrcamento } from "@/lib/orcamento";
+import { colors } from "@/theme";
 
 interface DayAvailability {
   date: string;
   reserved: number;
   remaining: number;
   available: boolean;
-  /** Nomes dos itens em falta, quando o dia caiu por material e não por agenda. */
-  itensIndisponiveis?: string[];
+  /** Itens em falta, quando o dia caiu por material e não por agenda cheia. */
+  itensIndisponiveis?: { productId: string; nome: string; esgotado: boolean }[];
 }
 
 const WEEKDAY_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -32,7 +34,7 @@ export function AvailabilityCalendar({
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState(new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)));
-  const { kitId, items } = useOrcamento();
+  const { kitId, items, setProductQuantity } = useOrcamento();
 
   const key = monthKey(cursor);
   // A consulta carrega o que a pessoa já escolheu: "este dia está livre?"
@@ -53,6 +55,27 @@ export function AvailabilityCalendar({
 
   const carregou = Boolean(data);
   const byDate = new Map((data ?? []).map((d) => [d.date, d]));
+
+  // Um item esgotado aparece como bloqueio em todos os dias, porque o
+  // problema não é a data — é não existir a peça. É esse padrão que separa
+  // "sem estoque" de "já saiu nesse sábado".
+  const esgotados = [
+    ...new Map(
+      (data ?? [])
+        .flatMap((d) => d.itensIndisponiveis ?? [])
+        .filter((item) => item.esgotado)
+        .map((item) => [item.productId, item]),
+    ).values(),
+  ];
+
+  const ocupadosNoDia = (byDate.get(value)?.itensIndisponiveis ?? []).filter(
+    (item) => !item.esgotado,
+  );
+
+  // Só dá para remover o que a própria cliente acrescentou. Item que vem
+  // dentro do kit não é dela para tirar — ali a saída é trocar de kit.
+  const removiveis = new Set(items.map((item) => item.productId));
+  const podeResolverAqui = esgotados.every((item) => removiveis.has(item.productId));
   const firstWeekday = cursor.getUTCDay();
   const daysInMonth = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0)).getUTCDate();
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -128,31 +151,58 @@ export function AvailabilityCalendar({
         </Text>
       )}
 
-      {/* O motivo importa: "agenda cheia" e "o painel deste tema já saiu nesse
-          dia" levam a decisões diferentes — a segunda ainda pode virar venda
-          trocando o kit. */}
-      {(() => {
-        const escolhido = byDate.get(value);
-        const faltando = escolhido?.itensIndisponiveis;
-        if (!faltando || faltando.length === 0) return null;
-        return (
-          <Text className="text-center text-xs text-navy/60">
-            Nesta data já está reservado: {faltando.join(", ")}. Escolha outro dia ou volte e troque
-            o kit.
-          </Text>
-        );
-      })()}
+      {/* O motivo importa: "esgotado" e "já saiu nesse dia" levam a decisões
+          diferentes. Esgotado bloqueia o mês inteiro e a saída é tirar o item;
+          o outro é só escolher outro dia. Sem essa distinção, a cliente ficava
+          diante de um calendário vermelho sem saber o que fazer. */}
+      {esgotados.length > 0 && (
+        <View className="gap-2 rounded-2xl border border-coral bg-coral/5 p-3.5">
+          <View className="flex-row gap-2">
+            <Ionicons name="alert-circle-outline" size={18} color={colors.coral} />
+            <Text className="flex-1 text-sm leading-5 text-navy">
+              <Text className="font-sans-bold">
+                {esgotados.length === 1
+                  ? `${esgotados[0].nome} está sem estoque`
+                  : `${esgotados.map((i) => i.nome).join(", ")} estão sem estoque`}
+              </Text>
+              {/* A frase muda conforme dá ou não para resolver ali mesmo:
+                  mandar "remova o item" e logo abaixo dizer que ele vem no
+                  kit deixava a cliente sem saída nenhuma. */}
+              {podeResolverAqui
+                ? esgotados.length === 1
+                  ? " e por isso nenhuma data fica disponível. Remova o item para continuar."
+                  : " e por isso nenhuma data fica disponível. Remova os itens para continuar."
+                : " e por isso nenhuma data fica disponível."}
+            </Text>
+          </View>
 
-      <View className="flex-row items-center justify-center gap-4 pt-1">
-        <View className="flex-row items-center gap-1.5">
-          <View className="h-3 w-3 rounded-full border border-green-300 bg-green-50" />
-          <Text className="text-xs text-navy/60">🟢 Disponível</Text>
+          {esgotados.map((item) =>
+            removiveis.has(item.productId) ? (
+              <Pressable
+                key={item.productId}
+                onPress={() => setProductQuantity(item.productId, 0)}
+                className="items-center rounded-xl bg-coral py-2.5"
+                accessibilityRole="button"
+              >
+                <Text className="text-sm font-sans-bold text-white">Remover {item.nome}</Text>
+              </Pressable>
+            ) : (
+              <Text key={item.productId} className="text-xs leading-5 text-navy/60">
+                {item.nome} faz parte do kit escolhido. Volte e escolha outro kit, ou fale com a
+                Festaê pelo WhatsApp.
+              </Text>
+            ),
+          )}
         </View>
-        <View className="flex-row items-center gap-1.5">
-          <View className="h-3 w-3 rounded-full border border-red-300 bg-red-50" />
-          <Text className="text-xs text-navy/60">🔴 Indisponível</Text>
-        </View>
-      </View>
+      )}
+
+      {ocupadosNoDia.length > 0 && (
+        <Text className="text-center text-xs text-navy/60">
+          Nesta data já está reservado: {ocupadosNoDia.map((i) => i.nome).join(", ")}. Escolha outro
+          dia.
+        </Text>
+      )}
+
     </View>
   );
 }

@@ -67,7 +67,11 @@ export default function KitDetalhe() {
   const images = [kit.coverImageUrl, ...kit.images].filter((image): image is string => Boolean(image));
 
   const noKit = new Set(kit.products.map((link) => link.productId));
-  const sugestoes = (products ?? []).filter((product) => !noKit.has(product.id));
+  const sugestoes = (products ?? [])
+    .filter((product) => !noKit.has(product.id))
+    // Esgotado por último: quem está montando quer ver primeiro o que dá para
+    // levar, não o que não tem.
+    .sort((a, b) => Number(b.stockQuantity > 0) - Number(a.stockQuantity > 0));
 
   /**
    * Mexer numa quantidade já escolhe o kit.
@@ -267,6 +271,10 @@ export default function KitDetalhe() {
           >
             {sugestoes.map((product) => {
               const quantidade = quantityOf(product.id);
+              // Item sem peça no acervo não entra no orçamento. Antes dava
+              // para adicionar e o único sinal era o calendário ficar sem
+              // data — a cliente não tinha como ligar uma coisa à outra.
+              const esgotado = product.stockQuantity <= 0;
               return (
                 <View
                   key={product.id}
@@ -284,16 +292,25 @@ export default function KitDetalhe() {
                       showPlaceholderLabel={false}
                     />
                     <View className="flex-1">
-                      <Text className="font-sans-bold text-navy" numberOfLines={2}>
+                      <Text
+                        className={`font-sans-bold ${esgotado ? "text-navy/40" : "text-navy"}`}
+                        numberOfLines={2}
+                      >
                         {product.name}
                       </Text>
                       <Text className="text-xs text-navy/50">
-                        {formatBRL(product.unitPrice)} a unidade
+                        {esgotado
+                          ? "Sem estoque no momento"
+                          : `${formatBRL(product.unitPrice)} a unidade`}
                       </Text>
                     </View>
                   </Pressable>
 
-                  {quantidade > 0 ? (
+                  {esgotado ? (
+                    <View className="h-11 items-center justify-center rounded-2xl bg-linen px-3">
+                      <Text className="text-xs font-sans-bold text-navy/50">Esgotado</Text>
+                    </View>
+                  ) : quantidade > 0 ? (
                     <QuantityStepper
                       value={quantidade}
                       min={0}

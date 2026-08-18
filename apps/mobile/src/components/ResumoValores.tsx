@@ -79,13 +79,14 @@ export function CartaoServicos({
         <Text className="mt-0.5 text-sm text-navy/50">{address}</Text>
       ) : null}
 
-      <View className="mt-1">
-        <Line
-          label={assembly ? "Montagem da festa" : "Sem montagem"}
-          value={assemblyFee > 0 ? formatBRL(assemblyFee) : "Grátis"}
-          muted={assemblyFee === 0}
-        />
-      </View>
+      {/* A montagem só aparece quando foi escolhida. Escrever "Sem montagem"
+          num pedido de retirada listava um serviço que nem é oferecido
+          naquela opção, e enchia o resumo de linha sem informação. */}
+      {assembly && (
+        <View className="mt-1">
+          <Line label="Montagem no local" value={formatBRL(assemblyFee)} />
+        </View>
+      )}
     </Card>
   );
 }

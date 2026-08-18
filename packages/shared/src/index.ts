@@ -105,9 +105,11 @@ export type { CreateCheckoutInput } from "./schemas/payments";
 export {
   DELIVERY_FEE,
   ASSEMBLY_FEE,
+  DELIVERY_WITH_ASSEMBLY_FEE,
   DELIVERY_CITY,
   DEPOSIT_RATE,
   DELIVERY_UNAVAILABLE_MESSAGE,
+  ASSEMBLY_REQUIRES_DELIVERY_MESSAGE,
   calculateOrderPricing,
   splitPayment,
   checkFulfillment,

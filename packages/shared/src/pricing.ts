@@ -7,10 +7,12 @@
  * valor no resumo e outro no Pix, que é o pior erro possível num produto de
  * locação.
  *
- * Regras oficiais do negócio (07/08/2026):
- *   entrega     R$ 20,00, exclusivamente em Chapecó
- *   montagem    R$ 50,00, opcional e independente da entrega
- *   pagamento   50% de sinal na reserva, 50% na retirada/entrega
+ * Regras oficiais do negócio (17/08/2026):
+ *   retirada          grátis, na sede
+ *   entrega           R$ 20,00, exclusivamente em Chapecó
+ *   entrega+montagem  R$ 70,00 (a montagem custa R$ 50,00 e só existe junto
+ *                     da entrega — se a equipe vai montar, ela já leva)
+ *   pagamento         50% de sinal na reserva, 50% na retirada/entrega
  *
  * Estes valores são constantes porque hoje existe uma empresa só. Se um dia a
  * plataforma atender outras (ver docs/VISAO-SAAS.md), viram configuração de
@@ -22,8 +24,21 @@
 /** Taxa fixa de entrega. Vale só para Chapecó. */
 export const DELIVERY_FEE = 20;
 
-/** Taxa fixa de montagem no local. Independe de entrega ou retirada. */
+/**
+ * Taxa fixa de montagem no local.
+ *
+ * Só se aplica junto da entrega: quem monta a decoração é a equipe que foi
+ * até lá, então não existe montar sem levar. Antes as duas escolhas eram
+ * independentes e dava para pedir montagem com retirada — uma combinação que
+ * a operação não tem como cumprir.
+ */
 export const ASSEMBLY_FEE = 50;
+
+/** O que a cliente paga escolhendo entrega com montagem. */
+export const DELIVERY_WITH_ASSEMBLY_FEE = DELIVERY_FEE + ASSEMBLY_FEE;
+
+export const ASSEMBLY_REQUIRES_DELIVERY_MESSAGE =
+  "A montagem só está disponível junto com a entrega — é a nossa equipe que leva e monta no local.";
 
 /** Única cidade atendida com entrega no lançamento. */
 export const DELIVERY_CITY = "Chapecó";
@@ -130,9 +145,12 @@ export function calculateOrderPricing(input: PricingInput): PricingResult {
   const extrasCents = toCentsInt(input.subtotalExtras);
   const productsCents = kitCents + extrasCents;
 
-  const deliveryCents =
-    input.fulfillment === "DELIVERY" && isDeliveryCity(input.city) ? toCentsInt(DELIVERY_FEE) : 0;
-  const assemblyCents = input.assembly ? toCentsInt(ASSEMBLY_FEE) : 0;
+  const entregando = input.fulfillment === "DELIVERY" && isDeliveryCity(input.city);
+  const deliveryCents = entregando ? toCentsInt(DELIVERY_FEE) : 0;
+  // Montagem só é cobrada quando há entrega de verdade. Sem esta amarração,
+  // um pedido de retirada com montagem marcada cobraria R$ 50 por um serviço
+  // que a operação não presta.
+  const assemblyCents = entregando && input.assembly ? toCentsInt(ASSEMBLY_FEE) : 0;
 
   const totalCents = productsCents + deliveryCents + assemblyCents;
 
@@ -160,9 +178,13 @@ export function calculateOrderPricing(input: PricingInput): PricingResult {
 export function checkFulfillment(
   fulfillment: Fulfillment,
   city: string | null | undefined,
+  assembly = false,
 ): { allowed: true } | { allowed: false; reason: string } {
   if (fulfillment === "DELIVERY" && !isDeliveryCity(city)) {
     return { allowed: false, reason: DELIVERY_UNAVAILABLE_MESSAGE };
+  }
+  if (assembly && fulfillment !== "DELIVERY") {
+    return { allowed: false, reason: ASSEMBLY_REQUIRES_DELIVERY_MESSAGE };
   }
   return { allowed: true };
 }
