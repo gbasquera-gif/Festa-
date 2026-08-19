@@ -1,0 +1,51 @@
+# Validação de configs do agente Pet Gaia — só dispara em mudanças dentro de
+# pet-gaia-agent/. Este workflow vive na raiz do repo (exigência do GitHub
+# Actions) mesmo o projeto sendo temporariamente hospedado aqui dentro do
+# Festa- — ver pet-gaia-agent/NOTA-MIGRACAO.md. Ao migrar para o repositório
+# próprio, mover este arquivo para .github/workflows/validate-config.yml lá.
+name: pet-gaia-agent — validar configs
+
+on:
+  pull_request:
+    paths:
+      - "pet-gaia-agent/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "pet-gaia-agent/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pet-gaia-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar JSON de mcp-servers.json.example
+        run: python3 -m json.tool mcp-config/mcp-servers.json.example > /dev/null
+
+      - name: Bloquear credenciais versionadas por engano
+        run: |
+          if [ -f mcp-config/mcp-servers.json ]; then
+            echo "ERRO: mcp-config/mcp-servers.json não deve ser versionado (contém credenciais)." >&2
+            exit 1
+          fi
+          if [ -f .env ]; then
+            echo "ERRO: .env não deve ser versionado." >&2
+            exit 1
+          fi
+
+      - name: Checar arquivos obrigatórios
+        run: |
+          for f in README.md rules/guardrails.md prompts/trafego.md prompts/analise.md fly.toml Dockerfile scripts/run-agent.sh; do
+            if [ ! -f "$f" ]; then
+              echo "ERRO: arquivo obrigatório ausente: $f" >&2
+              exit 1
+            fi
+          done
+
+      - name: Checar que o script do agente é executável
+        run: test -x scripts/run-agent.sh
