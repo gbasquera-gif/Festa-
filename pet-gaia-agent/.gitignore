@@ -1,0 +1,9 @@
+# Nunca versionar credenciais
+mcp-config/mcp-servers.json
+.env
+.env.*
+*.key
+*.pem
+
+# Logs locais (opcional manter fora do versionamento, dependendo do volume)
+logs/*.log

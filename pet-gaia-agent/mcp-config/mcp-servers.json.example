@@ -1,0 +1,22 @@
+{
+  "_comment": "Copie este arquivo para mcp-servers.json e preencha via variáveis de ambiente. NUNCA versionar o arquivo com credenciais reais.",
+  "mcpServers": {
+    "meta-ads": {
+      "url": "https://mcp.facebook.com/ads",
+      "transport": "http",
+      "auth": "oauth",
+      "_note": "Autenticação via login OAuth do Business Manager da Pet Gaia. Leitura e escrita disponíveis — escrita bloqueada por rules/guardrails.md na fase de piloto."
+    },
+    "google-ads": {
+      "command": "google-ads-mcp",
+      "transport": "stdio",
+      "env": {
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "${GOOGLE_ADS_DEVELOPER_TOKEN}",
+        "GOOGLE_ADS_CLIENT_ID": "${GOOGLE_ADS_CLIENT_ID}",
+        "GOOGLE_ADS_CLIENT_SECRET": "${GOOGLE_ADS_CLIENT_SECRET}",
+        "GOOGLE_ADS_REFRESH_TOKEN": "${GOOGLE_ADS_REFRESH_TOKEN}"
+      },
+      "_note": "Servidor oficial do Google Ads — somente leitura (3 tools: list_accessible_customers, search, get_resource_metadata). Requer developer token aprovado pela Google Ads API."
+    }
+  }
+}
