@@ -7,3 +7,4 @@ mcp-config/mcp-servers.json
 
 # Logs locais (opcional manter fora do versionamento, dependendo do volume)
 logs/*.log
+bot/data/

@@ -1,0 +1,27 @@
+app = "pet-gaia-agent-bot"
+primary_region = "gru" # São Paulo — menor latência para Brasil
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  DATA_DIR = "/data"
+
+# Diferente do agente principal (pet-gaia-agent), este é um app sempre ativo:
+# precisa estar de pé para receber os webhooks do Telegram a qualquer hora.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "pet_gaia_bot_data"
+  destination = "/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

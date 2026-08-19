@@ -33,7 +33,8 @@ run_module() {
 
 Execute sua função agora: leia as métricas disponíveis via MCP e produza a
 saída no formato descrito acima. Fase atual: Piloto (somente leitura) — não
-execute nenhuma ação de escrita." \
+execute nenhuma ação de escrita. Se houver mais de uma recomendação, separe
+cada uma com uma linha contendo apenas: ---RECOMENDACAO---" \
     >> "$LOG_FILE" 2>&1
 
   echo "[$(date '+%Y-%m-%d %H:%M')] módulo=${module} concluído" | tee -a "$LOG_FILE"
@@ -42,4 +43,9 @@ execute nenhuma ação de escrita." \
 run_module trafego
 run_module analise
 
-# TODO: enviar resumo do ciclo (logs do dia) para aprovação/leitura via Telegram.
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+  node "$AGENT_DIR/scripts/notify-telegram.js" "$LOG_FILE"
+else
+  echo "Telegram não configurado (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes)," \
+       "pulando notificação." | tee -a "$LOG_FILE"
+fi
