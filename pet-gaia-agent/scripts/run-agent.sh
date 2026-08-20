@@ -8,12 +8,26 @@
 set -euo pipefail
 
 AGENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_FILE="$AGENT_DIR/logs/$(date +%F).log"
+
+# $HOME aponta para o volume persistente montado em produção (ver fly.toml) —
+# é onde vivem o mcp-servers.json real (nunca entra na imagem, ver
+# .dockerignore) e as credenciais OAuth que o Claude Code salva depois do
+# login manual único (`claude mcp login meta-ads --no-browser`). Em dev
+# local, se não houver HOME configurado dessa forma, cai no arquivo dentro
+# do próprio repo (útil para testar sem volume).
 MCP_CONFIG="$AGENT_DIR/mcp-config/mcp-servers.json"
+if [ ! -f "$MCP_CONFIG" ]; then
+  MCP_CONFIG="$HOME/mcp-servers.json"
+fi
+
+LOG_DIR="$HOME/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/$(date +%F).log"
 
 if [ ! -f "$MCP_CONFIG" ]; then
-  echo "ERRO: $MCP_CONFIG não encontrado. Copie mcp-servers.json.example e preencha" \
-       "as variáveis de ambiente antes de rodar o agente." >&2
+  echo "ERRO: nenhum mcp-servers.json encontrado (procurado em" \
+       "$AGENT_DIR/mcp-config/mcp-servers.json e $HOME/mcp-servers.json)." \
+       "Copie mcp-servers.json.example e preencha antes de rodar o agente." >&2
   exit 1
 fi
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Copie este arquivo para mcp-servers.json e preencha via variáveis de ambiente. NUNCA versionar o arquivo com credenciais reais.",
+  "_comment": "Copie este arquivo para mcp-servers.json e preencha via variáveis de ambiente. NUNCA versionar o arquivo com credenciais reais. Em produção (Fly.io), o arquivo real deve ficar em $HOME/mcp-servers.json (isto é, no volume persistente /data — ver fly.toml), não dentro do repositório, já que o .dockerignore o exclui da imagem de propósito.",
   "mcpServers": {
     "meta-ads": {
       "url": "https://mcp.facebook.com/ads",

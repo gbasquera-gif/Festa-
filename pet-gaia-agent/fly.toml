@@ -2,14 +2,23 @@ app = "pet-gaia-agent"
 primary_region = "gru" # São Paulo — menor latência para Brasil
 
 [build]
-  # Dockerfile na raiz do projeto (a criar em etapa futura)
+  dockerfile = "Dockerfile"
 
 [env]
   TZ = "America/Sao_Paulo"
+  # HOME aponta para o volume persistente: é onde o Claude Code guarda a
+  # credencial OAuth do Meta Ads MCP depois do login manual único (ver
+  # NOTA-MIGRACAO.md / conversa de setup). Sem isso, a máquina perderia o
+  # login a cada vez que desligasse entre os ciclos agendados.
+  HOME = "/data"
 
 # Fase 1 (piloto): execução agendada 2x/dia via Fly Machines scheduled run.
 # 08:00 e 18:00 horário de Brasília — configurado via `fly machine run` com
 # a flag --schedule, ou via GitHub Actions cron chamando a Fly Machines API.
+
+[[mounts]]
+  source = "pet_gaia_agent_data"
+  destination = "/data"
 
 [[vm]]
   cpu_kind = "shared"
