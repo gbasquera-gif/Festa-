@@ -1,0 +1,3 @@
+# Scripts sempre com quebra de linha Unix (LF), independente do SO de quem
+# clona — evita o shebang quebrar dentro do container Linux (ver Dockerfile).
+*.sh text eol=lf
