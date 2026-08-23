@@ -1,0 +1,36 @@
+# Dispara o ciclo agendado do agente Pet Gaia (leitura + recomendações via
+# Telegram) 2x/dia, 08:00 e 18:00 horário de Brasília. Existe porque o
+# agendamento nativo do Fly Machines (--schedule) só suporta intervalos
+# genéricos (hourly/daily/weekly), não horários exatos — ver
+# pet-gaia-agent/fly.toml.
+#
+# Brasília não tem mais horário de verão desde 2019, então o offset é fixo:
+# UTC-3. 08:00 BRT = 11:00 UTC, 18:00 BRT = 21:00 UTC.
+name: pet-gaia-agent — ciclo agendado
+
+on:
+  schedule:
+    - cron: "0 11 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar flyctl
+        run: curl -L https://fly.io/install.sh | sh
+
+      - name: Iniciar o ciclo do agente
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          export FLYCTL_INSTALL="/home/runner/.fly"
+          export PATH="$FLYCTL_INSTALL/bin:$PATH"
+          MACHINE_ID=$(flyctl machine list -a pet-gaia-agent --json | jq -r '.[0].id')
+          if [ -z "$MACHINE_ID" ] || [ "$MACHINE_ID" = "null" ]; then
+            echo "Não encontrei nenhuma máquina em pet-gaia-agent." >&2
+            exit 1
+          fi
+          echo "Iniciando máquina $MACHINE_ID"
+          flyctl machine start "$MACHINE_ID" -a pet-gaia-agent
