@@ -6,11 +6,11 @@ primary_region = "gru" # São Paulo — menor latência para Brasil
 
 [env]
   TZ = "America/Sao_Paulo"
-  # HOME aponta para o volume persistente: é onde o Claude Code guarda a
-  # credencial OAuth do Meta Ads MCP depois do login manual único (ver
-  # NOTA-MIGRACAO.md / conversa de setup). Sem isso, a máquina perderia o
-  # login a cada vez que desligasse entre os ciclos agendados.
-  HOME = "/data"
+  # NOTA: tentamos usar HOME=/data aqui para apontar o Claude Code para o
+  # volume persistente, mas o Fly.io ignora/reseta essa variável específica
+  # (confirmado testando em produção). A solução real está em
+  # scripts/run-agent.sh, que copia as credenciais entre /data e o $HOME
+  # real a cada execução — não depende dessa variável.
 
 # Fase 1 (piloto): execução agendada 2x/dia via Fly Machines scheduled run.
 # 08:00 e 18:00 horário de Brasília — configurado via `fly machine run` com
