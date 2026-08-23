@@ -1,17 +1,43 @@
 #!/usr/bin/env node
-// Lê o log do ciclo que acabou de rodar, separa as recomendações de cada
-// módulo (delimitadas por "---RECOMENDACAO---", ver instrução em
-// run-agent.sh) e manda uma mensagem no Telegram por recomendação, com
-// botões Aprovar/Rejeitar.
+// Lê o log do ciclo que acabou de rodar, separa as recomendações/rascunhos de
+// cada módulo e manda uma mensagem no Telegram por item, com botões
+// Aprovar/Rejeitar.
 //
-// Fase 1 (piloto): aprovar/rejeitar só registra a decisão (ver bot/server.js)
-// — nenhuma ação é executada automaticamente. Isso muda só quando a fase de
-// piloto terminar (ver rules/guardrails.md).
+// Cada item começa com uma linha marcadora própria:
+//   ---RECOMENDACAO---                    → recomendação de texto (ver run-agent.sh)
+//   ---RASCUNHO-CAMPANHA:<id>---          → rascunho de campanha PAUSADA (ver prompts/trafego.md)
+//
+// Fase 1 (piloto): aprovar/rejeitar uma RECOMENDACAO só registra a decisão
+// (ver bot/server.js) — nada é executado. Aprovar/rejeitar um
+// RASCUNHO-CAMPANHA de fato ATIVA ou APAGA a campanha pausada correspondente
+// — é a única ação de escrita permitida nesta fase (ver rules/guardrails.md).
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
 const { sendRecommendation, requireEnv } = require("./telegram-api");
+
+function splitBlocks(text) {
+  const delimRe = /^---(RECOMENDACAO|RASCUNHO-CAMPANHA:([^\n]+?))---[ \t]*$/gm;
+  const marks = [];
+  let m;
+  while ((m = delimRe.exec(text)) !== null) {
+    marks.push({ campaignId: m[2], start: m.index, contentStart: delimRe.lastIndex });
+  }
+
+  if (marks.length === 0) {
+    const trimmed = text.trim();
+    return trimmed ? [{ campaignId: undefined, text: trimmed }] : [];
+  }
+
+  const blocks = [];
+  for (let i = 0; i < marks.length; i++) {
+    const end = i + 1 < marks.length ? marks[i + 1].start : text.length;
+    const content = text.slice(marks[i].contentStart, end).trim();
+    if (content) blocks.push({ campaignId: marks[i].campaignId, text: content });
+  }
+  return blocks;
+}
 
 function splitModuleBlocks(logText) {
   const markerRe = /\[[^\]]+\]\s*módulo=(\w+)\s*(iniciando|concluído)/g;
@@ -51,17 +77,17 @@ async function main() {
 
   let sent = 0;
   for (const { module, body } of moduleBlocks) {
-    const recommendations = body
-      .split("---RECOMENDACAO---")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    for (const item of splitBlocks(body)) {
+      const isCampaignDraft = Boolean(item.campaignId);
+      const label = isCampaignDraft ? `${module} · rascunho de campanha` : module;
+      const approveData = isCampaignDraft ? `approve:campaign:${item.campaignId}` : `approve:${module}`;
+      const rejectData = isCampaignDraft ? `reject:campaign:${item.campaignId}` : `reject:${module}`;
 
-    for (const text of recommendations) {
       await sendRecommendation({
         chatId,
-        text: `*[${module}]* — ${path.basename(logFile)}\n\n${text}`,
-        approveData: `approve:${module}`,
-        rejectData: `reject:${module}`,
+        text: `*[${label}]* — ${path.basename(logFile)}\n\n${item.text}`,
+        approveData,
+        rejectData,
       });
       sent += 1;
     }

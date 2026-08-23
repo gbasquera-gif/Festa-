@@ -67,9 +67,12 @@ run_module() {
     "$(cat "$prompt_file")
 
 Execute sua função agora: leia as métricas disponíveis via MCP e produza a
-saída no formato descrito acima. Fase atual: Piloto (somente leitura) — não
-execute nenhuma ação de escrita. Se houver mais de uma recomendação, separe
-cada uma com uma linha contendo apenas: ---RECOMENDACAO---" \
+saída no formato descrito acima. Fase atual: Piloto (somente leitura, exceto
+a exceção específica de rascunho de campanha pausada descrita em
+rules/guardrails.md, se aplicável ao seu módulo). Se houver mais de um item,
+comece CADA um com sua própria linha marcadora: ---RECOMENDACAO--- para
+recomendação de texto, ou ---RASCUNHO-CAMPANHA:<id>--- para rascunho de
+campanha (id retornado pela ferramenta de criação)." \
     >> "$LOG_FILE" 2>&1
 
   echo "[$(date '+%Y-%m-%d %H:%M')] módulo=${module} concluído" | tee -a "$LOG_FILE"

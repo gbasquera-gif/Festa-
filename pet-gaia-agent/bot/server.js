@@ -4,15 +4,19 @@
 // separado do agente principal (que só liga nos horários agendados) — ver
 // README.md desta pasta para o porquê.
 //
-// Fase 1 (piloto): aprovar/rejeitar aqui SÓ registra a decisão em
-// decisoes.log. Nenhuma ação é executada automaticamente a partir daqui —
-// isso muda só quando a fase de piloto terminar (ver rules/guardrails.md).
+// Fase 1 (piloto): aprovar/rejeitar uma RECOMENDACAO de texto só registra a
+// decisão em decisoes.log — nada é executado. Aprovar/rejeitar um
+// RASCUNHO-CAMPANHA (callback_data "approve:campaign:<id>" /
+// "reject:campaign:<id>") de fato ATIVA ou APAGA a campanha pausada via
+// Graph API — é a única ação de escrita real que este bot dispara, e só
+// nesse caso específico (ver rules/guardrails.md).
 "use strict";
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { answerCallback, editMessageAfterDecision, requireEnv } = require("./telegram-api");
+const { activateCampaign, deleteCampaign } = require("./meta-api");
 
 const PORT = process.env.PORT || 8080;
 const WEBHOOK_PATH = "/telegram-webhook";
@@ -28,33 +32,60 @@ function appendDecision(entry) {
 }
 
 async function handleCallbackQuery(callbackQuery) {
-  const [action, module = "desconhecido"] = (callbackQuery.data || "").split(":");
+  const raw = callbackQuery.data || "";
+  const [action, ...restParts] = raw.split(":");
+  const rest = restParts.join(":"); // "trafego" | "analise" | "campaign:<id>"
 
   if (action !== "approve" && action !== "reject") {
     await answerCallback(callbackQuery.id, "Ação não reconhecida.");
     return;
   }
 
+  const campaignMatch = rest.match(/^campaign:(.+)$/);
+  const target = campaignMatch ? `campanha ${campaignMatch[1]}` : rest || "desconhecido";
   const decisionLabel = action === "approve" ? "✅ Aprovado" : "❌ Rejeitado";
   const approvedBy = callbackQuery.from?.username || callbackQuery.from?.first_name || "desconhecido";
   const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
   const originalText = callbackQuery.message?.text || "";
 
+  let executionNote = "nenhuma (recomendação de texto)";
+  if (campaignMatch) {
+    const campaignId = campaignMatch[1];
+    try {
+      if (action === "approve") {
+        await activateCampaign(campaignId);
+        executionNote = `campanha ${campaignId} ativada na Meta`;
+      } else {
+        await deleteCampaign(campaignId);
+        executionNote = `campanha ${campaignId} apagada (rascunho descartado)`;
+      }
+    } catch (err) {
+      executionNote = `FALHOU: ${err.message}`;
+      console.error("Erro executando decisão de campanha:", err);
+    }
+  }
+
   appendDecision(
-    `[${timestamp}] módulo=${module}\n` +
+    `[${timestamp}] alvo=${target}\n` +
       `status: ${action === "approve" ? "aprovada" : "rejeitada"}\n` +
       `aprovado_por: ${approvedBy}\n` +
+      `execucao: ${executionNote}\n` +
       `texto: ${originalText.replace(/\n/g, " ")}\n`
   );
 
-  await answerCallback(callbackQuery.id, decisionLabel);
+  await answerCallback(
+    callbackQuery.id,
+    executionNote.startsWith("FALHOU") ? `${decisionLabel} — mas a execução falhou, veja o log` : decisionLabel
+  );
 
   if (callbackQuery.message) {
     await editMessageAfterDecision({
       chatId: callbackQuery.message.chat.id,
       messageId: callbackQuery.message.message_id,
       originalText,
-      decisionLabel: `${decisionLabel} por ${approvedBy} em ${timestamp}`,
+      decisionLabel: `${decisionLabel} por ${approvedBy} em ${timestamp}${
+        campaignMatch ? ` — ${executionNote}` : ""
+      }`,
     });
   }
 }

@@ -6,8 +6,16 @@ Regras que todo módulo do agente deve respeitar. Qualquer prompt de sistema
 ## Tráfego pago
 
 - **Nunca executar ação de escrita sem aprovação humana nesta fase (Piloto).**
-  Isso inclui: pausar/reativar campanha, alterar orçamento, criar novo anúncio,
-  alterar público-alvo, alterar lance.
+  Isso inclui: pausar/reativar campanha, alterar orçamento, alterar público-alvo,
+  alterar lance.
+- **Exceção única e específica — rascunho de campanha a partir de post do Instagram:**
+  o agente PODE criar campanha/conjunto de anúncios/anúncio em status **PAUSADO**
+  (sem gastar nada, sem ficar visível ao público) a partir de um post existente do
+  Instagram, e notificar via Telegram com uma prévia (link pro Gerenciador de
+  Anúncios, orçamento e público sugeridos) para aprovação. Ele NUNCA ativa
+  (`status: ACTIVE`) essa campanha sem aprovação explícita — aprovar ativa,
+  rejeitar apaga o rascunho. Isso é a única forma de escrita permitida na fase
+  de piloto, porque não gasta dinheiro nem fica pública até você aprovar.
 - Quando a fase de piloto terminar e ações automáticas forem liberadas:
   - Variação de orçamento acima de 20% exige aprovação.
   - Pausar campanha com gasto acima de R$ 20,00 no dia exige aprovação.

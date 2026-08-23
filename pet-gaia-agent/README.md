@@ -11,11 +11,14 @@ tráfego pago (Meta Ads + Google Ads), atendimento ao cliente, e relatórios/an�
 > liberado para o app, esta pasta é migrada via `git subtree split` preservando
 > histórico, e removida daqui.
 
-## Status atual: Fase 1 — Piloto (somente leitura)
+## Status atual: Fase 1 — Piloto (leitura + uma exceção controlada)
 
 Nenhuma ação de escrita (pausar campanha, mudar orçamento, responder cliente) é
-executada automaticamente nesta fase. O agente apenas lê métricas e gera
-recomendações. Toda ação de escrita passa por aprovação humana via Telegram.
+executada automaticamente nesta fase. **Exceção única**: o módulo `trafego` pode
+criar rascunhos de campanha em status PAUSADO a partir de posts do Instagram —
+não gasta nem fica público até você aprovar pelo Telegram (ver
+`rules/guardrails.md`). Fora isso, o agente só lê métricas e gera recomendações;
+toda ação de escrita passa por aprovação humana via Telegram.
 
 ## Estrutura
 
@@ -31,15 +34,17 @@ logs/                 → histórico de execuções e decisões do agente (audit
 
 | Módulo | Função | Status |
 |---|---|---|
-| `trafego` | Lê métricas (CPL, CTR, ROAS) via Meta Ads MCP e Google Ads MCP, recomenda ações | Piloto (leitura) |
+| `trafego` | Lê métricas (CPL, CTR, ROAS), recomenda ações, e cria rascunhos de campanha (pausados) a partir de posts do Instagram | Piloto (leitura + rascunho de campanha) |
 | `atendimento` | Responde dúvidas recorrentes, qualifica leads, escala casos sensíveis | Não iniciado |
 | `analise` | Relatório periódico cruzando CAC por canal com metas de crescimento | Piloto (leitura) |
 
 ## Aprovação humana
 
 Qualquer ação de escrita (pausar anúncio, mudar orçamento acima do limite definido
-em `rules/guardrails.md`) gera uma notificação via Telegram para aprovação antes
-da execução. Nada é executado sem aprovação explícita nesta fase.
+em `rules/guardrails.md`, ativar um rascunho de campanha) gera uma notificação
+via Telegram para aprovação antes da execução. A única coisa que o agente
+executa sem aprovação prévia nesta fase é a criação do rascunho de campanha em
+si (PAUSADO — sem gasto, sem visibilidade pública); ativá-lo exige aprovação.
 
 ## Cron (Fly.io)
 
