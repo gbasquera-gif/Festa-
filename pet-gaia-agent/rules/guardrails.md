@@ -9,8 +9,8 @@ Regras que todo módulo do agente deve respeitar. Qualquer prompt de sistema
   Isso inclui: pausar/reativar campanha, alterar orçamento, criar novo anúncio,
   alterar público-alvo, alterar lance.
 - Quando a fase de piloto terminar e ações automáticas forem liberadas:
-  - Variação de orçamento acima de [DEFINIR %] exige aprovação.
-  - Pausar campanha com gasto acima de R$ [DEFINIR] no dia exige aprovação.
+  - Variação de orçamento acima de 20% exige aprovação.
+  - Pausar campanha com gasto acima de R$ 20,00 no dia exige aprovação.
   - Qualquer criação de campanha nova sempre exige aprovação (nunca automático).
 - O agente deve sempre citar a fonte do dado (Meta Ads MCP ou Google Ads MCP) e
   o período de referência em qualquer recomendação.
