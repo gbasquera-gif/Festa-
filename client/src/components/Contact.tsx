@@ -7,7 +7,7 @@ export default function Contact() {
       {/* Decorative */}
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#C7A360] to-transparent" />
 
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         <div className="grid md:grid-cols-2 gap-12 lg:gap-20 items-start">
           {/* Left — info */}
           <div>

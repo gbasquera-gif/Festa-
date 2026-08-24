@@ -15,7 +15,7 @@ export default function HowItWorks() {
       <div className="absolute top-32 right-20 w-3 h-3 bg-[#F06853] rounded-sm rotate-45 opacity-40" />
       <div className="absolute bottom-20 left-1/4 w-2 h-2 bg-[#C7A360] rounded-full opacity-30" />
 
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
           <span className="inline-block text-sm font-bold text-[#C7A360] uppercase tracking-widest mb-3">

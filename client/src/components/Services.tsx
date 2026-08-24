@@ -8,7 +8,7 @@ export default function Services() {
       <div className="absolute -top-32 -right-32 w-96 h-96 border-[3px] border-[#C7A360]/20 rounded-full" />
       <div className="absolute -bottom-20 -left-20 w-72 h-72 border-[2px] border-[#F06853]/10 rounded-full" />
 
-      <div className="container relative z-10">
+      <div className="container relative z-10 fade-in-section">
         {/* Section header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
           <span className="inline-block text-sm font-bold text-[#F06853] uppercase tracking-widest mb-3">
@@ -34,6 +34,10 @@ export default function Services() {
                 <img
                   src={service.image}
                   alt={service.title}
+                  width={1920}
+                  height={1080}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0F2A4F]/60 to-transparent" />
