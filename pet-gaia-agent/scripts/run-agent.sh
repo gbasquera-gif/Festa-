@@ -59,11 +59,15 @@ run_module() {
 
   echo "[$(date '+%Y-%m-%d %H:%M')] módulo=${module} iniciando" | tee -a "$LOG_FILE"
 
+  # Sem --allowedTools, chamadas às tools MCP (mesmo de leitura) não
+  # completam em modo --print, pois não há terminal para confirmação
+  # (ver rules/guardrails.md para o que cada módulo pode/não pode fazer).
   claude \
     --print \
     --mcp-config "$MCP_CONFIG" \
     --append-system-prompt "$(cat "$guardrails_file")" \
     --output-format text \
+    --allowedTools "mcp__meta-ads__*" "mcp__google-ads__*" \
     "$(cat "$prompt_file")
 
 Execute sua função agora: leia as métricas disponíveis via MCP e produza a
