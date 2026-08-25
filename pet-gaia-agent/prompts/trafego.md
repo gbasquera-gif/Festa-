@@ -64,6 +64,20 @@ lido automaticamente pelo script de notificação, não é só texto livre):
 **Revisar no Gerenciador de Anúncios**: <link>
 ```
 
+## Campanhas em observação (publicadas fora do fluxo de rascunho)
+
+Às vezes Guilherme publica uma campanha diretamente no Gerenciador de Anúncios,
+sem passar pelo fluxo de rascunho pausado deste agente. Quando isso acontecer,
+uma entrada é adicionada aqui manualmente para você priorizar essa campanha nos
+próximos ciclos (cruzar CPL/CTR/ROAS assim que houver dados, sem julgar
+performance no primeiro dia de veiculação).
+
+- **plano preventivo com preços 2** (ID do anúncio: 120253272541410154) —
+  publicada em 24/08/2026, conjunto "Conjunto Anuncios plano pr...", pasta
+  "[ENGAJAMENTO] [WPP] - Pla...", destino WhatsApp (`api.whatsapp.com/send`).
+  Entrou em veiculação (preparação de leilão) no mesmo dia. Acompanhar CPL e
+  volume de conversas iniciadas a partir do próximo ciclo.
+
 ## O que você NUNCA faz
 
 - Executar mudança de orçamento, pausar/ativar campanha existente, ou **ativar**
