@@ -38,7 +38,11 @@ jobs:
           export PATH="$FLYCTL_INSTALL/bin:$PATH"
           flyctl deploy -a pet-gaia-agent --remote-only
 
-      - name: Iniciar o ciclo do agente
+      # Combinado numa step só: `flyctl logs` streama ao vivo (não busca
+      # histórico depois do fato), então o tail em segundo plano precisa
+      # começar logo após o `machine start`, antes de esperar a máquina
+      # voltar a "stopped".
+      - name: Iniciar o ciclo do agente e coletar logs
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
@@ -49,21 +53,12 @@ jobs:
             echo "Não encontrei nenhuma máquina em pet-gaia-agent." >&2
             exit 1
           fi
-          echo "MACHINE_ID=$MACHINE_ID" >> "$GITHUB_ENV"
           echo "Iniciando máquina $MACHINE_ID"
           flyctl machine start "$MACHINE_ID" -a pet-gaia-agent
 
-      - name: Aguardar ciclo terminar e coletar logs
-        if: always()
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          export FLYCTL_INSTALL="/home/runner/.fly"
-          export PATH="$FLYCTL_INSTALL/bin:$PATH"
-          if [ -z "${MACHINE_ID:-}" ]; then
-            echo "MACHINE_ID não definido (passo anterior falhou antes de setá-lo)." >&2
-            exit 0
-          fi
+          flyctl logs -a pet-gaia-agent -i "$MACHINE_ID" > /tmp/agent-cycle.log 2>&1 &
+          LOGS_PID=$!
+
           echo "Aguardando máquina $MACHINE_ID voltar a 'stopped' (até 10 min)..."
           for i in $(seq 1 60); do
             STATE=$(flyctl machine list -a pet-gaia-agent --json | jq -r --arg id "$MACHINE_ID" '.[] | select(.id==$id) | .state')
@@ -73,5 +68,9 @@ jobs:
             fi
             sleep 10
           done
+
+          sleep 5
+          kill "$LOGS_PID" 2>/dev/null || true
+          wait "$LOGS_PID" 2>/dev/null || true
           echo "==== Log de execução da máquina $MACHINE_ID ===="
-          flyctl machine status "$MACHINE_ID" -a pet-gaia-agent --display-logs || true
+          cat /tmp/agent-cycle.log || echo "(sem log capturado)"
