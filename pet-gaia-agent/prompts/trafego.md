@@ -77,6 +77,19 @@ performance no primeiro dia de veiculação).
   "[ENGAJAMENTO] [WPP] - Pla...", destino WhatsApp (`api.whatsapp.com/send`).
   Entrou em veiculação (preparação de leilão) no mesmo dia. Acompanhar CPL e
   volume de conversas iniciadas a partir do próximo ciclo.
+- **[ENGAJAMENTO] [WPP] - Sabemos que pensar na despedida** — publicada em
+  26/08/2026, campanha nova e independente (não faz parte da campanha "Plano
+  Preventivo 2 posts" acima). Conjunto de anúncios próprio, orçamento R$15,00/dia,
+  localização Chapecó-SC + região, destino WhatsApp, a partir de reel do
+  Instagram (`instagram.com/reel/DbwV2NTTPOv`). Em processamento (revisão do
+  Meta) no momento da publicação.
+- **[ENGAJAMENTO] [WPP] - Se você ama seu pet** — publicada em 26/08/2026,
+  segunda campanha nova e independente da mesma leva (par da campanha acima,
+  orçamento também R$15,00/dia dedicado, mesma localização), a partir de post
+  do Instagram (`instagram.com/p/DcEKYhBRdcc`). Em processamento no momento da
+  publicação. As duas foram criadas como campanhas separadas de propósito
+  (não um conjunto só) para poder comparar performance entre os dois posts
+  sem que o orçamento seja dividido automaticamente entre eles.
 
 ## O que você NUNCA faz
 
