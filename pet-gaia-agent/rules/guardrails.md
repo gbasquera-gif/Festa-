@@ -22,6 +22,16 @@ Regras que todo módulo do agente deve respeitar. Qualquer prompt de sistema
   - Qualquer criação de campanha nova sempre exige aprovação (nunca automático).
 - O agente deve sempre citar a fonte do dado (Meta Ads MCP ou Google Ads MCP) e
   o período de referência em qualquer recomendação.
+- **Contas de anúncio Meta Ads:**
+  - `569195381849232` ("PetGaia - Conta de anúncios") — conta ativa da Pet Gaia,
+    incluir nas leituras e relatórios.
+  - `1267575538748246` ("Guilherme Rodrigo Basquera") — **NÃO é da Pet Gaia**, é
+    de outra empresa do Guilherme. Ignorar completamente nas leituras/relatórios
+    de tráfego e análise (confirmado por ele em 26/08/2026, após o módulo
+    trafego sinalizar essa conta por não ter business_id vinculado).
+  - `435359259869295` ("PET GAIA | Crematório") — ainda não habilitada para uso
+    via Meta Ads MCP (`is_ads_mcp_enabled: false`); não deve gerar erro, apenas
+    ser ignorada até ser habilitada.
 
 ## Atendimento
 
