@@ -1,12 +1,24 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOrcamento } from "@/lib/orcamento";
 import { colors } from "@/theme";
+
+/**
+ * Altura do conteúdo da barra: ícone (24) + rótulo (11px) + respiro.
+ * A área segura do aparelho é somada a isso, nunca descontada dela.
+ */
+const ALTURA_DO_CONTEUDO = 62;
 
 // Sem guarda de autenticação: a vitrine é aberta. O login é pedido no
 // momento de reservar ou pagar, não na porta de entrada.
 export default function TabsLayout() {
   const { count } = useOrcamento();
+  // A página abre com `viewport-fit=cover`, então o rodapé fica embaixo da
+  // barra do Safari e do indicador de home. Com altura fixa, o navegador
+  // reservava esse espaço por dentro da barra e comia o rótulo ("Iníci...").
+  // Somar o inset à altura devolve a faixa que era do texto.
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -17,10 +29,18 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopColor: colors.sand,
-          height: 88,
+          height: ALTURA_DO_CONTEUDO + insets.bottom,
           paddingTop: 8,
+          paddingBottom: insets.bottom,
         },
-        tabBarLabelStyle: { fontFamily: "Nunito_600SemiBold", fontSize: 11 },
+        tabBarLabelStyle: {
+          fontFamily: "Nunito_600SemiBold",
+          fontSize: 11,
+          // Sem isso o rótulo de duas sílabas ("Favoritos") ainda podia ser
+          // cortado na vertical em telas com fonte aumentada.
+          lineHeight: 14,
+          marginBottom: 4,
+        },
         tabBarBadgeStyle: { backgroundColor: colors.coral, fontSize: 10 },
       }}
     >
