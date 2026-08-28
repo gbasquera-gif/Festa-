@@ -37,6 +37,59 @@ export function montarFunil(contagem: Map<string, number>): DegrauDoFunil[] {
   });
 }
 
+/**
+ * Fuso de Chapecó, fixo. O Brasil não tem mais horário de verão desde 2019.
+ *
+ * Importa porque o mês do painel precisa ser o mês de quem lê. Em UTC, uma
+ * visita das 22h do dia 31 cairia no mês seguinte, e a soma das colunas não
+ * bateria com o que a Maria Luiza viu acontecer.
+ */
+const FUSO_BRASIL = "-03:00";
+
+export interface Periodo {
+  inicio: Date;
+  fim: Date;
+  /** Como o painel descreve a janela para quem está lendo. */
+  rotulo: string;
+}
+
+/** Janela móvel dos últimos N dias, terminando agora. */
+export function ultimosDias(dias: number, agora = new Date()): Periodo {
+  const inicio = new Date(agora);
+  inicio.setDate(inicio.getDate() - dias);
+  return { inicio, fim: agora, rotulo: `Últimos ${dias} dias` };
+}
+
+const MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/**
+ * Um mês do calendário, de 1º às 00h até o primeiro instante do mês seguinte.
+ *
+ * Recebe "2026-08". Devolve nulo para qualquer outra coisa — o painel manda
+ * o valor por query string, e um mês inválido virando "desde 1970" mostraria
+ * um número errado com cara de certo, que é pior que um erro.
+ */
+export function intervaloDoMes(mes: string): Periodo | null {
+  const casa = /^(\d{4})-(\d{2})$/.exec(mes);
+  if (!casa) return null;
+
+  const ano = Number(casa[1]);
+  const numero = Number(casa[2]);
+  if (numero < 1 || numero > 12) return null;
+
+  const inicio = new Date(`${casa[1]}-${casa[2]}-01T00:00:00${FUSO_BRASIL}`);
+  const proximoAno = numero === 12 ? ano + 1 : ano;
+  const proximoMes = numero === 12 ? 1 : numero + 1;
+  const fim = new Date(
+    `${proximoAno}-${String(proximoMes).padStart(2, "0")}-01T00:00:00${FUSO_BRASIL}`,
+  );
+
+  return { inicio, fim, rotulo: `${MESES[numero - 1]} de ${ano}` };
+}
+
 /** Uma linha da tabela de origem: quanto o Instagram trouxe e quanto virou dinheiro. */
 export interface LinhaDeOrigem {
   origem: string;

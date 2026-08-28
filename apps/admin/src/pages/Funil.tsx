@@ -1,4 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -9,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 const ROTULOS: Record<string, string> = {
   VISITA_LOJA: "Chegaram na loja",
@@ -21,7 +36,8 @@ const ROTULOS: Record<string, string> = {
 };
 
 interface Resumo {
-  windowDays: number;
+  /** Como o servidor descreve a janela — "agosto de 2026", "Últimos 30 dias". */
+  periodo: string;
   funnel: { type: string; count: number; dropoffRate: number | null }[];
   placar: {
     visitas: number;
@@ -44,6 +60,37 @@ interface Resumo {
 
 const brl = (valor: number) =>
   valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Valor especial do seletor: janela móvel em vez de mês fechado. */
+const TRINTA_DIAS = "30d";
+
+/**
+ * Maiúscula só na primeira letra.
+ *
+ * O CSS `capitalize` faria "Julho De 2026" — em português o "de" é minúsculo,
+ * e essa data é lida o tempo todo por quem abre a tela.
+ */
+const maiuscula = (texto: string) => texto.charAt(0).toUpperCase() + texto.slice(1);
+
+/**
+ * Os meses que o seletor oferece: o atual e os onze anteriores.
+ *
+ * Montado no navegador em vez de vir do servidor porque não depende de dado
+ * nenhum — e um mês sem movimento também precisa poder ser escolhido, nem
+ * que seja para confirmar que ele está mesmo vazio.
+ */
+function mesesDisponiveis(hoje = new Date()) {
+  const lista: { valor: string; rotulo: string }[] = [];
+  for (let i = 0; i < 12; i++) {
+    const data = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const valor = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+    lista.push({
+      valor,
+      rotulo: maiuscula(data.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })),
+    });
+  }
+  return lista;
+}
 
 /** Número grande com legenda — o que se lê de longe. */
 function Placar({
@@ -77,24 +124,123 @@ function Placar({
  * o número puro já não diga.
  */
 export default function Funil() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [janela, setJanela] = useState<string>(TRINTA_DIAS);
+  const meses = mesesDisponiveis();
+
   const { data, isLoading } = useQuery({
-    queryKey: ["analytics-summary"],
-    queryFn: () => api<Resumo>("/analytics/summary"),
+    queryKey: ["analytics-summary", janela],
+    queryFn: () =>
+      api<Resumo>(
+        janela === TRINTA_DIAS ? "/analytics/summary" : `/analytics/summary?mes=${janela}`,
+      ),
   });
 
-  if (isLoading) return <p className="text-muted-foreground">Carregando...</p>;
-  if (!data) return <p className="text-muted-foreground">Não foi possível carregar os números.</p>;
+  const zerar = useMutation({
+    mutationFn: () => api<{ apagados: number }>("/analytics/events", { method: "DELETE" }),
+    onSuccess: ({ apagados }) => {
+      toast.success(`Contagem recomeçada — ${apagados} registro(s) apagado(s).`);
+      queryClient.invalidateQueries({ queryKey: ["analytics-summary"] });
+    },
+    onError: (erro) =>
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível zerar."),
+  });
 
-  const { placar, origens, funnel } = data;
+  const seletor = (
+    <div className="flex items-center gap-2">
+      <label htmlFor="janela" className="text-sm text-muted-foreground">
+        Período
+      </label>
+      <select
+        id="janela"
+        value={janela}
+        onChange={(e) => setJanela(e.target.value)}
+        className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+      >
+        <option value={TRINTA_DIAS}>Últimos 30 dias</option>
+        {meses.map((m) => (
+          <option key={m.valor} value={m.valor}>
+            {m.rotulo}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
   const pct = (valor: number | null) => (valor === null ? "—" : `${valor}%`);
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-navy">Funil da loja</h1>
-      <p className="mb-6 text-muted-foreground">
-        Últimos {data.windowDays} dias. Quem chegou, de onde veio e quanto virou reserva paga.
-      </p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="mb-1 text-2xl font-bold text-navy">Funil da loja</h1>
+          <p className="text-muted-foreground">
+            {maiuscula(data?.periodo ?? "Carregando")}. Quem chegou, de onde veio e quanto virou
+            reserva paga.
+          </p>
+        </div>
 
+        <div className="flex items-center gap-3">
+          {seletor}
+
+          {/* Só o dono zera. Apagar métrica não é tarefa de operação do dia
+              a dia, e o botão fica fora da vista de quem não pode usá-lo. */}
+          {user?.role === "ADMIN" && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" disabled={zerar.isPending}>
+                  {zerar.isPending ? "Zerando..." : "Zerar contagem"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Recomeçar a contagem do zero?</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        Apaga <strong>todo</strong> o histórico de visitas e de passo a passo, de
+                        todos os meses — não só do período selecionado. Não tem como desfazer.
+                      </p>
+                      <p>
+                        <strong>Não</strong> apaga festa, reserva, pagamento nem cliente. Por isso
+                        os cartões de "Reservaram", "Pagaram o sinal" e "Ticket médio" continuam
+                        com os mesmos números depois: eles vêm das festas de verdade.
+                      </p>
+                      <p className="text-muted-foreground">
+                        Serve para descartar as visitas de teste antes de começar a medir uma
+                        campanha.
+                      </p>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => zerar.mutate()}>
+                    Zerar contagem
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground">Carregando...</p>}
+      {!isLoading && !data && (
+        <p className="text-muted-foreground">Não foi possível carregar os números.</p>
+      )}
+      {data && <Numeros data={data} pct={pct} />}
+    </div>
+  );
+}
+
+/** O corpo da tela. Separado para o seletor e o título não sumirem enquanto carrega. */
+function Numeros({ data, pct }: { data: Resumo; pct: (v: number | null) => string }) {
+  const { placar, origens, funnel } = data;
+
+  return (
+    <div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Placar label="Chegaram na loja" valor={String(placar.visitas)} />
         <Placar

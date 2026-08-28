@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { trackEventSchema } from "@festae/shared";
 import type { TrackEventInput } from "@festae/shared";
@@ -20,11 +20,29 @@ export class AnalyticsController {
     return this.analyticsService.track(body);
   }
 
+  /**
+   * `mes` no formato "2026-08". Sem ele, a janela é a dos últimos 30 dias.
+   */
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN", "OPS")
   @Get("summary")
-  summary() {
-    return this.analyticsService.summary();
+  summary(@Query("mes") mes?: string) {
+    return this.analyticsService.summary(mes);
+  }
+
+  /**
+   * Recomeça a contagem do funil do zero.
+   *
+   * Só ADMIN: apagar métrica é decisão de dono, não tarefa de operação do
+   * dia a dia. Apaga apenas eventos de funil — reserva, pagamento e cliente
+   * são registro do negócio e ficam onde estão.
+   */
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN")
+  @Delete("events")
+  zerar() {
+    return this.analyticsService.zerarEventos();
   }
 }

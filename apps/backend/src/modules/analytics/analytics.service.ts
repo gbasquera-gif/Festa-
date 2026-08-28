@@ -1,7 +1,15 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { Prisma, prisma } from "@festae/database";
 import type { TrackEventInput } from "@festae/shared";
-import { montarFunil, taxa, ticketMedio, type LinhaDeOrigem } from "./funnel";
+import {
+  intervaloDoMes,
+  montarFunil,
+  taxa,
+  ticketMedio,
+  ultimosDias,
+  type LinhaDeOrigem,
+  type Periodo,
+} from "./funnel";
 
 const SUMMARY_WINDOW_DAYS = 30;
 
@@ -10,6 +18,8 @@ const RESERVAS_VALIDAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLET
 
 @Injectable()
 export class AnalyticsService {
+  private readonly logger = new Logger(AnalyticsService.name);
+
   track(input: TrackEventInput) {
     return prisma.analyticsEvent.create({
       data: {
@@ -27,19 +37,22 @@ export class AnalyticsService {
    * conversões vêm prontas do servidor em vez de calculadas no painel para
    * que o número seja o mesmo em qualquer lugar que alguém o leia.
    */
-  async summary() {
-    const desde = new Date();
-    desde.setDate(desde.getDate() - SUMMARY_WINDOW_DAYS);
+  async summary(mes?: string) {
+    // Mês inválido não vira janela silenciosa: cai no padrão de 30 dias, e o
+    // rótulo devolvido diz qual janela foi realmente usada.
+    const doMes = mes ? intervaloDoMes(mes) : null;
+    const periodo: Periodo = doMes ?? ultimosDias(SUMMARY_WINDOW_DAYS);
+    const janela = { gte: periodo.inicio, lt: periodo.fim };
 
     const [porTipo, festas] = await Promise.all([
       prisma.analyticsEvent.groupBy({
         by: ["type"],
-        where: { createdAt: { gte: desde } },
+        where: { createdAt: janela },
         _count: { _all: true },
       }),
       // As festas da janela com o que precisamos para ligar origem a dinheiro.
       prisma.event.findMany({
-        where: { createdAt: { gte: desde } },
+        where: { createdAt: janela },
         select: {
           utmSource: true,
           utmCampaign: true,
@@ -70,7 +83,7 @@ export class AnalyticsService {
     );
 
     const porOrigem = new Map<string, LinhaDeOrigem>();
-    const visitasPorOrigem = await this.visitasPorOrigem(desde);
+    const visitasPorOrigem = await this.visitasPorOrigem(janela);
 
     for (const [origem, quantidade] of visitasPorOrigem) {
       porOrigem.set(origem, {
@@ -105,7 +118,8 @@ export class AnalyticsService {
     }
 
     return {
-      windowDays: SUMMARY_WINDOW_DAYS,
+      periodo: periodo.rotulo,
+      mes: doMes ? mes! : null,
       totalEvents: porTipo.reduce((soma, linha) => soma + linha._count._all, 0),
       byType: Object.fromEntries(contagem),
       funnel,
@@ -126,15 +140,36 @@ export class AnalyticsService {
   }
 
   /**
+   * Apaga os eventos de funil e recomeça a contagem do zero.
+   *
+   * Existe porque a loja passou semanas sendo testada por nós antes de ir ao
+   * ar, e essas visitas de teste ficaram misturadas com as de verdade — quem
+   * lê o painel para decidir quanto investir em anúncio não consegue separar
+   * uma coisa da outra.
+   *
+   * Mexe SÓ nos eventos de funil. Festa, reserva, pagamento e cliente são
+   * registro do negócio e não se apagam por causa de métrica: por isso os
+   * cartões de reservas e de ticket médio continuam com os mesmos números
+   * depois de zerar, e é isso que o painel avisa antes de confirmar.
+   */
+  async zerarEventos(): Promise<{ apagados: number }> {
+    const { count } = await prisma.analyticsEvent.deleteMany({});
+    this.logger.warn(`Funil zerado: ${count} evento(s) apagado(s).`);
+    return { apagados: count };
+  }
+
+  /**
    * Visitas agrupadas por origem.
    *
    * A origem mora no JSON de metadados do evento, então o agrupamento é
    * feito aqui e não no banco: são poucos milhares de linhas por mês nesta
    * fase, e uma consulta em JSON custaria mais para manter do que rende.
    */
-  private async visitasPorOrigem(desde: Date): Promise<Map<string, number>> {
+  private async visitasPorOrigem(
+    janela: { gte: Date; lt: Date },
+  ): Promise<Map<string, number>> {
     const visitas = await prisma.analyticsEvent.findMany({
-      where: { type: "VISITA_LOJA", createdAt: { gte: desde } },
+      where: { type: "VISITA_LOJA", createdAt: janela },
       select: { metadata: true },
     });
 
