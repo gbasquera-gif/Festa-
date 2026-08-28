@@ -75,7 +75,7 @@ export function FestaPersonalizadaCard({ onPress }: { onPress: () => void }) {
       <View className="flex-1">
         <Text className="font-sans-bold text-navy">Festa personalizada</Text>
         <Text className="text-xs leading-4 text-navy/60">
-          Sua festa é de outro tipo? Fale com a gente no WhatsApp e a gente monta junto.
+          Fale com a gente e montamos juntos a sua festa.
         </Text>
       </View>
       <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
