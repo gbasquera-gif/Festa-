@@ -92,6 +92,86 @@ costuma abrir links no navegador interno dele e muitas vezes não informa isso
 
 ---
 
+## Tráfego pago no Meta Ads
+
+O clique pago é o único que custa dinheiro, então ele merece dois cuidados
+que o link orgânico não precisa: **cair direto no que o anúncio prometeu** e
+**dizer de qual campanha veio, sem ninguém reescrever o link a cada semana**.
+
+### O link para colar no anúncio
+
+No campo **URL do site** do anúncio:
+
+```
+https://reservas.festaechapeco.com.br/catalogo/festa/ANIVERSARIO
+```
+
+No campo **Parâmetros de URL** (logo abaixo, em "Opções de rastreamento"):
+
+```
+utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}
+```
+
+O Meta junta os dois na hora da entrega. Separar assim evita o erro mais
+comum: mudar o criativo e esquecer de recolar a marcação no link.
+
+`{{campaign.name}}` é preenchido pelo próprio Meta com o nome da campanha —
+não é preciso editar o link quando começar uma campanha nova.
+
+### Para onde mandar o clique
+
+Troque o fim do endereço conforme o anúncio:
+
+| O anúncio fala de | Endereço |
+|---|---|
+| Aniversário | `/catalogo/festa/ANIVERSARIO` |
+| Chá de bebê | `/catalogo/festa/CHA_DE_BEBE` |
+| Chá revelação | `/catalogo/festa/CHA_REVELACAO` |
+| Batizado | `/catalogo/festa/BATIZADO` |
+| Vários tipos / marca | `/catalogo/itens` |
+
+**Não use a raiz (`/`) no anúncio pago.** Quem nunca abriu a loja cai na
+apresentação de boas-vindas e precisa de mais um toque antes de ver produto.
+Em tráfego orgânico isso é bem-vindo; em clique pago é gente perdida na
+porta. Os endereços acima pulam a apresentação e já abrem a vitrine.
+
+### Como nomear a campanha no Meta
+
+O nome da campanha vira o texto do relatório. Use **minúsculas, sem acento,
+com hífen no lugar do espaço**:
+
+- bom: `trafego-aniversario-agosto`
+- ruim: `Tráfego Aniversário Agosto` — aparece com espaços e acentos no
+  painel e não agrupa direito
+
+### O que já está garantido
+
+Conferido no build de produção, no Chromium emulando iPhone:
+
+- a marcação sobrevive ao redirecionamento da abertura e à navegação
+  seguinte pelo app;
+- o `fbclid` que o Meta anexa ao link não atrapalha a leitura;
+- o link direto para a vitrine registra a visita normalmente, com a origem
+  junto.
+
+### Limite conhecido do pago
+
+A loja guarda **origem, meio e campanha** — não guarda `utm_content`. Ou
+seja: dá para dizer que a campanha de aniversário trouxe 3 festas pagas, mas
+não **qual criativo** dentro dela trouxe. Para separar por anúncio é preciso
+passar a guardar mais um campo.
+
+### O que o UTM não resolve
+
+O UTM conta a história **depois** do clique, para a Festaê. Ele não conta
+nada para o Meta. Sem o Pixel instalado, o algoritmo não sabe quem reservou
+nem quem pagou o sinal, e só consegue otimizar por clique — entrega o
+anúncio para quem tem perfil de clicar, não para quem tem perfil de alugar
+decoração. É a diferença entre pagar por visita e pagar por cliente, e é a
+maior alavanca de retorno do investimento em mídia.
+
+---
+
 ## Onde ler o resultado
 
 Painel → **Funil**. A tabela "De onde vieram" tem uma linha por origem, com
