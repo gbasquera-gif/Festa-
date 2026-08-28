@@ -9,6 +9,22 @@ const prisma = new PrismaClient();
 const DEMO_DATA_ENABLED = process.env.SEED_DEMO_DATA === "true";
 
 /**
+ * A demonstração é proibida em produção, mesmo com a variável ligada.
+ *
+ * Não é zelo teórico: o catálogo de exemplo daqui já foi parar na loja de
+ * verdade. Um produto inventado ("Kit Iluminação Ambiente", R$ 110) apareceu
+ * dentro de um kit real, com preço que ninguém definiu e sem foto — e a
+ * operação não tinha como saber de onde ele vinha. Pior: o `upsert` abaixo
+ * roda a cada boot, então apagar pelo painel não resolvia, o próximo deploy
+ * recriava.
+ *
+ * Junto vinham contas de exemplo com senha escrita neste arquivo, num
+ * repositório público. Uma variável de ambiente ligada por engano não pode
+ * ser a única coisa entre isso e o banco de produção.
+ */
+const EM_PRODUCAO = process.env.NODE_ENV === "production";
+
+/**
  * Cria (ou atualiza) o administrador a partir de variáveis de ambiente.
  *
  * A senha é reaplicada a cada boot de propósito: trocar SEED_ADMIN_PASSWORD e
@@ -281,7 +297,13 @@ async function seedDemoData() {
 async function main() {
   await seedAdmin();
 
-  if (DEMO_DATA_ENABLED) {
+  if (DEMO_DATA_ENABLED && EM_PRODUCAO) {
+    console.warn(
+      "SEED_DEMO_DATA está ligado em produção e foi IGNORADO. Catálogo e contas " +
+        "de exemplo nunca são criados aqui. Desligue a variável no painel de " +
+        "implantação para não ver este aviso de novo.",
+    );
+  } else if (DEMO_DATA_ENABLED) {
     await seedDemoData();
   } else {
     console.log("SEED_DEMO_DATA desligado — catálogo e contas de exemplo não foram criados.");

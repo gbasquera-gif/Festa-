@@ -3,9 +3,23 @@ import { prisma } from "@festae/database";
 import type { CreateKitInput, EventType, UpdateKitInput } from "@festae/shared";
 import { slugUnico } from "../../common/slug";
 
+/**
+ * O que a loja mostra de um kit.
+ *
+ * Produto desativado fica de fora: desativar no painel é o jeito de tirar
+ * uma peça do catálogo, e ela precisa sair de dentro dos kits também. Sem
+ * este filtro o item continuava à venda, com preço e botão de somar, num
+ * lugar onde a operação não conseguia nem enxergá-lo para remover.
+ *
+ * O vínculo em si continua no banco. Ele fica inerte, e some de vez na
+ * próxima vez que alguém salvar o kit pelo painel.
+ */
 const kitInclude = {
   theme: true,
-  products: { include: { product: true } },
+  products: {
+    where: { product: { active: true } },
+    include: { product: true },
+  },
 } as const;
 
 /**

@@ -68,6 +68,11 @@ export class ConflitosService {
         id: true,
         name: true,
         products: {
+          // Mesma regra da loja: produto desativado saiu do catálogo e não
+          // conta como parte do kit. Sem isto, um vínculo esquecido de um
+          // produto desativado viraria alarme falso de "kit maior que o
+          // acervo" para um item que ninguém consegue nem ver.
+          where: { product: { active: true } },
           select: {
             quantity: true,
             product: { select: { name: true, stockQuantity: true } },
