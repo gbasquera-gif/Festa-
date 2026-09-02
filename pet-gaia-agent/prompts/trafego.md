@@ -81,15 +81,32 @@ performance no primeiro dia de veiculação).
   26/08/2026, campanha nova e independente (não faz parte da campanha "Plano
   Preventivo 2 posts" acima). Conjunto de anúncios próprio, orçamento R$15,00/dia,
   localização Chapecó-SC + região, destino WhatsApp, a partir de reel do
-  Instagram (`instagram.com/reel/DbwV2NTTPOv`). Em processamento (revisão do
-  Meta) no momento da publicação.
+  Instagram (`instagram.com/reel/DbwV2NTTPOv`).
+  **Resultado em ~6 dias de veiculação (dado manual, print do Gerenciador, ainda
+  sem Meta Ads MCP nesse ciclo):** 13 conversas iniciadas, custo por resultado
+  R$7,04, gasto R$91,50, engajamento com a Página 1.647 (custo por engajamento
+  R$0,0556) — claramente o melhor dos dois anúncios de planos preventivos.
+  **AÇÃO PENDENTE DE APROVAÇÃO:** Guilherme quer subir o orçamento desse anúncio
+  de R$15 para R$20-22/dia. Pergunte a ele no próximo ciclo se pode confirmar
+  essa alteração antes de qualquer recomendação de mudança de orçamento nele
+  (é alteração de valor em campanha ativa — sempre precisa aprovação explícita,
+  ver `rules/guardrails.md`).
 - **[ENGAJAMENTO] [WPP] - Se você ama seu pet** — publicada em 26/08/2026,
   segunda campanha nova e independente da mesma leva (par da campanha acima,
   orçamento também R$15,00/dia dedicado, mesma localização), a partir de post
-  do Instagram (`instagram.com/p/DcEKYhBRdcc`). Em processamento no momento da
-  publicação. As duas foram criadas como campanhas separadas de propósito
-  (não um conjunto só) para poder comparar performance entre os dois posts
-  sem que o orçamento seja dividido automaticamente entre eles.
+  do Instagram (`instagram.com/p/DcEKYhBRdcc`). As duas foram criadas como
+  campanhas separadas de propósito (não um conjunto só) para poder comparar
+  performance entre os dois posts sem que o orçamento seja dividido
+  automaticamente entre eles.
+  **Resultado em ~6 dias de veiculação (mesma fonte do item acima):** 11
+  conversas iniciadas, custo por resultado R$8,00, gasto R$88,00, engajamento
+  com a Página só 62 (custo por engajamento R$1,42) — atrás do outro anúncio,
+  mas ainda melhor que a campanha antiga "Plano Preventivo 2 posts" (R$9,40).
+  **Possível ação futura em discussão com Guilherme:** pausar esse anúncio
+  (o mais fraco dos dois de planos preventivos) para liberar orçamento e criar
+  uma campanha nova voltada a cremações imediatas (não preventivo). Se isso
+  for confirmado num ciclo futuro, atualizar esta seção — não presuma que já
+  aconteceu só por estar mencionado aqui.
 
 ## O que você NUNCA faz
 
