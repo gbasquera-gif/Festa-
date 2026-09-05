@@ -141,6 +141,31 @@ performance no primeiro dia de veiculação).
   potencialmente mais decididos) justifica o custo maior; ainda não há
   decisão de pausar ou reduzir orçamento. Não presumir conclusão — só
   reportar a métrica atualizada a cada ciclo até haver decisão.
+  **Achado (05/09/2026):** a estratégia de lance dessa campanha é
+  "Participação de Impressões" (`TARGET_IMPRESSION_SHARE`), que otimiza
+  para aparecer, não para converter — provável causa raiz do custo alto por
+  contato. Ainda não alterado (fora do escopo combinado até agora); se
+  Guilherme decidir manter a campanha, sugerir trocar para "Maximizar
+  Conversões" (mesma estratégia já usada com sucesso na "Cremação
+  imediata Chapecó") como a mudança de maior impacto esperado.
+
+- **Cremação imediata Chapecó — otimizações aplicadas (05/09/2026):**
+  a pedido de Guilherme, atuei como especialista em Google Ads e apliquei,
+  via Windsor.ai `execute_action`, o que faltava nessa campanha (que já
+  tinha 3 sitelinks, mas nenhuma outra extensão):
+  - Extensão de chamada com o número dedicado (49 99148-0837)
+  - 4 extensões de callout: "Atendimento 24 Horas", "Cuidado e Respeito",
+    "Cremação Individual", "Chapecó e Região"
+  - 15 palavras-chave negativas no nível da campanha (grátis, gratuito,
+    emprego, vaga, curso, trabalho, creche, hospedagem, adestramento,
+    adestrador, ração, loja, blog, cuidador, convênio) — a campanha não
+    tinha nenhuma negativa configurada antes disso.
+  Pendente de confirmação com Guilherme: adicionar um snippet estruturado
+  ("Catálogo de serviços") — só tem 2 itens confirmados até agora
+  (Cremação Individual, Atendimento 24h), snippet precisa de pelo menos 3;
+  perguntei se há retirada a domicílio ou cremação coletiva pra completar.
+  Não inventar um terceiro item sem confirmação (guardrail de nunca
+  prometer serviço/condição não confirmada).
 
 ## O que você NUNCA faz
 
