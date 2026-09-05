@@ -102,11 +102,25 @@ performance no primeiro dia de veiculação).
   conversas iniciadas, custo por resultado R$8,00, gasto R$88,00, engajamento
   com a Página só 62 (custo por engajamento R$1,42) — atrás do outro anúncio,
   mas ainda melhor que a campanha antiga "Plano Preventivo 2 posts" (R$9,40).
-  **Possível ação futura em discussão com Guilherme:** pausar esse anúncio
-  (o mais fraco dos dois de planos preventivos) para liberar orçamento e criar
-  uma campanha nova voltada a cremações imediatas (não preventivo). Se isso
-  for confirmado num ciclo futuro, atualizar esta seção — não presuma que já
-  aconteceu só por estar mencionado aqui.
+  **Atualização:** a campanha de cremação imediata (ver item abaixo) já foi
+  criada no Google Ads. O plano combinado com Guilherme é rodar ela primeiro
+  e só depois pausar este anúncio — **ainda NÃO foi pausado**, continua ativo
+  normalmente. Não pausar por conta própria; aguardar confirmação explícita
+  dele antes de recomendar/registrar isso como feito.
+
+- **Cremação imediata Chapecó** (canal: Google Ads, não Meta Ads — conta
+  "pet gaia", ID 236-236-5395) — criada em 05/09/2026, campanha de Pesquisa,
+  orçamento R$25,00/dia, destino WhatsApp com número dedicado
+  (49 99148-0837, atendimento 24h, diferente do número dos anúncios de
+  planos preventivos). Foco: quem busca cremação com urgência (não
+  preventivo) — tom exclusivamente acolhedor, sem linguagem comercial
+  (mesmo cuidado do guardrail de casos sensíveis no atendimento). Zerada
+  (0 impressões/cliques/gasto) no momento da criação, o que é esperado —
+  não julgar performance nos primeiros dias. Assim que houver dados via
+  Google Ads MCP ou Windsor.ai (conector `google_ads` já conectado),
+  cruzar custo por resultado com os anúncios de planos preventivos do Meta,
+  mas lembrando que são públicos com intenção diferente (busca urgente vs.
+  planejamento antecipado) — não é uma comparação direta de "melhor/pior".
 
 ## O que você NUNCA faz
 
