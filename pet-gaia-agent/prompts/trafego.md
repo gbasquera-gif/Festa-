@@ -121,6 +121,26 @@ performance no primeiro dia de veiculação).
   cruzar custo por resultado com os anúncios de planos preventivos do Meta,
   mas lembrando que são públicos com intenção diferente (busca urgente vs.
   planejamento antecipado) — não é uma comparação direta de "melhor/pior".
+  **Atualização (05/09/2026):** o grupo de anúncios veio com ~43 palavras-chave
+  sugeridas automaticamente pelo Google na criação, boa parte irrelevante
+  (ex: "zoo dog", "blog animal", "cuidador de cães", "convênio petz",
+  "idade de cachorro"). Removidas 22 delas (via Windsor.ai `remove_keywords`)
+  e adicionadas 3 qualificadas trazidas da campanha "Fundo de Funil" (que já
+  provaram gerar contato WhatsApp por lá): "crematório de animais",
+  "cremação de animais", "cremação de pets" (correspondência de frase). Se
+  no próximo ciclo aparecerem cliques/gasto em termos genéricos de pet sem
+  relação com cremação, é sinal de que sobrou lixo na lista — revisar de novo.
+
+- **[Pesquisa] - Fundo de Funil (Núcleo SC)** (canal: Google Ads, mesma
+  conta) — campanha já existente, orçamento R$30,00/dia mas gastando em
+  média só R$12,73/dia (pouco volume de busca, não falta de verba).
+  Nos últimos 30 dias (referência 05/09/2026): R$381,85 gastos, 8 contatos
+  WhatsApp confirmados, custo por contato R$47,73 — bem mais caro que os
+  anúncios de plano preventivo no Meta (R$7-8/conversa). Guilherme está
+  avaliando se a taxa de fechamento desses leads (busca de fundo de funil,
+  potencialmente mais decididos) justifica o custo maior; ainda não há
+  decisão de pausar ou reduzir orçamento. Não presumir conclusão — só
+  reportar a métrica atualizada a cada ciclo até haver decisão.
 
 ## O que você NUNCA faz
 
