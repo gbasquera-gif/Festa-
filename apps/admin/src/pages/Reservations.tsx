@@ -305,6 +305,84 @@ function Detail({ row }: { row: ReservationRow }) {
   );
 }
 
+/**
+ * Uma reserva num cartão, para o celular.
+ *
+ * Mostra o que a operação precisa decidir de relance — quem, quando, tema,
+ * etapa, pagamento e logística — e esconde o resto atrás de "Ver detalhes".
+ * A alternativa era comprimir oito colunas em 390px, que na prática obriga a
+ * girar o aparelho.
+ */
+function CartaoDeReserva({
+  row,
+  aberto,
+  onAlternar,
+  onStatus,
+}: {
+  row: ReservationRow;
+  aberto: boolean;
+  onAlternar: () => void;
+  onStatus: (status: ReservationStatus) => void;
+}) {
+  const payment = paymentSummary(row);
+  const { event } = row.order;
+  const entrega = row.order.fulfillment === "DELIVERY";
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <div className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            {/* Quebra em vez de truncar: nome cortado no meio ("Maria Apareci…")
+                obriga a abrir o detalhe só para saber de quem é a festa. */}
+            <p className="font-semibold break-words text-navy">{event.user.name}</p>
+            <p className="text-sm text-muted-foreground">
+              {new Date(row.eventDate).toLocaleDateString("pt-BR")}
+              {event.theme?.name ? ` · ${event.theme.name}` : ""}
+            </p>
+          </div>
+          <span className="shrink-0 tabular-nums font-bold text-navy">
+            {money(row.order.total)}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {entrega ? <Badge>Entrega</Badge> : <Badge variant="secondary">Retirada</Badge>}
+          {row.order.assembly && <Badge>Com montagem</Badge>}
+          <Badge variant="outline" className={payment.tone}>
+            {payment.label}
+          </Badge>
+        </div>
+
+        {/* O seletor de etapa fica no cartão, não escondido no detalhe: mudar
+            a etapa é a ação mais repetida do dia. */}
+        <Select value={row.status} onValueChange={(s) => onStatus(s as ReservationStatus)}>
+          <SelectTrigger className="h-11 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESERVATION_STATUSES.map((status) => (
+              <SelectItem key={status} value={status}>
+                {STATUS_LABEL[status]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button variant="outline" className="h-11 w-full" onClick={onAlternar}>
+          {aberto ? "Ocultar detalhes" : "Ver detalhes"}
+        </Button>
+      </div>
+
+      {aberto && (
+        <div className="border-t">
+          <Detail row={row} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Reservations() {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -327,22 +405,43 @@ export default function Reservations() {
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="mb-1 text-2xl font-bold text-navy">Reservas</h1>
           <p className="text-muted-foreground">
-            Clique numa reserva para ver o cliente, o que separar e o financeiro.
+            Toque numa reserva para ver o cliente, o que separar e o financeiro.
           </p>
         </div>
 
         {/* Venda de WhatsApp entra por aqui. Sem este caminho ela ficava só
-            no caderno, e o calendário da loja seguia oferecendo a data. */}
-        <Button asChild>
+            no caderno, e o calendário da loja seguia oferecendo a data.
+            Largura inteira no celular: é a ação principal desta tela. */}
+        <Button asChild className="h-11 w-full sm:h-9 sm:w-auto">
           <Link href="/reservas/nova">
             <Plus className="mr-1 size-4" />
             Nova reserva manual
           </Link>
         </Button>
       </div>
+
+      {/* Celular: um cartão por reserva. Oito colunas em 390px viravam uma
+          tabela de 1056px que só cabia girando o aparelho — e girar para ler
+          a agenda do dia é exatamente o que a operação não pode precisar
+          fazer. O computador continua com a tabela, que ali é melhor. */}
+      <div className="space-y-3 lg:hidden">
+        {isLoading && <p className="text-muted-foreground">Carregando...</p>}
+        {data?.length === 0 && <p className="text-muted-foreground">Nenhuma reserva ainda.</p>}
+        {data?.map((row) => (
+          <CartaoDeReserva
+            key={row.id}
+            row={row}
+            aberto={expanded === row.id}
+            onAlternar={() => setExpanded(expanded === row.id ? null : row.id)}
+            onStatus={(status) => statusMutation.mutate({ id: row.id, status })}
+          />
+        ))}
+      </div>
+
+      <div className="hidden lg:block">
 
       <Table>
         <TableHeader>
@@ -442,6 +541,7 @@ export default function Reservations() {
           })}
         </TableBody>
       </Table>
+      </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
         A etapa muda o andamento da festa; o pagamento é atualizado sozinho quando o Pix é

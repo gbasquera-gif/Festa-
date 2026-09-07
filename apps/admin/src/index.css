@@ -175,3 +175,117 @@
   .bg-coral { background-color: #F06853; }
   .bg-gold { background-color: #C7A360; }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Tabela que vira lista de cartões no celular
+   ──────────────────────────────────────────────────────────────────────────
+
+   O painel é operado no iPhone em pé. Uma tabela de cinco a oito colunas não
+   cabe em 390px: ou ela força rolagem lateral, ou espreme o texto até cortar
+   — e nos dois casos a saída da operação é girar o aparelho, que é justamente
+   o que não pode ser necessário.
+
+   Abaixo de 1024px cada linha vira um cartão e cada célula vira uma linha
+   "rótulo: valor". O rótulo sai do atributo `data-label` da própria célula,
+   então a tabela continua uma tabela só — sem markup duplicado que precise
+   ser mantido em dois lugares e que diverge na primeira coluna nova.
+
+   Uso: envolva a <Table> numa div com a classe `tabela-cards` e ponha
+   data-label em cada <TableCell>. No computador nada muda.
+*/
+@media (max-width: 1023px) {
+  .tabela-cards table,
+  .tabela-cards thead,
+  .tabela-cards tbody,
+  .tabela-cards tr,
+  .tabela-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  /* O cabeçalho some: o nome da coluna passa a viver dentro da célula. */
+  .tabela-cards thead {
+    display: none;
+  }
+
+  .tabela-cards tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background-color: var(--card);
+    padding: 0.25rem 0.75rem;
+  }
+
+  .tabela-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 0;
+    padding: 0.5rem 0;
+    text-align: right;
+  }
+
+  .tabela-cards td + td {
+    border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+  }
+
+  .tabela-cards td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  /* Célula sem rótulo (ações, por exemplo) ocupa a linha inteira. */
+  .tabela-cards td:not([data-label]) {
+    justify-content: flex-end;
+  }
+
+  /* Uma linha que ocupa a tabela toda — "nenhum registro", carregando —
+     não deve virar cartão vazio com moldura. */
+  .tabela-cards td[colspan] {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  /* Alvo de toque: no celular todo botão e seletor dentro da lista tem 44px. */
+  .tabela-cards td button,
+  .tabela-cards td [role="combobox"] {
+    min-height: 2.75rem;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Alvos de toque no celular
+   ──────────────────────────────────────────────────────────────────────────
+
+   Os controles do painel nascem com 32–36px de altura, que é confortável com
+   o mouse e apertado com o polegar. 44px é a medida que a Apple recomenda e
+   que, na prática, é a diferença entre acertar o botão de primeira e errar
+   duas vezes segurando o celular com uma mão só.
+
+   Aplicado só abaixo de 1024px: no computador a densidade menor é melhor.
+   Caixas de seleção ficam de fora — elas moram dentro de <label>, e é o
+   rótulo inteiro que recebe o toque.
+*/
+@media (max-width: 1023px) {
+  main input:not([type="checkbox"]):not([type="radio"]),
+  main select,
+  main textarea,
+  main button:not([role="checkbox"]),
+  main a[data-slot="button"],
+  main [role="combobox"] {
+    min-height: 2.75rem;
+  }
+
+  /* Caixa de seleção e botão de opção são pequenos por natureza; quem
+     recebe o toque é o rótulo que os embrulha. */
+  main label:has(> button[role="checkbox"]),
+  main label:has(> input[type="checkbox"]),
+  main label:has(> input[type="radio"]) {
+    min-height: 2.75rem;
+  }
+}

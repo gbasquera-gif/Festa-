@@ -202,6 +202,7 @@ export default function Users() {
       <h1 className="mb-1 text-2xl font-bold text-navy">Clientes</h1>
       <p className="mb-6 text-muted-foreground">Todas as contas cadastradas no app.</p>
 
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -224,33 +225,33 @@ export default function Users() {
           )}
           {data?.map((user) => (
             <TableRow key={user.id}>
-              <TableCell className="font-medium">{user.name}</TableCell>
-              <TableCell className="text-muted-foreground">{user.email}</TableCell>
-              <TableCell>{user.phone ?? "—"}</TableCell>
-              <TableCell>
+              <TableCell data-label="Nome" className="font-medium">{user.name}</TableCell>
+              <TableCell data-label="E-mail" className="text-muted-foreground">{user.email}</TableCell>
+              <TableCell data-label="Telefone">{user.phone ?? "—"}</TableCell>
+              <TableCell data-label="Perfil">
                 {user.deletedAt ? (
                   <Badge variant="outline">Conta excluída</Badge>
                 ) : (
                   <Badge variant={user.role === "CLIENT" ? "secondary" : "default"}>{user.role}</Badge>
                 )}
               </TableCell>
-              <TableCell>{new Date(user.createdAt).toLocaleDateString("pt-BR")}</TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell data-label="Desde">{new Date(user.createdAt).toLocaleDateString("pt-BR")}</TableCell>
+              <TableCell data-label="Aceite dos termos" className="text-muted-foreground">
                 {user.termsAcceptedAt
                   ? `${new Date(user.termsAcceptedAt).toLocaleDateString("pt-BR")} · v${user.termsAcceptedVersion}`
                   : "—"}
               </TableCell>
               {canResetPassword && (
-                <TableCell className="space-x-2 text-right">
+                <TableCell className="text-right">
                   {!user.deletedAt && (
-                    <>
+                    <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => setEditing(user)}>
                         Editar
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => setResetting(user)}>
                         Nova senha
                       </Button>
-                    </>
+                    </div>
                   )}
                 </TableCell>
               )}
@@ -258,6 +259,7 @@ export default function Users() {
           ))}
         </TableBody>
       </Table>
+      </div>
 
       {editing && <EditUserDialog user={editing} onClose={() => setEditing(null)} />}
       {resetting && <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}

@@ -147,7 +147,7 @@ export default function Products() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-navy">Produtos</h1>
           <p className="text-muted-foreground">Itens avulsos que compõem os kits e podem ser adicionados como extra.</p>
@@ -173,6 +173,7 @@ export default function Products() {
         </Dialog>
       </div>
 
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -191,12 +192,12 @@ export default function Products() {
           )}
           {data?.map((product) => (
             <TableRow key={product.id}>
-              <TableCell className="font-medium">{product.name}</TableCell>
-              <TableCell>
+              <TableCell data-label="Nome" className="font-medium">{product.name}</TableCell>
+              <TableCell data-label="Categoria">
                 <Badge variant="secondary">{PRODUCT_CATEGORY_LABEL[product.category]}</Badge>
               </TableCell>
-              <TableCell>R$ {Number(product.unitPrice).toFixed(2)}</TableCell>
-              <TableCell>{product.stockQuantity}</TableCell>
+              <TableCell data-label="Preço">R$ {Number(product.unitPrice).toFixed(2)}</TableCell>
+              <TableCell data-label="Estoque">{product.stockQuantity}</TableCell>
               <TableCell className="flex justify-end gap-2">
                 <Button
                   size="icon"
@@ -234,6 +235,7 @@ export default function Products() {
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

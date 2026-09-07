@@ -108,8 +108,12 @@ function Placar({
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-extrabold text-navy">{valor}</p>
-        {detalhe && <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>}
+        {/* Menor no celular: "R$ 3.696,00" a 30px não cabe nos 139px úteis de
+            meio cartão, e o valor vazava a tela inteira em 8px de rolagem
+            lateral. break-words porque o real usa espaço fino entre "R$" e o
+            número, que o navegador não quebra sozinho. */}
+        <p className="text-2xl font-extrabold break-words text-navy sm:text-3xl">{valor}</p>
+        {detalhe && <p className="mt-1 text-xs break-words text-muted-foreground">{detalhe}</p>}
       </CardContent>
     </Card>
   );
@@ -148,7 +152,7 @@ export default function Funil() {
   });
 
   const seletor = (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full items-center gap-2 sm:w-auto">
       <label htmlFor="janela" className="text-sm text-muted-foreground">
         Período
       </label>
@@ -156,7 +160,7 @@ export default function Funil() {
         id="janela"
         value={janela}
         onChange={(e) => setJanela(e.target.value)}
-        className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+        className="h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs sm:h-9 sm:w-auto"
       >
         <option value={TRINTA_DIAS}>Últimos 30 dias</option>
         {meses.map((m) => (
@@ -181,7 +185,7 @@ export default function Funil() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
           {seletor}
 
           {/* Só o dono zera. Apagar métrica não é tarefa de operação do dia
@@ -189,7 +193,7 @@ export default function Funil() {
           {user?.role === "ADMIN" && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" disabled={zerar.isPending}>
+                <Button variant="outline" disabled={zerar.isPending} className="w-full sm:w-auto">
                   {zerar.isPending ? "Zerando..." : "Zerar contagem"}
                 </Button>
               </AlertDialogTrigger>
@@ -261,6 +265,7 @@ function Numeros({ data, pct }: { data: Resumo; pct: (v: number | null) => strin
       </div>
 
       <h2 className="mb-2 mt-8 text-lg font-bold text-navy">De onde vieram</h2>
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -283,18 +288,21 @@ function Numeros({ data, pct }: { data: Resumo; pct: (v: number | null) => strin
           )}
           {origens.map((o) => (
             <TableRow key={o.origem}>
-              <TableCell className="font-medium">{o.origem}</TableCell>
-              <TableCell className="text-muted-foreground">{o.campanha ?? "—"}</TableCell>
-              <TableCell className="text-right">{o.visitas}</TableCell>
-              <TableCell className="text-right">{o.reservas}</TableCell>
-              <TableCell className="text-right">{o.pagas}</TableCell>
-              <TableCell className="text-right">{o.receita > 0 ? brl(o.receita) : "—"}</TableCell>
+              <TableCell data-label="Origem" className="font-medium">{o.origem}</TableCell>
+              <TableCell data-label="Campanha" className="text-muted-foreground">{o.campanha ?? "—"}</TableCell>
+              <TableCell data-label="Visitas" className="text-right">{o.visitas}</TableCell>
+              <TableCell data-label="Reservas" className="text-right">{o.reservas}</TableCell>
+              <TableCell data-label="Pagas" className="text-right">{o.pagas}</TableCell>
+              <TableCell data-label="Receita" className="text-right">{o.receita > 0 ? brl(o.receita) : "—"}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
 
+      </div>
+
       <h2 className="mb-2 mt-8 text-lg font-bold text-navy">Passo a passo</h2>
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -305,12 +313,13 @@ function Numeros({ data, pct }: { data: Resumo; pct: (v: number | null) => strin
         <TableBody>
           {funnel.map((f) => (
             <TableRow key={f.type}>
-              <TableCell>{ROTULOS[f.type] ?? f.type}</TableCell>
-              <TableCell className="text-right font-medium">{f.count}</TableCell>
+              <TableCell data-label="Etapa">{ROTULOS[f.type] ?? f.type}</TableCell>
+              <TableCell data-label="Quantidade" className="text-right font-medium">{f.count}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      </div>
 
       {/* Sem este aviso o número engana: dá para abrir vários kits na mesma
           visita, e aí "escolheram um kit" fica maior que "escolheram um tema"

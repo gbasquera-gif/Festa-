@@ -217,7 +217,7 @@ export default function Kits() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-navy">Kits</h1>
           <p className="text-muted-foreground">Combinações de produtos recomendadas por tema e nº de convidados.</p>
@@ -250,6 +250,7 @@ export default function Kits() {
         </Dialog>
       </div>
 
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -268,10 +269,10 @@ export default function Kits() {
           )}
           {kits?.map((kit) => (
             <TableRow key={kit.id}>
-              <TableCell className="font-medium">{kit.name}</TableCell>
-              <TableCell className="text-muted-foreground">{kit.theme?.name ?? "—"}</TableCell>
-              <TableCell>R$ {Number(kit.basePrice).toFixed(2)}</TableCell>
-              <TableCell>{kit.products.length}</TableCell>
+              <TableCell data-label="Nome" className="font-medium">{kit.name}</TableCell>
+              <TableCell data-label="Tema" className="text-muted-foreground">{kit.theme?.name ?? "—"}</TableCell>
+              <TableCell data-label="Preço base">R$ {Number(kit.basePrice).toFixed(2)}</TableCell>
+              <TableCell data-label="Itens">{kit.products.length}</TableCell>
               <TableCell className="flex justify-end gap-2">
                 <Button
                   size="icon"
@@ -307,6 +308,7 @@ export default function Kits() {
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

@@ -32,6 +32,7 @@ export default function Events() {
       <h1 className="mb-1 text-2xl font-bold text-navy">Eventos</h1>
       <p className="mb-6 text-muted-foreground">Todas as festas criadas pelos clientes no app.</p>
 
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -52,22 +53,23 @@ export default function Events() {
           )}
           {data?.map((event) => (
             <TableRow key={event.id}>
-              <TableCell>{new Date(event.date).toLocaleDateString("pt-BR")}</TableCell>
-              <TableCell>
+              <TableCell data-label="Data">{new Date(event.date).toLocaleDateString("pt-BR")}</TableCell>
+              <TableCell data-label="Cliente">
                 <div className="font-medium">{event.user.name}</div>
                 <div className="text-xs text-muted-foreground">{event.user.email}</div>
               </TableCell>
-              <TableCell>{typeLabel(event.type)}</TableCell>
-              <TableCell>{event.theme?.name ?? "—"}</TableCell>
-              <TableCell>{event.guestCount ?? "—"}</TableCell>
-              <TableCell>{event.order ? `R$ ${Number(event.order.total).toFixed(2)}` : "—"}</TableCell>
-              <TableCell>
+              <TableCell data-label="Tipo">{typeLabel(event.type)}</TableCell>
+              <TableCell data-label="Tema">{event.theme?.name ?? "—"}</TableCell>
+              <TableCell data-label="Convidados">{event.guestCount ?? "—"}</TableCell>
+              <TableCell data-label="Orçamento">{event.order ? `R$ ${Number(event.order.total).toFixed(2)}` : "—"}</TableCell>
+              <TableCell data-label="Status">
                 <Badge variant="secondary">{event.order?.status ?? "—"}</Badge>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

@@ -93,11 +93,15 @@ function CorrigirDados({
             reserva e registre de novo, para a agenda continuar honesta.
           </p>
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onFechar}>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" className="w-full sm:w-auto" onClick={onFechar}>
             Cancelar
           </Button>
-          <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>
+          <Button
+            onClick={() => salvar.mutate()}
+            disabled={salvar.isPending}
+            className="w-full sm:w-auto"
+          >
             {salvar.isPending ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>
@@ -217,7 +221,7 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className={`size-2 shrink-0 rounded-full ${PONTOS[festa.situacao]}`} />
-              <p className="truncate font-semibold text-navy">{festa.cliente}</p>
+              <p className="font-semibold break-words text-navy">{festa.cliente}</p>
               <span className="text-xs text-muted-foreground">
                 {SITUACAO_LABELS[festa.situacao]}
               </span>
@@ -233,9 +237,9 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5">
             {festa.telefone && (
-              <Button asChild size="sm" variant="ghost" title="Abrir no WhatsApp">
+              <Button asChild size="icon" variant="ghost" className="size-11" title="Abrir no WhatsApp">
                 <a
                   href={`https://wa.me/55${festa.telefone.replace(/\D/g, "")}`}
                   target="_blank"
@@ -245,13 +249,13 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
                 </a>
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={baixarCalendario} title="Adicionar ao calendário">
+            <Button size="icon" variant="ghost" className="size-11" onClick={baixarCalendario} title="Adicionar ao calendário">
               <CalendarPlus className="size-4" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setCorrigindo(true)} title="Corrigir dados">
+            <Button size="icon" variant="ghost" className="size-11" onClick={() => setCorrigindo(true)} title="Corrigir dados">
               <Pencil className="size-4" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setAberto((v) => !v)}>
+            <Button size="icon" variant="ghost" className="size-11" onClick={() => setAberto((v) => !v)} title="Checklist e detalhes">
               {aberto ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             </Button>
           </div>
@@ -302,7 +306,7 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
                   const feita = festa.tarefasFeitas.includes(key);
                   const cobrada = festa.tarefasAbertas.includes(key);
                   return (
-                    <label key={key} className="flex items-center gap-2 text-sm">
+                    <label key={key} className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
                       <Checkbox
                         checked={feita}
                         disabled={marcar.isPending}
@@ -402,7 +406,7 @@ export default function ProximasAcoes() {
         O que precisa ser feito, e quando. Nenhuma festa depende de alguém lembrar.
       </p>
 
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Numero label="Festas hoje" valor={resumo.hoje} />
         <Numero label="Entregas hoje" valor={resumo.entregasHoje} />
         <Numero label="Montagens hoje" valor={resumo.montagensHoje} />

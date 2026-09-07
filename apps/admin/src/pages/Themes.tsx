@@ -155,7 +155,7 @@ export default function Themes() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-navy">Temas</h1>
           <p className="text-muted-foreground">Catálogo de temas usados na recomendação de kits.</p>
@@ -181,6 +181,7 @@ export default function Themes() {
         </Dialog>
       </div>
 
+      <div className="tabela-cards">
       <Table>
         <TableHeader>
           <TableRow>
@@ -198,8 +199,8 @@ export default function Themes() {
           )}
           {data?.map((theme) => (
             <TableRow key={theme.id}>
-              <TableCell className="font-medium">{theme.name}</TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell data-label="Nome" className="font-medium">{theme.name}</TableCell>
+              <TableCell data-label="Aparece em" className="text-muted-foreground">
                 {theme.suggestedEventTypes && theme.suggestedEventTypes.length > 0
                   ? STOREFRONT_EVENT_TYPES.filter((meta) =>
                       (theme.suggestedEventTypes as EventType[]).includes(meta.key),
@@ -208,7 +209,7 @@ export default function Themes() {
                       .join(", ")
                   : "Todas as festas"}
               </TableCell>
-              <TableCell>
+              <TableCell data-label="Status">
                 <Badge variant={theme.active ? "default" : "secondary"}>
                   {theme.active ? "Ativo" : "Inativo"}
                 </Badge>
@@ -250,6 +251,7 @@ export default function Themes() {
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

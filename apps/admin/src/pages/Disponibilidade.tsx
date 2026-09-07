@@ -108,6 +108,7 @@ export default function Disponibilidade() {
               ajustado, eles aparecem na loja com <strong>todas as datas indisponíveis</strong>.
               Corrija o estoque do produto ou a quantidade dentro do kit.
             </p>
+            <div className="tabela-cards">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -121,17 +122,18 @@ export default function Disponibilidade() {
                 {kitsQueNaoCabem.flatMap((kit) =>
                   kit.itens.map((item) => (
                     <TableRow key={`${kit.kitId}-${item.produto}`}>
-                      <TableCell className="font-medium">{kit.kit}</TableCell>
-                      <TableCell>{item.produto}</TableCell>
-                      <TableCell className="text-right font-bold text-red-600">
+                      <TableCell data-label="Kit" className="font-medium">{kit.kit}</TableCell>
+                      <TableCell data-label="Produto">{item.produto}</TableCell>
+                      <TableCell data-label="O kit precisa" className="text-right font-bold text-red-600">
                         {item.precisa}
                       </TableCell>
-                      <TableCell className="text-right">{item.estoque}</TableCell>
+                      <TableCell data-label="Estoque" className="text-right">{item.estoque}</TableCell>
                     </TableRow>
                   )),
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -172,6 +174,7 @@ export default function Disponibilidade() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="tabela-cards">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -185,10 +188,11 @@ export default function Disponibilidade() {
                   <TableBody>
                     {dia.itens.map((item) => (
                       <TableRow key={item.productId}>
-                        <TableCell className="font-medium">{item.produto}</TableCell>
-                        <TableCell className="text-right">{item.estoque}</TableCell>
-                        <TableCell className="text-right">{item.comprometido}</TableCell>
+                        <TableCell data-label="Produto" className="font-medium">{item.produto}</TableCell>
+                        <TableCell data-label="Estoque" className="text-right">{item.estoque}</TableCell>
+                        <TableCell data-label="Comprometido" className="text-right">{item.comprometido}</TableCell>
                         <TableCell
+                          data-label="Disponível"
                           className={`text-right font-bold ${
                             item.disponivel < 0 ? "text-red-600" : "text-amber-600"
                           }`}
@@ -215,6 +219,7 @@ export default function Disponibilidade() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
 
                 <p className="mt-4 text-sm font-medium text-navy">Reservas desta data</p>
                 <ul className="mt-1 flex flex-col gap-1 text-sm text-muted-foreground">

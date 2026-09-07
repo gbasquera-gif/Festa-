@@ -65,7 +65,7 @@ function Campo({
 }
 
 const selectClass =
-  "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs";
+  "h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs sm:h-9";
 
 /**
  * Registro de uma venda fechada fora da loja.
@@ -364,17 +364,20 @@ export default function NovaReservaManual() {
               <Label className="mb-2 block">Itens adicionais</Label>
               <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border p-3">
                 {produtos?.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-3 py-1">
-                    <span className="text-sm">
-                      {p.name}
-                      <span className="ml-2 text-xs text-muted-foreground">
+                  <div key={p.id} className="flex items-center justify-between gap-3 py-1.5">
+                    <span className="min-w-0 text-sm">
+                      <span className="block truncate">{p.name}</span>
+                      <span className="text-xs text-muted-foreground">
                         {brl(Number(p.unitPrice))} · acervo {p.stockQuantity}
                       </span>
                     </span>
+                    {/* inputMode numérico abre o teclado de números no iPhone;
+                        sem isso a pessoa digita quantidade num teclado de letras. */}
                     <Input
                       type="number"
+                      inputMode="numeric"
                       min={0}
-                      className="h-8 w-20"
+                      className="h-11 w-20 shrink-0 text-center sm:h-9"
                       value={extras[p.id] ?? ""}
                       placeholder="0"
                       onChange={(e) =>
@@ -418,7 +421,7 @@ export default function NovaReservaManual() {
               </label>
             </div>
             {fulfillment === "DELIVERY" && (
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="md:col-span-2">
                   <Campo label="Endereço">
                     <Input value={endereco} onChange={(e) => setEndereco(e.target.value)} />
@@ -440,10 +443,11 @@ export default function NovaReservaManual() {
             <CardTitle className="text-base">Financeiro</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Campo label="Valor dos produtos *">
                 <Input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min={0}
                   value={valorProdutos}
@@ -454,6 +458,7 @@ export default function NovaReservaManual() {
               <Campo label="Entrega">
                 <Input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min={0}
                   value={entrega}
@@ -463,6 +468,7 @@ export default function NovaReservaManual() {
               <Campo label="Montagem">
                 <Input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min={0}
                   value={montagem}
@@ -472,6 +478,7 @@ export default function NovaReservaManual() {
               <Campo label="Desconto">
                 <Input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min={0}
                   value={desconto}
@@ -490,10 +497,11 @@ export default function NovaReservaManual() {
               </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo label="Sinal recebido">
                 <Input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min={0}
                   value={sinal}
@@ -538,7 +546,7 @@ export default function NovaReservaManual() {
                   key={canal}
                   type="button"
                   onClick={() => setOrigem(canal)}
-                  className={`rounded-full border px-4 py-1.5 text-sm transition ${
+                  className={`min-h-11 rounded-full border px-4 py-2 text-sm transition ${
                     origem === canal
                       ? "border-navy bg-navy text-white"
                       : "border-input hover:bg-muted"
@@ -556,12 +564,19 @@ export default function NovaReservaManual() {
         </Card>
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
-        <Button type="submit" disabled={salvar.isPending}>
-          {salvar.isPending ? "Salvando..." : "Registrar reserva"}
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => navegar("/reservas")}>
+      {/* No celular os botões empilham e ocupam a largura: são a última ação
+          da tela e precisam ser acertados com o polegar, sem mira. */}
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-11 w-full sm:h-9 sm:w-auto"
+          onClick={() => navegar("/reservas")}
+        >
           Cancelar
+        </Button>
+        <Button type="submit" disabled={salvar.isPending} className="h-11 w-full sm:h-9 sm:w-auto">
+          {salvar.isPending ? "Salvando..." : "Registrar reserva"}
         </Button>
       </div>
     </form>
