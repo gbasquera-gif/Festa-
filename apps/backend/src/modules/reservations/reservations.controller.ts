@@ -1,8 +1,17 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { createReservationSchema, updateReservationStatusSchema } from "@festae/shared";
-import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
+import {
+  createReservationSchema,
+  manualReservationSchema,
+  updateReservationStatusSchema,
+} from "@festae/shared";
+import type {
+  CreateReservationInput,
+  ManualReservationInput,
+  UpdateReservationStatusInput,
+} from "@festae/shared";
 import { ReservationsService } from "./reservations.service";
+import { ManualReservationService } from "./manual-reservation.service";
 import { EventsService } from "../events/events.service";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -17,6 +26,7 @@ import { CurrentUser, type AuthUser } from "../../common/decorators/current-user
 export class ReservationsController {
   constructor(
     private readonly reservationsService: ReservationsService,
+    private readonly manualReservations: ManualReservationService,
     private readonly eventsService: EventsService,
   ) {}
 
@@ -35,6 +45,23 @@ export class ReservationsController {
   @Get("reservations")
   findAll() {
     return this.reservationsService.findAllAdmin();
+  }
+
+  /**
+   * Venda fechada por fora da loja, registrada no painel.
+   *
+   * Passa pelas mesmas conferências da reserva da loja — capacidade do dia e
+   * estoque item a item. Quando não cabe, devolve o detalhe para a operação
+   * decidir, em vez de recusar com uma frase genérica.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Post("reservations/manual")
+  criarManual(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(manualReservationSchema)) body: ManualReservationInput,
+  ) {
+    return this.manualReservations.criar(body, user.userId);
   }
 
   @UseGuards(RolesGuard)

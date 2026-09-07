@@ -13,6 +13,8 @@ import Events from "@/pages/Events";
 import Users from "@/pages/Users";
 import Funil from "@/pages/Funil";
 import Disponibilidade from "@/pages/Disponibilidade";
+import ProximasAcoes from "@/pages/ProximasAcoes";
+import NovaReservaManual from "@/pages/NovaReservaManual";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -62,6 +64,16 @@ function Router() {
       <Route path="/kits">
         <Protected>
           <Kits />
+        </Protected>
+      </Route>
+      <Route path="/operacao">
+        <Protected>
+          <ProximasAcoes />
+        </Protected>
+      </Route>
+      <Route path="/reservas/nova">
+        <Protected>
+          <NovaReservaManual />
         </Protected>
       </Route>
       <Route path="/reservas">

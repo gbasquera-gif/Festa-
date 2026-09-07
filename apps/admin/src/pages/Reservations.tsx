@@ -1,4 +1,6 @@
 import { Fragment, useState } from "react";
+import { Link } from "wouter";
+import { Plus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { RESERVATION_STATUSES, splitPayment, type ReservationStatus } from "@festae/shared";
@@ -324,10 +326,23 @@ export default function Reservations() {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-navy">Reservas</h1>
-      <p className="mb-6 text-muted-foreground">
-        Clique numa reserva para ver o cliente, o que separar e o financeiro.
-      </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="mb-1 text-2xl font-bold text-navy">Reservas</h1>
+          <p className="text-muted-foreground">
+            Clique numa reserva para ver o cliente, o que separar e o financeiro.
+          </p>
+        </div>
+
+        {/* Venda de WhatsApp entra por aqui. Sem este caminho ela ficava só
+            no caderno, e o calendário da loja seguia oferecendo a data. */}
+        <Button asChild>
+          <Link href="/reservas/nova">
+            <Plus className="mr-1 size-4" />
+            Nova reserva manual
+          </Link>
+        </Button>
+      </div>
 
       <Table>
         <TableHeader>

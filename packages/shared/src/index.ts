@@ -126,3 +126,34 @@ export {
   RESERVATION_HOLD_MINUTES,
   RESERVATION_EXPIRED_MESSAGE,
 } from "./operations";
+
+export {
+  SALE_CHANNELS,
+  SALE_CHANNEL_LABELS,
+  MANUAL_SALE_CHANNELS,
+  saleChannelLabel,
+} from "./sale-channels";
+export type { SaleChannel } from "./sale-channels";
+
+export {
+  RESERVATION_TASKS,
+  RESERVATION_TASK_LABELS,
+  PREPARATION_STAGES,
+  REGUA,
+  SITUACOES,
+  SITUACAO_LABELS,
+  diasAteAFesta,
+  etapaDaRegua,
+  etapaQueCobra,
+  situacaoDaReserva,
+} from "./operacao";
+export type {
+  ReservationTaskKey,
+  PreparationStage,
+  EtapaDaRegua,
+  Situacao,
+  EntradaDoSemaforo,
+} from "./operacao";
+
+export { manualReservationSchema, marcarTarefaSchema, totalDaVendaManual } from "./schemas/manual-reservation";
+export type { ManualReservationInput, MarcarTarefaInput } from "./schemas/manual-reservation";

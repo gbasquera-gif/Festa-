@@ -11,6 +11,7 @@ import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { StorageModule } from "./modules/storage/storage.module";
 import { OrdersModule } from "./modules/orders/orders.module";
 import { ReservationsModule } from "./modules/reservations/reservations.module";
+import { OperationsModule } from "./modules/operations/operations.module";
 import { PartnersModule } from "./modules/partners/partners.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { AiMagicModule } from "./modules/ai-magic/ai-magic.module";
@@ -36,6 +37,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
     StorageModule,
     OrdersModule,
     ReservationsModule,
+    OperationsModule,
     PartnersModule,
     PaymentsModule,
     AiMagicModule,

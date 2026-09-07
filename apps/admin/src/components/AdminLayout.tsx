@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
+  ListChecks,
   LayoutDashboard,
   Palette,
   Package,
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/temas", label: "Temas", icon: Palette },
   { href: "/produtos", label: "Produtos", icon: Package },
   { href: "/kits", label: "Kits", icon: Boxes },
+  { href: "/operacao", label: "Próximas ações", icon: ListChecks },
   { href: "/reservas", label: "Reservas", icon: CalendarCheck },
   { href: "/disponibilidade", label: "Disponibilidade", icon: TriangleAlert },
   { href: "/eventos", label: "Eventos", icon: CalendarDays },

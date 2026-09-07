@@ -74,6 +74,12 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user || user.deletedAt) throw new UnauthorizedException("Credenciais inválidas.");
 
+    // Ficha de cliente criada por reserva manual não tem senha, e não é uma
+    // porta de entrada: é cadastro de quem fechou por WhatsApp. Sem esta
+    // guarda, `bcrypt.compare` receberia null e o comportamento passaria a
+    // depender da biblioteca — exatamente onde não se pode depender.
+    if (!user.passwordHash) throw new UnauthorizedException("Credenciais inválidas.");
+
     const passwordMatches = await bcrypt.compare(input.password, user.passwordHash);
     if (!passwordMatches) throw new UnauthorizedException("Credenciais inválidas.");
 
@@ -93,6 +99,7 @@ export class AuthService {
   async deleteAccount(userId: string, password: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new UnauthorizedException("Conta não encontrada.");
+    if (!user.passwordHash) throw new UnauthorizedException("Conta sem senha cadastrada.");
 
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) throw new UnauthorizedException("Senha incorreta.");
@@ -123,7 +130,9 @@ export class AuthService {
     return { success: true };
   }
 
-  private buildAuthResponse(user: { id: string; email: string; name: string; role: string }) {
+  // O e-mail é opcional no banco (ficha de cliente sem conta), mas quem
+  // chega aqui necessariamente entrou por e-mail e senha — então existe.
+  private buildAuthResponse(user: { id: string; email: string | null; name: string; role: string }) {
     const accessToken = this.jwtService.sign({
       sub: user.id,
       email: user.email,

@@ -59,6 +59,22 @@ enum ReservationStatus {
   CANCELLED
 }
 
+/// Por onde a venda foi fechada.
+///
+/// A loja Web deduz a origem do link (utm_source); as vendas de balcão,
+/// WhatsApp e indicação só existem se alguém digitar. Sem este campo, tudo
+/// que a Maria Luiza fecha por fora do app fica invisível no funil — e o
+/// canal que mais vende passa a ser o que menos aparece no relatório.
+enum SaleChannel {
+  WEB
+  WHATSAPP
+  INSTAGRAM
+  INDICACAO
+  PRESENCIAL
+  TELEFONE
+  OUTRO
+}
+
 enum PartnerType {
   DECORADOR
   DOCERIA
@@ -99,19 +115,31 @@ enum PaymentType {
 // Enquanto isso: não acrescente @unique global novo em tabela de catálogo.
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
+  id String @id @default(cuid())
+
+  /// Opcionais porque nem todo cliente da Festaê tem conta no app.
+  ///
+  /// Quem fecha por WhatsApp passa nome e telefone, e mais nada. Antes, para
+  /// registrar essa venda, seria preciso inventar um e-mail e uma senha —
+  /// dado falso no banco, que depois aparece na lista de clientes e no
+  /// relatório como se fosse verdade. Sem senha a conta simplesmente não
+  /// entra pelo login, que é o comportamento correto: ela não é um acesso,
+  /// é um cadastro de cliente.
+  ///
+  /// O e-mail continua único quando existe. Vários nulos convivem no índice
+  /// único do Postgres, então clientes sem e-mail não brigam entre si.
+  email        String?   @unique
+  passwordHash String?
   name         String
   phone        String?
-  role         Role     @default(CLIENT)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role         Role      @default(CLIENT)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   // Conta excluída pelo próprio usuário. Os dados pessoais são apagados no
   // ato (nome, e-mail, telefone, endereço); a linha permanece para não
   // derrubar em cascata pedidos e reservas que a empresa ainda precisa
   // cumprir e guardar por obrigação fiscal.
-  deletedAt DateTime?
+  deletedAt    DateTime?
 
   // Prova de consentimento exigida pela LGPD: não basta saber que aceitou,
   // é preciso saber QUANDO e QUAL versão do texto estava valendo. Sem a
@@ -124,7 +152,8 @@ model User {
   // não expulsaria o invasor — ele seguiria dentro até o token expirar.
   passwordChangedAt DateTime?
 
-  events Event[]
+  events        Event[]
+  tarefasFeitas ReservationTask[]
 
   @@map("users")
 }
@@ -148,20 +177,20 @@ model Theme {
 }
 
 model Event {
-  id          String    @id @default(cuid())
-  userId      String
-  type        EventType
-  date        DateTime
+  id           String    @id @default(cuid())
+  userId       String
+  type         EventType
+  date         DateTime
   // Opcional: perguntar quantos convidados logo no primeiro passo travava
   // quem ainda não fechou a lista. Vazio significa "a combinar", e a
   // operação acerta o número pelo WhatsApp antes de separar os itens.
-  guestCount  Int?
-  budgetGoal  Decimal?  @db.Decimal(10, 2)
-  themeId     String?
-  address     String?
+  guestCount   Int?
+  budgetGoal   Decimal?  @db.Decimal(10, 2)
+  themeId      String?
+  address      String?
   neighborhood String?
-  city        String    @default("Chapecó")
-  state       String    @default("SC")
+  city         String    @default("Chapecó")
+  state        String    @default("SC")
 
   /// De onde veio quem montou esta festa, lido do link de origem.
   ///
@@ -173,8 +202,14 @@ model Event {
   utmMedium   String?
   utmCampaign String?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  /// Por onde a venda foi fechada. Diferente do utm_source: a UTM diz que
+  /// anúncio trouxe a pessoa até a loja, e este campo diz onde o dinheiro
+  /// foi combinado. Uma venda pode nascer de um anúncio no Instagram e ser
+  /// fechada no WhatsApp — são duas perguntas, e o painel responde as duas.
+  saleChannel SaleChannel @default(WEB)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   theme Theme? @relation(fields: [themeId], references: [id])
@@ -199,7 +234,7 @@ model Product {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  partner    Partner?    @relation(fields: [partnerId], references: [id])
+  partner    Partner?     @relation(fields: [partnerId], references: [id])
   kitLinks   KitProduct[]
   orderItems OrderItem[]
 
@@ -263,10 +298,10 @@ model Order {
   deliveryFee Decimal @default(0) @db.Decimal(10, 2)
   assemblyFee Decimal @default(0) @db.Decimal(10, 2)
 
-  total          Decimal     @default(0) @db.Decimal(10, 2)
-  notes          String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  total     Decimal  @default(0) @db.Decimal(10, 2)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
   kit         Kit?         @relation(fields: [kitId], references: [id])
@@ -279,10 +314,10 @@ model Order {
 }
 
 model OrderItem {
-  id                String @id @default(cuid())
+  id                String  @id @default(cuid())
   orderId           String
   productId         String
-  quantity          Int    @default(1)
+  quantity          Int     @default(1)
   unitPriceSnapshot Decimal @db.Decimal(10, 2)
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -301,10 +336,36 @@ model Reservation {
   confirmedAt DateTime?
   notes       String?
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tasks ReservationTask[]
 
   @@index([eventDate])
   @@map("reservations")
+}
+
+/// Uma tarefa operacional concluída numa reserva.
+///
+/// A linha só existe quando a tarefa foi feita — marcar cria, desmarcar
+/// apaga. É mais simples que nascer com oito linhas pendentes por reserva,
+/// e responde a mesma pergunta: o que já foi conferido e o que falta.
+///
+/// Guarda quem concluiu por vínculo, e não por cópia do nome: se a conta da
+/// pessoa for excluída, o nome dela precisa sumir daqui junto (LGPD), e uma
+/// cópia sobreviveria à exclusão.
+model ReservationTask {
+  id            String   @id @default(cuid())
+  reservationId String
+  /// Chave da tarefa (ver RESERVATION_TASKS em @festae/shared).
+  key           String
+  doneAt        DateTime @default(now())
+  doneById      String?
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  doneBy      User?       @relation(fields: [doneById], references: [id], onDelete: SetNull)
+
+  @@unique([reservationId, key])
+  @@index([doneById])
+  @@map("reservation_tasks")
 }
 
 model Partner {
@@ -323,16 +384,16 @@ model Partner {
 }
 
 model Payment {
-  id                 String        @id @default(cuid())
-  orderId            String
-  type               PaymentType   @default(DEPOSIT)
-  amount             Decimal       @db.Decimal(10, 2)
-  method             PaymentMethod @default(PIX)
-  status             PaymentStatus @default(PENDING)
-  externalReference  String?
-  checkoutUrl        String?
-  pixQrCode          String?
-  pixQrCodeBase64    String?
+  id                String        @id @default(cuid())
+  orderId           String
+  type              PaymentType   @default(DEPOSIT)
+  amount            Decimal       @db.Decimal(10, 2)
+  method            PaymentMethod @default(PIX)
+  status            PaymentStatus @default(PENDING)
+  externalReference String?
+  checkoutUrl       String?
+  pixQrCode         String?
+  pixQrCodeBase64   String?
 
   /// Quando o QR deixa de ser pago. Um Pix vencido não pode ser quitado,
   /// e é isso que torna seguro liberar a data reservada por ele.
@@ -343,8 +404,8 @@ model Payment {
   /// cliente com a tela aberta.
   syncedAt DateTime?
 
-  paidAt             DateTime?
-  createdAt          DateTime      @default(now())
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
