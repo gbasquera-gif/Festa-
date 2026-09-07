@@ -109,7 +109,6 @@ export {
   DELIVERY_CITY,
   DEPOSIT_RATE,
   DELIVERY_UNAVAILABLE_MESSAGE,
-  ASSEMBLY_REQUIRES_DELIVERY_MESSAGE,
   calculateOrderPricing,
   splitPayment,
   checkFulfillment,
@@ -155,5 +154,14 @@ export type {
   EntradaDoSemaforo,
 } from "./operacao";
 
-export { manualReservationSchema, marcarTarefaSchema, totalDaVendaManual } from "./schemas/manual-reservation";
-export type { ManualReservationInput, MarcarTarefaInput } from "./schemas/manual-reservation";
+export {
+  manualReservationSchema,
+  marcarTarefaSchema,
+  corrigirDadosSchema,
+  totalDaVendaManual,
+} from "./schemas/manual-reservation";
+export type {
+  ManualReservationInput,
+  MarcarTarefaInput,
+  CorrigirDadosInput,
+} from "./schemas/manual-reservation";

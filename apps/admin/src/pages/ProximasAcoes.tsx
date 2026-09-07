@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarPlus, ChevronDown, ChevronRight, Phone } from "lucide-react";
+import { CalendarPlus, ChevronDown, ChevronRight, Pencil, Phone } from "lucide-react";
 import {
   RESERVATION_TASK_LABELS,
   SITUACAO_LABELS,
@@ -12,7 +12,99 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { api, baixarArquivo } from "@/lib/api";
+
+/**
+ * Correção de erro de digitação numa reserva já registrada.
+ *
+ * Só o que não mexe em agenda, estoque ou dinheiro. Telefone errado é a
+ * festa que ninguém confirma no dia; endereço errado é a entrega no lugar
+ * errado — os dois erros mais caros e os mais fáceis de cometer digitando
+ * com o cliente na linha.
+ *
+ * Mudar data, itens ou valores continua sendo cancelar e registrar de novo:
+ * são as alterações que exigem reconferir a agenda e que reescreveriam um
+ * pagamento já recebido.
+ */
+function CorrigirDados({
+  festa,
+  aberto,
+  onFechar,
+}: {
+  festa: Festa;
+  aberto: boolean;
+  onFechar: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [nome, setNome] = useState(festa.cliente);
+  const [telefone, setTelefone] = useState(festa.telefone ?? "");
+  const [endereco, setEndereco] = useState(festa.endereco ?? "");
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      api(`/operacao/reservas/${festa.reservaId}/dados`, {
+        method: "PATCH",
+        body: JSON.stringify({ nome, telefone, endereco }),
+      }),
+    onSuccess: () => {
+      toast.success("Dados corrigidos.");
+      queryClient.invalidateQueries({ queryKey: ["proximas-acoes"] });
+      onFechar();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível salvar."),
+  });
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Corrigir dados</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Nome</Label>
+            <Input value={nome} onChange={(e) => setNome(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Telefone</Label>
+            <Input value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Endereço</Label>
+            <Textarea
+              rows={2}
+              value={endereco}
+              onChange={(e) => setEndereco(e.target.value)}
+              placeholder="Deixe vazio se for retirada"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Data, itens e valores não se corrigem por aqui — para mudar o que foi vendido, cancele a
+            reserva e registre de novo, para a agenda continuar honesta.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>
+            {salvar.isPending ? "Salvando..." : "Salvar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface Festa {
   reservaId: string;
@@ -94,6 +186,7 @@ function dataCurta(iso: string) {
 
 function CartaoDaFesta({ festa }: { festa: Festa }) {
   const [aberto, setAberto] = useState(festa.situacao === "URGENTE" || festa.situacao === "ATRASADO");
+  const [corrigindo, setCorrigindo] = useState(false);
   const queryClient = useQueryClient();
 
   const marcar = useMutation({
@@ -154,6 +247,9 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
             )}
             <Button size="sm" variant="ghost" onClick={baixarCalendario} title="Adicionar ao calendário">
               <CalendarPlus className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setCorrigindo(true)} title="Corrigir dados">
+              <Pencil className="size-4" />
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setAberto((v) => !v)}>
               {aberto ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
@@ -231,6 +327,10 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
           </div>
         )}
       </CardContent>
+
+      {corrigindo && (
+        <CorrigirDados festa={festa} aberto onFechar={() => setCorrigindo(false)} />
+      )}
     </Card>
   );
 }

@@ -102,3 +102,26 @@ export const marcarTarefaSchema = z.object({
   done: z.boolean(),
 });
 export type MarcarTarefaInput = z.infer<typeof marcarTarefaSchema>;
+
+/**
+ * Correção de dados de uma reserva já registrada.
+ *
+ * Recorte deliberado: só campos que não mexem em agenda, estoque nem
+ * dinheiro. Nome, telefone, endereço e observações são onde o erro de
+ * digitação acontece e onde ele dói — telefone errado é a festa que ninguém
+ * confirma no dia; endereço errado é a entrega no lugar errado.
+ *
+ * Data, itens e valores ficam de fora de propósito. Mudar a data exigiria
+ * reconferir capacidade ignorando a própria reserva (a trava de capacidade
+ * ainda não sabe fazer isso) e mudar valores reescreveria o histórico de um
+ * pagamento que pode já ter sido recebido. Para esses casos, o caminho
+ * seguro continua sendo cancelar e registrar de novo.
+ */
+export const corrigirDadosSchema = z.object({
+  nome: z.string().min(2).max(160).optional(),
+  telefone: z.string().min(8).max(30).optional(),
+  endereco: z.string().max(255).optional().or(z.literal("")),
+  bairro: z.string().max(120).optional().or(z.literal("")),
+  observacoes: z.string().max(2000).optional().or(z.literal("")),
+});
+export type CorrigirDadosInput = z.infer<typeof corrigirDadosSchema>;

@@ -194,9 +194,6 @@ export default function NovaReservaManual() {
     setConflitos(null);
 
     if (!origem) return toast.error("Diga por onde esta venda foi fechada.");
-    if (assembly && fulfillment === "PICKUP") {
-      return toast.error("Montagem só existe com entrega — a equipe leva e monta no local.");
-    }
     // Data no passado é digitação legítima (venda antiga sendo lançada) e
     // também o erro de digitação mais comum. Confirmar resolve os dois.
     if (dataNoPassado && !confirm("Essa data já passou. Registrar mesmo assim?")) return;
@@ -401,10 +398,7 @@ export default function NovaReservaManual() {
                 <input
                   type="radio"
                   checked={fulfillment === "PICKUP"}
-                  onChange={() => {
-                    setFulfillment("PICKUP");
-                    setAssembly(false);
-                  }}
+                  onChange={() => setFulfillment("PICKUP")}
                 />
                 Retirada na sede
               </label>
@@ -417,20 +411,12 @@ export default function NovaReservaManual() {
                 Entrega no local
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={assembly}
-                  disabled={fulfillment === "PICKUP"}
-                  onCheckedChange={(v) => setAssembly(v === true)}
-                />
+                {/* Montagem é escolha independente da logística: a equipe
+                    monta no local mesmo quando a cliente buscou os itens. */}
+                <Checkbox checked={assembly} onCheckedChange={(v) => setAssembly(v === true)} />
                 Com montagem
               </label>
             </div>
-            {fulfillment === "PICKUP" && (
-              <p className="text-xs text-muted-foreground">
-                Montagem só existe com entrega — é a equipe que leva e monta no local.
-              </p>
-            )}
-
             {fulfillment === "DELIVERY" && (
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="md:col-span-2">

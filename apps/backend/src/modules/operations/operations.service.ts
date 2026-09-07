@@ -173,6 +173,63 @@ export class OperationsService {
     return { key, done: true };
   }
 
+  /**
+   * Corrige dados de contato e observações de uma reserva já registrada.
+   *
+   * Não toca em data, itens nem valores — por isso não precisa reconferir
+   * agenda nem estoque. É a correção de erro de digitação, não uma edição
+   * de pedido: mudar o que foi vendido continua sendo cancelar e registrar
+   * de novo, que é o caminho que mantém a agenda honesta.
+   */
+  async corrigirDados(
+    reservaId: string,
+    dados: {
+      nome?: string;
+      telefone?: string;
+      endereco?: string;
+      bairro?: string;
+      observacoes?: string;
+    },
+  ) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id: reservaId },
+      select: { id: true, orderId: true, order: { select: { eventId: true, event: { select: { userId: true } } } } },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+
+    await prisma.$transaction(async (tx) => {
+      if (dados.nome || dados.telefone) {
+        await tx.user.update({
+          where: { id: reserva.order.event.userId },
+          data: {
+            ...(dados.nome ? { name: dados.nome.trim() } : {}),
+            ...(dados.telefone ? { phone: dados.telefone.trim() } : {}),
+          },
+        });
+      }
+
+      // Campo vazio apaga de propósito: é assim que se corrige um endereço
+      // digitado numa reserva que na verdade é retirada.
+      if (dados.endereco !== undefined || dados.bairro !== undefined) {
+        await tx.event.update({
+          where: { id: reserva.order.eventId },
+          data: {
+            ...(dados.endereco !== undefined ? { address: dados.endereco.trim() || null } : {}),
+            ...(dados.bairro !== undefined ? { neighborhood: dados.bairro.trim() || null } : {}),
+          },
+        });
+      }
+
+      if (dados.observacoes !== undefined) {
+        const texto = dados.observacoes.trim() || null;
+        await tx.order.update({ where: { id: reserva.orderId }, data: { notes: texto } });
+        await tx.reservation.update({ where: { id: reservaId }, data: { notes: texto } });
+      }
+    });
+
+    return this.detalhe(reservaId);
+  }
+
   /** Os dados da festa no formato que o calendário externo entende. */
   async paraCalendario(reservaId: string, linkDoPainel: string): Promise<FestaNoCalendario> {
     const f = await this.detalhe(reservaId);

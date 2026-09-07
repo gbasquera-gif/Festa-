@@ -37,17 +37,17 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.balance).toBe(250);
   });
 
-  // Montagem só existe junto da entrega: quem monta é a equipe que foi até
-  // lá. Marcar montagem com retirada não cobra nada — e a validação recusa
-  // a combinação antes de gravar.
-  it("B) retirada com montagem marcada: a montagem não é cobrada", () => {
+  // A equipe monta no local da festa mesmo quando foi a cliente quem buscou
+  // os itens. As duas escolhas são independentes: a montagem é cobrada aqui
+  // sem nenhuma taxa de entrega junto.
+  it("B) retirada com montagem: produtos + R$ 50, sem taxa de entrega", () => {
     const result = calculateOrderPricing({ ...base, assembly: true });
 
     expect(result.deliveryFee).toBe(0);
-    expect(result.assemblyFee).toBe(0);
-    expect(result.total).toBe(500);
-    expect(result.deposit).toBe(250);
-    expect(result.balance).toBe(250);
+    expect(result.assemblyFee).toBe(50);
+    expect(result.total).toBe(550);
+    expect(result.deposit).toBe(275);
+    expect(result.balance).toBe(275);
   });
 
   it("C) entrega sem montagem: produtos + R$ 20", () => {
@@ -75,6 +75,40 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.deposit).toBe(285);
     expect(result.balance).toBe(285);
   });
+});
+
+/**
+ * A tabela das quatro combinações, do jeito que a operação a enunciou.
+ *
+ * Fica separada e explícita porque é a regra comercial que mais mudou de
+ * ideia neste projeto: já houve uma versão em que montagem exigia entrega.
+ * Um teste que lista as quatro linhas com o total de cada uma é o lugar onde
+ * a regra vigente fica escrita sem ambiguidade.
+ */
+describe("tabela oficial: retirada grátis, entrega R$ 20, montagem R$ 50", () => {
+  const casos: { nome: string; entrega: boolean; montagem: boolean; total: number }[] = [
+    { nome: "retirada sem montagem", entrega: false, montagem: false, total: 500 },
+    { nome: "retirada com montagem", entrega: false, montagem: true, total: 550 },
+    { nome: "entrega sem montagem", entrega: true, montagem: false, total: 520 },
+    { nome: "entrega com montagem", entrega: true, montagem: true, total: 570 },
+  ];
+
+  for (const caso of casos) {
+    it(`${caso.nome} → ${caso.total}`, () => {
+      const r = calculateOrderPricing({
+        ...base,
+        fulfillment: caso.entrega ? "DELIVERY" : "PICKUP",
+        assembly: caso.montagem,
+      });
+      expect(r.total).toBe(caso.total);
+      expect(r.deliveryFee).toBe(caso.entrega ? DELIVERY_FEE : 0);
+      expect(r.assemblyFee).toBe(caso.montagem ? ASSEMBLY_FEE : 0);
+      expect(r.deposit + r.balance).toBe(caso.total);
+      expect(checkFulfillment(caso.entrega ? "DELIVERY" : "PICKUP", "Chapecó", caso.montagem).allowed).toBe(
+        true,
+      );
+    });
+  }
 });
 
 describe("subtotal dos produtos", () => {
@@ -189,6 +223,7 @@ describe("taxas oficiais", () => {
     const produtos = base.subtotalKit + base.subtotalExtras;
 
     const retirada = calculateOrderPricing(base);
+    const retiradaComMontagem = calculateOrderPricing({ ...base, assembly: true });
     const entrega = calculateOrderPricing({ ...base, fulfillment: "DELIVERY" });
     const entregaComMontagem = calculateOrderPricing({
       ...base,
@@ -197,23 +232,25 @@ describe("taxas oficiais", () => {
     });
 
     expect(retirada.total - produtos).toBe(0);
+    expect(retiradaComMontagem.total - produtos).toBe(ASSEMBLY_FEE);
     expect(entrega.total - produtos).toBe(DELIVERY_FEE);
     expect(entregaComMontagem.total - produtos).toBe(DELIVERY_WITH_ASSEMBLY_FEE);
     expect(DELIVERY_WITH_ASSEMBLY_FEE).toBe(70);
   });
 
-  it("montagem sem entrega é recusada pela validação", () => {
-    const recusa = checkFulfillment("PICKUP", "Chapecó", true);
-    expect(recusa.allowed).toBe(false);
-    if (!recusa.allowed) expect(recusa.reason).toContain("montagem só está disponível");
+  // A regra antiga exigia entrega para haver montagem. Foi revista: a equipe
+  // monta no local mesmo quando a cliente buscou os itens.
+  it("montagem com retirada é permitida", () => {
+    expect(checkFulfillment("PICKUP", "Chapecó", true).allowed).toBe(true);
   });
 
   it("montagem com entrega é permitida", () => {
     expect(checkFulfillment("DELIVERY", "Chapecó", true).allowed).toBe(true);
   });
 
-  // Fora de Chapecó não há entrega, e sem entrega não há montagem: o total
-  // não pode carregar uma taxa de serviço que ninguém vai prestar.
+  // Montagem não depende de retirada ou entrega, mas depende da cidade: a
+  // equipe que não vai entregar em Xanxerê também não vai montar lá. Cobrar
+  // a taxa seria vender um serviço que ninguém presta.
   it("cidade sem entrega não cobra entrega nem montagem", () => {
     const fora = calculateOrderPricing({
       ...base,

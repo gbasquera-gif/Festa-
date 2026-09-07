@@ -16,7 +16,7 @@
 import { ASSEMBLY_FEE, DELIVERY_CITY, DELIVERY_FEE, DELIVERY_WITH_ASSEMBLY_FEE } from "./pricing";
 
 /** Sobe a cada alteração de conteúdo. Gravada no aceite do usuário. */
-export const TERMS_VERSION = "1.3.0";
+export const TERMS_VERSION = "1.4.0";
 
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
 export const TERMS_UPDATED_AT = "2026-08-07";
@@ -203,7 +203,7 @@ export const TERMS_OF_USE: LegalDocument = {
       paragraphs: [
         "A retirada na sede da Festaê é gratuita e é a forma padrão de receber os itens, nos horários combinados na confirmação da reserva.",
         `A entrega no local da festa custa ${formatBRL(DELIVERY_FEE)} e está disponível apenas em ${DELIVERY_CITY}. Para festas em outras cidades, a retirada é feita na sede. A taxa aparece no resumo antes de você confirmar, e a entrega depende da disponibilidade da equipe na data.`,
-        `A montagem da decoração no local é feita pela equipe da Festaê e só está disponível junto com a entrega, pelo total de ${formatBRL(DELIVERY_WITH_ASSEMBLY_FEE)} — ${formatBRL(DELIVERY_FEE)} da entrega mais ${formatBRL(ASSEMBLY_FEE)} da montagem. Não há montagem para pedidos retirados na sede, porque quem monta é a equipe que leva os itens até o local.`,
+        `A montagem da decoração no local da festa é feita pela equipe da Festaê e custa ${formatBRL(ASSEMBLY_FEE)}. Ela pode ser contratada tanto com a retirada quanto com a entrega — escolhendo entrega e montagem juntas, o total das duas taxas é ${formatBRL(DELIVERY_WITH_ASSEMBLY_FEE)}. Assim como a entrega, a montagem está disponível apenas em ${DELIVERY_CITY}.`,
         "A opção escolhida aparece no resumo do pedido, com o valor de cada parcela, e entra no total antes do cálculo do sinal.",
         "Os itens são cedidos em locação, não vendidos. Devem ser devolvidos nas condições em que foram recebidos, ressalvado o desgaste natural de uso.",
         "A devolução fora do prazo combinado pode gerar cobrança adicional pelo período extra, informada previamente.",

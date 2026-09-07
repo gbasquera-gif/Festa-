@@ -1,7 +1,12 @@
 import { Body, Controller, Get, Header, Param, Patch, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { marcarTarefaSchema, type MarcarTarefaInput } from "@festae/shared";
+import {
+  corrigirDadosSchema,
+  marcarTarefaSchema,
+  type CorrigirDadosInput,
+  type MarcarTarefaInput,
+} from "@festae/shared";
 import { OperationsService } from "./operations.service";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -37,6 +42,18 @@ export class OperationsController {
     @Body(new ZodValidationPipe(marcarTarefaSchema)) body: MarcarTarefaInput,
   ) {
     return this.operations.marcarTarefa(id, body.key, body.done, user.userId);
+  }
+
+  /**
+   * Correção de erro de digitação. Só contato, endereço e observações —
+   * data, itens e valores continuam exigindo cancelar e registrar de novo.
+   */
+  @Patch("reservas/:id/dados")
+  corrigirDados(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(corrigirDadosSchema)) body: CorrigirDadosInput,
+  ) {
+    return this.operations.corrigirDados(id, body);
   }
 
   @Get("reservas/:id/google-agenda")

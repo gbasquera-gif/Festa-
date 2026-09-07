@@ -27,18 +27,17 @@ export const DELIVERY_FEE = 20;
 /**
  * Taxa fixa de montagem no local.
  *
- * Só se aplica junto da entrega: quem monta a decoração é a equipe que foi
- * até lá, então não existe montar sem levar. Antes as duas escolhas eram
- * independentes e dava para pedir montagem com retirada — uma combinação que
- * a operação não tem como cumprir.
+ * Independente da logística: a equipe vai montar no local da festa tanto
+ * faz quem levou os itens até lá. As quatro combinações são vendáveis —
+ * retirada com e sem montagem, entrega com e sem montagem.
+ *
+ * Houve uma versão em que montagem exigia entrega. A regra foi revista pela
+ * operação: quem retira o material ainda pode contratar a equipe para montar.
  */
 export const ASSEMBLY_FEE = 50;
 
-/** O que a cliente paga escolhendo entrega com montagem. */
+/** O que a cliente paga escolhendo entrega e montagem juntas. */
 export const DELIVERY_WITH_ASSEMBLY_FEE = DELIVERY_FEE + ASSEMBLY_FEE;
-
-export const ASSEMBLY_REQUIRES_DELIVERY_MESSAGE =
-  "A montagem só está disponível junto com a entrega — é a nossa equipe que leva e monta no local.";
 
 /** Única cidade atendida com entrega no lançamento. */
 export const DELIVERY_CITY = "Chapecó";
@@ -147,10 +146,14 @@ export function calculateOrderPricing(input: PricingInput): PricingResult {
 
   const entregando = input.fulfillment === "DELIVERY" && isDeliveryCity(input.city);
   const deliveryCents = entregando ? toCentsInt(DELIVERY_FEE) : 0;
-  // Montagem só é cobrada quando há entrega de verdade. Sem esta amarração,
-  // um pedido de retirada com montagem marcada cobraria R$ 50 por um serviço
-  // que a operação não presta.
-  const assemblyCents = entregando && input.assembly ? toCentsInt(ASSEMBLY_FEE) : 0;
+  // Montagem não depende de retirada ou entrega: a equipe monta no local da
+  // festa mesmo quando foi a cliente quem buscou os itens.
+  //
+  // Depende, sim, da cidade. Quem não recebe entrega também não recebe
+  // montagem — a equipe teria que viajar até lá do mesmo jeito. Cobrar a
+  // montagem fora da área atendida venderia um serviço que ninguém presta.
+  const noAtendimento = isDeliveryCity(input.city);
+  const assemblyCents = input.assembly && noAtendimento ? toCentsInt(ASSEMBLY_FEE) : 0;
 
   const totalCents = productsCents + deliveryCents + assemblyCents;
 
@@ -178,13 +181,12 @@ export function calculateOrderPricing(input: PricingInput): PricingResult {
 export function checkFulfillment(
   fulfillment: Fulfillment,
   city: string | null | undefined,
-  assembly = false,
+  // Continua no parâmetro por compatibilidade com quem chama, mas não
+  // restringe nada: montagem é vendável com retirada e com entrega.
+  _assembly = false,
 ): { allowed: true } | { allowed: false; reason: string } {
   if (fulfillment === "DELIVERY" && !isDeliveryCity(city)) {
     return { allowed: false, reason: DELIVERY_UNAVAILABLE_MESSAGE };
-  }
-  if (assembly && fulfillment !== "DELIVERY") {
-    return { allowed: false, reason: ASSEMBLY_REQUIRES_DELIVERY_MESSAGE };
   }
   return { allowed: true };
 }

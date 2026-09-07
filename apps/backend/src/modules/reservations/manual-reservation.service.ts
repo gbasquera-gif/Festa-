@@ -50,12 +50,6 @@ export class ManualReservationService {
     const dataDaFesta = new Date(input.evento.data);
     dataDaFesta.setUTCHours(12, 0, 0, 0);
 
-    if (input.logistica.assembly && input.logistica.fulfillment === "PICKUP") {
-      throw new BadRequestException(
-        "Montagem só existe com entrega — é a equipe que leva e monta no local.",
-      );
-    }
-
     // 1. A agenda ainda comporta esta festa?
     if (!(await this.availability.isDateAvailable(dataDaFesta))) {
       const limite = getMaxReservationsPerDay();

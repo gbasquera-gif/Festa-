@@ -1,10 +1,10 @@
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
+  ASSEMBLY_FEE,
   DELIVERY_CITY,
   DELIVERY_FEE,
   DELIVERY_UNAVAILABLE_MESSAGE,
-  DELIVERY_WITH_ASSEMBLY_FEE,
   isDeliveryCity,
   type Fulfillment,
 } from "@festae/shared";
@@ -60,9 +60,6 @@ function Option({
   );
 }
 
-/** As três saídas possíveis, do jeito que a cliente enxerga. */
-type Escolhida = "RETIRADA" | "ENTREGA" | "ENTREGA_MONTAGEM";
-
 export interface EscolhaLogistica {
   fulfillment: Fulfillment;
   assembly: boolean;
@@ -88,22 +85,18 @@ export function OpcoesLogistica({
   onChange: (escolha: EscolhaLogistica) => void;
 }) {
   const canDeliver = isDeliveryCity(city);
+  const entregando = value.fulfillment === "DELIVERY";
 
-  // Uma escolha só, com três saídas. Antes eram duas perguntas separadas
-  // (entrega e montagem) e dava para pedir montagem com retirada — combinação
-  // que a operação não cumpre, porque quem monta é a equipe que leva.
-  const escolhida: Escolhida = value.fulfillment !== "DELIVERY" ? "RETIRADA" : value.assembly ? "ENTREGA_MONTAGEM" : "ENTREGA";
+  // Duas perguntas independentes: como o material chega e se a equipe monta.
+  // Houve uma versão com três opções fixas em que montagem exigia entrega; a
+  // operação revisou a regra — a equipe monta no local mesmo quando foi a
+  // cliente quem buscou os itens.
+  function escolherLogistica(fulfillment: Fulfillment) {
+    onChange({ ...value, fulfillment });
+  }
 
-  function escolher(opcao: Escolhida) {
-    if (opcao === "RETIRADA") {
-      onChange({ ...value, fulfillment: "PICKUP", assembly: false });
-      return;
-    }
-    onChange({
-      ...value,
-      fulfillment: "DELIVERY",
-      assembly: opcao === "ENTREGA_MONTAGEM",
-    });
+  function alternarMontagem() {
+    onChange({ ...value, assembly: !value.assembly });
   }
 
   return (
@@ -114,8 +107,8 @@ export function OpcoesLogistica({
           title="Retirar na Festaê"
           description="Você busca na nossa sede, no horário combinado."
           price="Grátis"
-          selected={escolhida === "RETIRADA"}
-          onPress={() => escolher("RETIRADA")}
+          selected={!entregando}
+          onPress={() => escolherLogistica("PICKUP")}
         />
 
         <Option
@@ -123,27 +116,30 @@ export function OpcoesLogistica({
           title={`Entrega em ${DELIVERY_CITY}`}
           description={
             canDeliver
-              ? "A gente leva tudo até o endereço da festa. A montagem fica por sua conta."
+              ? "A gente leva tudo até o endereço da festa."
               : `Disponível somente em ${DELIVERY_CITY}.`
           }
           price={`+ ${formatBRL(DELIVERY_FEE)}`}
-          selected={escolhida === "ENTREGA"}
+          selected={entregando}
           disabled={!canDeliver}
-          onPress={() => escolher("ENTREGA")}
+          onPress={() => escolherLogistica("DELIVERY")}
         />
 
+        {/* Escolha separada, e não uma quarta opção de logística: montagem
+            combina com retirada e com entrega, então virar linha própria é o
+            que deixa as quatro combinações possíveis sem multiplicar cartões. */}
         <Option
           icon="construct-outline"
-          title="Entrega + montagem"
+          title="Com montagem"
           description={
             canDeliver
-              ? "A gente leva e monta a decoração no local da festa."
+              ? "A nossa equipe monta a decoração no local da festa."
               : `Disponível somente em ${DELIVERY_CITY}.`
           }
-          price={`+ ${formatBRL(DELIVERY_WITH_ASSEMBLY_FEE)}`}
-          selected={escolhida === "ENTREGA_MONTAGEM"}
+          price={`+ ${formatBRL(ASSEMBLY_FEE)}`}
+          selected={value.assembly}
           disabled={!canDeliver}
-          onPress={() => escolher("ENTREGA_MONTAGEM")}
+          onPress={alternarMontagem}
         />
 
         {!canDeliver && (
