@@ -12,103 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { api, baixarArquivo } from "@/lib/api";
-
-/**
- * Correção de erro de digitação numa reserva já registrada.
- *
- * Só o que não mexe em agenda, estoque ou dinheiro. Telefone errado é a
- * festa que ninguém confirma no dia; endereço errado é a entrega no lugar
- * errado — os dois erros mais caros e os mais fáceis de cometer digitando
- * com o cliente na linha.
- *
- * Mudar data, itens ou valores continua sendo cancelar e registrar de novo:
- * são as alterações que exigem reconferir a agenda e que reescreveriam um
- * pagamento já recebido.
- */
-function CorrigirDados({
-  festa,
-  aberto,
-  onFechar,
-}: {
-  festa: Festa;
-  aberto: boolean;
-  onFechar: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [nome, setNome] = useState(festa.cliente);
-  const [telefone, setTelefone] = useState(festa.telefone ?? "");
-  const [endereco, setEndereco] = useState(festa.endereco ?? "");
-
-  const salvar = useMutation({
-    mutationFn: () =>
-      api(`/operacao/reservas/${festa.reservaId}/dados`, {
-        method: "PATCH",
-        body: JSON.stringify({ nome, telefone, endereco }),
-      }),
-    onSuccess: () => {
-      toast.success("Dados corrigidos.");
-      queryClient.invalidateQueries({ queryKey: ["proximas-acoes"] });
-      onFechar();
-    },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível salvar."),
-  });
-
-  return (
-    <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Corrigir dados</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="flex flex-col gap-1.5">
-            <Label>Nome</Label>
-            <Input value={nome} onChange={(e) => setNome(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Telefone</Label>
-            <Input value={telefone} onChange={(e) => setTelefone(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Endereço</Label>
-            <Textarea
-              rows={2}
-              value={endereco}
-              onChange={(e) => setEndereco(e.target.value)}
-              placeholder="Deixe vazio se for retirada"
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Data, itens e valores não se corrigem por aqui — para mudar o que foi vendido, cancele a
-            reserva e registre de novo, para a agenda continuar honesta.
-          </p>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button variant="ghost" className="w-full sm:w-auto" onClick={onFechar}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={() => salvar.mutate()}
-            disabled={salvar.isPending}
-            className="w-full sm:w-auto"
-          >
-            {salvar.isPending ? "Salvando..." : "Salvar"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+import { CorrigirDadosReserva } from "@/components/CorrigirDadosReserva";
 
 interface Festa {
   reservaId: string;
@@ -333,7 +238,14 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
       </CardContent>
 
       {corrigindo && (
-        <CorrigirDados festa={festa} aberto onFechar={() => setCorrigindo(false)} />
+        <CorrigirDadosReserva
+          reservaId={festa.reservaId}
+          cliente={festa.cliente}
+          telefone={festa.telefone}
+          endereco={festa.endereco}
+          aberto
+          onFechar={() => setCorrigindo(false)}
+        />
       )}
     </Card>
   );

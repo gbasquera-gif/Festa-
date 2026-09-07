@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { AcoesDaReserva } from "@/components/AcoesDaReserva";
 
 interface ProductRef {
   id: string;
@@ -163,7 +164,7 @@ function Detail({ row }: { row: ReservationRow }) {
       : "a retirada é na Festaê, vamos combinar o horário?");
 
   return (
-    <div className="grid gap-6 bg-muted/30 p-5 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-6 bg-muted/30 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-4">
       <section className="min-w-0 space-y-3">
         <h3 className="text-sm font-bold text-navy">Cliente</h3>
         <dl className="space-y-2 text-sm">
@@ -301,6 +302,16 @@ function Detail({ row }: { row: ReservationRow }) {
           </div>
         </dl>
       </section>
+
+      <AcoesDaReserva
+        reservaId={row.id}
+        cliente={event.user.name}
+        telefone={event.user.phone}
+        endereco={event.address}
+        data={eventDate}
+        total={Number(row.order.total)}
+        jaCancelada={row.status === "CANCELLED"}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
   createReservationSchema,
@@ -62,6 +62,30 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(manualReservationSchema)) body: ManualReservationInput,
   ) {
     return this.manualReservations.criar(body, user.userId);
+  }
+
+  /**
+   * Cancela a reserva mantendo o histórico. Libera data e material.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Patch("reservations/:id/cancelar")
+  cancelar(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.reservationsService.cancelar(id, user.userId);
+  }
+
+  /**
+   * Apaga a reserva de vez, com a festa e o pedido inteiros.
+   *
+   * Só ADMIN: é a única ação do painel que não tem volta, e existe para
+   * limpar lançamento de teste — não para desfazer venda, que é o que
+   * cancelar faz guardando o histórico.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @Delete("reservations/:id")
+  excluir(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.reservationsService.excluirDefinitivamente(id, user.userId);
   }
 
   @UseGuards(RolesGuard)

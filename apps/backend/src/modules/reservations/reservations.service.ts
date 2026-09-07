@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { prisma } from "@festae/database";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
@@ -6,6 +12,8 @@ import { mensagemDeConflito } from "../availability/item-commitment";
 
 @Injectable()
 export class ReservationsService {
+  private readonly logger = new Logger(ReservationsService.name);
+
   constructor(private readonly availability: AvailabilityService) {}
 
   async requestReservation(eventId: string, input: CreateReservationInput) {
@@ -81,6 +89,117 @@ export class ReservationsService {
       },
       orderBy: { eventDate: "asc" },
     });
+  }
+
+  /**
+   * Cancela uma reserva, guardando o histórico.
+   *
+   * Cancelar não apaga nada: a reserva continua no banco com status
+   * CANCELLED, e com ela o pedido, os itens e os pagamentos já registrados.
+   * O que muda é o efeito no presente — a data volta a caber uma festa e o
+   * material volta ao acervo, porque as duas contagens ignoram reserva
+   * cancelada.
+   *
+   * Registra quem cancelou. A operação inteira sente o efeito de uma data
+   * que abre; sem autoria, "por que essa data liberou?" é uma pergunta sem
+   * resposta, e alguém remarca por cima de uma decisão que não sabe que
+   * existiu.
+   */
+  async cancelar(id: string, usuarioId: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      select: { id: true, orderId: true, status: true },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    if (reserva.status === "CANCELLED") {
+      throw new BadRequestException("Esta reserva já está cancelada.");
+    }
+
+    const [atualizada] = await prisma.$transaction([
+      prisma.reservation.update({
+        where: { id },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: usuarioId },
+      }),
+      prisma.order.update({ where: { id: reserva.orderId }, data: { status: "CANCELLED" } }),
+    ]);
+
+    this.logger.log(`Reserva ${id} cancelada por ${usuarioId}.`);
+    return atualizada;
+  }
+
+  /**
+   * Apaga de vez uma reserva de teste ou lançada por engano.
+   *
+   * Exclusão física, e não arquivamento, por uma razão concreta: um registro
+   * "arquivado" precisaria ser filtrado na agenda, na conferência de estoque,
+   * na lista de reservas, na tela de operação e no funil. Um filtro esquecido
+   * em qualquer um desses lugares vira uma reserva invisível que continua
+   * segurando uma data — exatamente a classe de defeito que este projeto já
+   * passou meses corrigindo. Apagar resolve os cinco lugares de uma vez.
+   *
+   * É seguro porque o banco cascateia: apagar a festa leva junto pedido,
+   * itens, pagamentos, reserva e tarefas, sem deixar órfão. Nenhuma outra
+   * festa, cliente ou pagamento é tocado — cada festa tem o seu próprio
+   * pedido, e não há registro compartilhado entre elas.
+   *
+   * A ficha do cliente só cai junto quando ela existe apenas por causa desta
+   * reserva: sem senha (nunca foi uma conta de verdade) e sem outra festa. É
+   * o que impede o painel de acumular clientes de teste órfãos.
+   */
+  async excluirDefinitivamente(id: string, usuarioId: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        order: {
+          select: {
+            id: true,
+            total: true,
+            payments: { select: { id: true, status: true, amount: true } },
+            event: {
+              select: {
+                id: true,
+                userId: true,
+                user: { select: { id: true, name: true, passwordHash: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+
+    const evento = reserva.order.event;
+    const pagos = reserva.order.payments.filter((p) => p.status === "PAID");
+
+    const outrasFestas = await prisma.event.count({
+      where: { userId: evento.userId, id: { not: evento.id } },
+    });
+
+    // Ficha criada só para esta reserva: some junto. Conta de verdade (tem
+    // senha) ou cliente com outra festa ficam onde estão.
+    const clienteFicaOrfao = outrasFestas === 0 && !evento.user.passwordHash;
+
+    await prisma.$transaction(async (tx) => {
+      // Apagar a festa cascateia para pedido, itens, pagamentos, reserva e
+      // tarefas. Uma chamada só, sem chance de deixar metade para trás.
+      await tx.event.delete({ where: { id: evento.id } });
+      if (clienteFicaOrfao) {
+        await tx.user.delete({ where: { id: evento.userId } });
+      }
+    });
+
+    this.logger.warn(
+      `Reserva ${id} EXCLUÍDA por ${usuarioId} — festa ${evento.id}, ` +
+        `${pagos.length} pagamento(s) marcado(s) como pago apagado(s)` +
+        `${clienteFicaOrfao ? `, ficha do cliente "${evento.user.name}" removida` : ""}.`,
+    );
+
+    return {
+      excluida: true,
+      pagamentosApagados: pagos.length,
+      valorApagado: pagos.reduce((soma, p) => soma + Number(p.amount), 0),
+      clienteRemovido: clienteFicaOrfao ? evento.user.name : null,
+    };
   }
 
   async updateStatus(id: string, input: UpdateReservationStatusInput) {

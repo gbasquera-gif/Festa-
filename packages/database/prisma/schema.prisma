@@ -152,8 +152,9 @@ model User {
   // não expulsaria o invasor — ele seguiria dentro até o token expirar.
   passwordChangedAt DateTime?
 
-  events        Event[]
-  tarefasFeitas ReservationTask[]
+  events             Event[]
+  tarefasFeitas      ReservationTask[]
+  reservasCanceladas Reservation[]     @relation("ReservasCanceladas")
 
   @@map("users")
 }
@@ -334,12 +335,24 @@ model Reservation {
   status      ReservationStatus @default(PENDING)
   requestedAt DateTime          @default(now())
   confirmedAt DateTime?
-  notes       String?
 
-  order Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  tasks ReservationTask[]
+  /// Quem cancelou e quando.
+  ///
+  /// Cancelar libera data e material, e é a operação inteira que sente o
+  /// efeito. Sem registro de autoria, "por que essa data abriu?" vira uma
+  /// pergunta sem resposta — e alguém remarca por cima de uma decisão que
+  /// não sabe que existiu.
+  cancelledAt   DateTime?
+  cancelledById String?
+
+  notes String?
+
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  cancelledBy User?             @relation("ReservasCanceladas", fields: [cancelledById], references: [id], onDelete: SetNull)
+  tasks       ReservationTask[]
 
   @@index([eventDate])
+  @@index([cancelledById])
   @@map("reservations")
 }
 
