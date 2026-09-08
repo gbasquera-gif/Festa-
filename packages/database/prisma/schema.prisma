@@ -345,6 +345,15 @@ model Reservation {
   cancelledAt   DateTime?
   cancelledById String?
 
+  /// De quando esta festa foi remarcada, e quando a mudança aconteceu.
+  ///
+  /// Importa porque remarcar deixa rastro fora do sistema: o arquivo de
+  /// calendário que alguém já baixou continua com a data velha, e o checklist
+  /// pode ter sido feito pensando no outro dia. A tela avisa que houve
+  /// mudança, em vez de deixar a operação descobrir no dia errado.
+  rescheduledAt   DateTime?
+  rescheduledFrom DateTime?
+
   notes String?
 
   order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Ban, Pencil, Trash2 } from "lucide-react";
+import { Ban, CalendarClock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,11 +12,20 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { CorrigirDadosReserva } from "@/components/CorrigirDadosReserva";
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Item que não cabe na data de destino, com a conta que a operação precisa ver. */
+interface ConflitoDeData {
+  produto: string;
+  estoqueTotal: number;
+  jaComprometido: number;
+  necessario: number;
+  disponivel: number;
+}
 
 /** O que a pessoa precisa digitar para a exclusão sair do lugar. */
 const PALAVRA_DE_CONFIRMACAO = "EXCLUIR";
@@ -54,6 +63,11 @@ export function AcoesDaReserva({
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
   const [confirmandoExcluir, setConfirmandoExcluir] = useState(false);
   const [digitado, setDigitado] = useState("");
+  const [remarcando, setRemarcando] = useState(false);
+  const [novaData, setNovaData] = useState("");
+  const [conflitos, setConflitos] = useState<ConflitoDeData[] | null>(null);
+  /** Recusa que não é falta de material — agenda cheia, data igual à atual. */
+  const [motivoRecusa, setMotivoRecusa] = useState<string | null>(null);
 
   function recarregar() {
     queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -61,6 +75,34 @@ export function AcoesDaReserva({
     queryClient.invalidateQueries({ queryKey: ["analytics-summary"] });
     queryClient.invalidateQueries({ queryKey: ["conflitos"] });
   }
+
+  const remarcar = useMutation({
+    mutationFn: () =>
+      api(`/reservations/${reservaId}/data`, {
+        method: "PATCH",
+        body: JSON.stringify({ data: novaData }),
+      }),
+    onSuccess: () => {
+      toast.success("Data alterada. A data antiga voltou a ficar livre na loja.");
+      setRemarcando(false);
+      setConflitos(null);
+      setMotivoRecusa(null);
+      setNovaData("");
+      recarregar();
+    },
+    // A recusa fica dentro do diálogo, não num aviso que some sozinho: quem
+    // está com a cliente na linha precisa reler o motivo enquanto escolhe
+    // outro dia, e um aviso passageiro obriga a tentar de novo para lembrar.
+    onError: (e) => {
+      setConflitos(null);
+      setMotivoRecusa(null);
+      if (e instanceof ApiError && Array.isArray(e.detalhes?.conflitos)) {
+        setConflitos(e.detalhes.conflitos as ConflitoDeData[]);
+        return;
+      }
+      setMotivoRecusa(e instanceof Error ? e.message : "Não foi possível alterar a data.");
+    },
+  });
 
   const cancelar = useMutation({
     mutationFn: () => api(`/reservations/${reservaId}/cancelar`, { method: "PATCH" }),
@@ -98,6 +140,23 @@ export function AcoesDaReserva({
         <Button variant="outline" className="justify-start" onClick={() => setCorrigindo(true)}>
           <Pencil className="mr-2 size-4" />
           Editar dados
+        </Button>
+
+        {/* Remarcar é o pedido mais comum depois que a festa já está fechada:
+            a cliente muda o dia e, sem esta ação, a saída seria cancelar e
+            lançar de novo — perdendo pagamento, histórico e checklist. */}
+        <Button
+          variant="outline"
+          className="justify-start"
+          disabled={jaCancelada}
+          onClick={() => {
+            setConflitos(null);
+            setMotivoRecusa(null);
+            setRemarcando(true);
+          }}
+        >
+          <CalendarClock className="mr-2 size-4" />
+          Alterar data da festa
         </Button>
 
         <Button
@@ -142,6 +201,92 @@ export function AcoesDaReserva({
           onFechar={() => setCorrigindo(false)}
         />
       )}
+
+      {/* Remarcar: a data de destino passa pelas mesmas conferências de uma
+          reserva nova. Quando não cabe, a tela mostra a conta em vez de um
+          "erro" seco — quem está com a cliente na linha precisa saber se o
+          problema é agenda cheia ou material, para propor outro dia. */}
+      <Dialog
+        open={remarcando}
+        onOpenChange={(v) => {
+          if (!v) {
+            setRemarcando(false);
+            setConflitos(null);
+            setMotivoRecusa(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar a data da festa</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Hoje marcada para <strong className="text-navy">{data}</strong>. O pagamento, o
+              histórico e o checklist ficam como estão — só a data muda.
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Nova data</Label>
+              <Input
+                type="date"
+                value={novaData}
+                onChange={(e) => {
+                  setNovaData(e.target.value);
+                  setConflitos(null);
+                  setMotivoRecusa(null);
+                }}
+              />
+            </div>
+
+            {motivoRecusa && (
+              <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                {motivoRecusa}
+              </div>
+            )}
+
+            {conflitos && (
+              <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm">
+                <p className="font-semibold text-red-900">Falta material nessa data</p>
+                {conflitos.map((c) => (
+                  <p key={c.produto} className="mt-1 text-red-800">
+                    <strong>{c.produto}</strong>: acervo {c.estoqueTotal} · já comprometido{" "}
+                    {c.jaComprometido} · disponível {c.disponivel} · esta festa precisa de{" "}
+                    {c.necessario}
+                  </p>
+                ))}
+                <p className="mt-2 text-red-800">Escolha outro dia ou remarque a outra festa.</p>
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              A data antiga volta a ficar livre na loja assim que você salvar. Se a cliente já
+              adicionou a festa ao calendário do celular, o arquivo antigo continua com a data
+              velha — vale reenviar.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                setRemarcando(false);
+                setConflitos(null);
+                setMotivoRecusa(null);
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              className="w-full sm:w-auto"
+              disabled={!novaData || remarcar.isPending}
+              onClick={() => remarcar.mutate()}
+            >
+              {remarcar.isPending ? "Alterando..." : "Alterar data"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Cancelar: confirmação simples, porque a ação é reversível na prática
           — a reserva continua no banco e o histórico permanece. */}

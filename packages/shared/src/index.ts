@@ -158,10 +158,12 @@ export {
   manualReservationSchema,
   marcarTarefaSchema,
   corrigirDadosSchema,
+  alterarDataSchema,
   totalDaVendaManual,
 } from "./schemas/manual-reservation";
 export type {
   ManualReservationInput,
   MarcarTarefaInput,
   CorrigirDadosInput,
+  AlterarDataInput,
 } from "./schemas/manual-reservation";

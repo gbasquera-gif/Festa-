@@ -179,8 +179,13 @@ export class AvailabilityService {
    * entre abrir o app e confirmar, outra pessoa pode ter fechado a última
    * vaga do dia. Sem esta checagem, a Festaê receberia o sinal de uma data
    * que não tem como cumprir — e teria que devolver o dinheiro e o cliente.
+   *
+   * `ignorarReservaId` existe para remarcar: uma reserva não pode disputar
+   * vaga consigo mesma. Sem isso, mudar uma festa do dia 25 para o dia 25
+   * (ou remarcar num dia que já está no limite por causa dela própria) seria
+   * recusado por um conflito que não existe.
    */
-  async isDateAvailable(date: Date): Promise<boolean> {
+  async isDateAvailable(date: Date, ignorarReservaId?: string): Promise<boolean> {
     await this.releaseUnpaidHolds();
 
     const start = new Date(date);
@@ -189,7 +194,11 @@ export class AvailabilityService {
     end.setUTCDate(end.getUTCDate() + 1);
 
     const reserved = await prisma.reservation.count({
-      where: { eventDate: { gte: start, lt: end }, status: { in: [...COUNTED_STATUSES] } },
+      where: {
+        eventDate: { gte: start, lt: end },
+        status: { in: [...COUNTED_STATUSES] },
+        ...(ignorarReservaId ? { id: { not: ignorarReservaId } } : {}),
+      },
     });
 
     return reserved < getMaxReservationsPerDay();

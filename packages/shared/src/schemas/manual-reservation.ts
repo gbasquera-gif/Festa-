@@ -125,3 +125,15 @@ export const corrigirDadosSchema = z.object({
   observacoes: z.string().max(2000).optional().or(z.literal("")),
 });
 export type CorrigirDadosInput = z.infer<typeof corrigirDadosSchema>;
+
+/**
+ * Nova data de uma festa já reservada.
+ *
+ * Só a data. Mudar itens ou valores junto seria outra operação, com outras
+ * conferências — e misturar as duas num formulário só é o caminho mais curto
+ * para alguém remarcar e alterar o pedido sem perceber que fez as duas coisas.
+ */
+export const alterarDataSchema = z.object({
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD."),
+});
+export type AlterarDataInput = z.infer<typeof alterarDataSchema>;

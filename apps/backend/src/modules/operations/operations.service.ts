@@ -30,6 +30,8 @@ export interface FestaNoRadar {
   tipo: string;
   status: string;
   origem: string;
+  /** Data original, quando a festa foi remarcada. Nulo quando nunca mudou. */
+  remarcadaDe: string | null;
   entrega: boolean;
   montagem: boolean;
   endereco: string | null;
@@ -51,6 +53,7 @@ const selecaoDaReserva = {
   // Quando a reserva passou a existir. Uma venda fechada na quinta para a
   // festa de sábado não pode ser cobrada pelas tarefas de trinta dias atrás.
   requestedAt: true,
+  rescheduledFrom: true,
   tasks: { select: { key: true, doneAt: true, doneBy: { select: { name: true } } } },
   order: {
     select: {
@@ -263,6 +266,7 @@ export class OperationsService {
       eventDate: Date;
       status: string;
       requestedAt: Date;
+      rescheduledFrom: Date | null;
       tasks: { key: string; doneAt: Date; doneBy: { name: string } | null }[];
       order: {
         total: unknown;
@@ -315,6 +319,9 @@ export class OperationsService {
       tipo: reserva.order.event.type,
       status: reserva.status,
       origem: reserva.order.event.saleChannel,
+      remarcadaDe: reserva.rescheduledFrom
+        ? reserva.rescheduledFrom.toISOString().slice(0, 10)
+        : null,
       entrega,
       montagem: reserva.order.assembly,
       endereco: reserva.order.event.address,

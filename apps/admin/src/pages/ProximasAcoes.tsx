@@ -25,6 +25,7 @@ interface Festa {
   tipo: string;
   status: string;
   origem: string;
+  remarcadaDe: string | null;
   entrega: boolean;
   montagem: boolean;
   endereco: string | null;
@@ -134,6 +135,14 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
             <p className="mt-0.5 text-sm text-muted-foreground">
               {dataCurta(festa.data)} · {quandoTexto(festa.dias)} · {festa.etapa.titulo}
             </p>
+            {/* Festa remarcada deixa rastro fora do sistema: o arquivo de
+                calendário que a cliente baixou continua com a data velha, e o
+                checklist pode ter sido feito pensando no outro dia. */}
+            {festa.remarcadaDe && (
+              <p className="mt-0.5 text-xs font-medium text-amber-700">
+                Remarcada — antes era {dataCurta(festa.remarcadaDe)}
+              </p>
+            )}
             <p className="mt-1 text-xs text-muted-foreground">
               {festa.tema ?? "sem tema"} ·{" "}
               {festa.entrega ? "Entrega" : "Retirada"}

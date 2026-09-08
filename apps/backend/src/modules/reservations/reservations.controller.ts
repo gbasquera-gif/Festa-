@@ -1,11 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
+  alterarDataSchema,
   createReservationSchema,
   manualReservationSchema,
   updateReservationStatusSchema,
 } from "@festae/shared";
 import type {
+  AlterarDataInput,
   CreateReservationInput,
   ManualReservationInput,
   UpdateReservationStatusInput,
@@ -62,6 +64,24 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(manualReservationSchema)) body: ManualReservationInput,
   ) {
     return this.manualReservations.criar(body, user.userId);
+  }
+
+  /**
+   * Remarca a festa para outro dia.
+   *
+   * Passa pelas mesmas conferências de uma reserva nova na data de destino:
+   * capacidade do dia e material item a item. OPS também remarca — é
+   * atendimento do dia a dia, não decisão de dono.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Patch("reservations/:id/data")
+  alterarData(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(alterarDataSchema)) body: AlterarDataInput,
+  ) {
+    return this.reservationsService.alterarData(id, body.data, user.userId);
   }
 
   /**

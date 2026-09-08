@@ -8,6 +8,7 @@ import {
 import { prisma } from "@festae/database";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
+import { getMaxReservationsPerDay } from "../../common/operations-config";
 import { mensagemDeConflito } from "../availability/item-commitment";
 
 @Injectable()
@@ -200,6 +201,117 @@ export class ReservationsService {
       valorApagado: pagos.reduce((soma, p) => soma + Number(p.amount), 0),
       clienteRemovido: clienteFicaOrfao ? evento.user.name : null,
     };
+  }
+
+  /**
+   * Muda a data de uma festa já reservada.
+   *
+   * A cliente que reservou para o dia 25 e pediu o 27 não tinha caminho no
+   * painel: a operação teria que cancelar e lançar de novo, perdendo o
+   * histórico, o pagamento e o checklist.
+   *
+   * A data nova passa pelas mesmas duas conferências de uma reserva nova —
+   * cabe mais uma festa nesse dia? o material está livre? — porque remarcar
+   * é ocupar uma data, e ocupar sem conferir é como se vendem duas festas
+   * para o mesmo sábado.
+   *
+   * A própria reserva é ignorada nas duas contagens: ela não pode disputar
+   * vaga nem material consigo mesma.
+   *
+   * Grava a data nos DOIS lugares onde ela vive. `Reservation.eventDate`
+   * manda na agenda e no painel; `Event.date` é o que a cliente vê no app.
+   * Mover só um deixaria a loja e a operação discordando sobre quando é a
+   * festa — o pior desacordo possível.
+   */
+  async alterarData(id: string, novaDataISO: string, usuarioId: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        order: {
+          include: {
+            kit: {
+              select: {
+                products: {
+                  where: { product: { active: true } },
+                  select: { productId: true, quantity: true },
+                },
+              },
+            },
+            items: { select: { productId: true, quantity: true } },
+            event: { select: { id: true, date: true } },
+          },
+        },
+      },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    if (reserva.status === "CANCELLED" || reserva.status === "REJECTED") {
+      throw new BadRequestException(
+        "Esta reserva está cancelada. Registre uma nova reserva para a data desejada.",
+      );
+    }
+
+    const novaData = new Date(`${novaDataISO}T12:00:00.000Z`);
+    if (Number.isNaN(novaData.getTime())) {
+      throw new BadRequestException("Data inválida.");
+    }
+
+    const mesmoDia =
+      reserva.eventDate.toISOString().slice(0, 10) === novaData.toISOString().slice(0, 10);
+    if (mesmoDia) {
+      throw new BadRequestException("A festa já está marcada para esta data.");
+    }
+
+    if (!(await this.availability.isDateAvailable(novaData, id))) {
+      const limite = getMaxReservationsPerDay();
+      throw new ConflictException(
+        `O dia ${novaDataISO.split("-").reverse().join("/")} já tem ${limite} festa(s) — ` +
+          "o limite operacional do dia. Escolha outra data.",
+      );
+    }
+
+    const conflitos = await this.availability.conflitosDeItens(
+      novaData,
+      {
+        itensDoKit: reserva.order.kit?.products ?? [],
+        itensAvulsos: reserva.order.items,
+      },
+      reserva.order.id,
+    );
+    if (conflitos.length > 0) {
+      throw new ConflictException({
+        message: "Falta material na data nova.",
+        conflitos: conflitos.map((c) => ({
+          produto: c.nome,
+          estoqueTotal: c.estoque,
+          jaComprometido: c.jaComprometido,
+          necessario: c.pedido,
+          disponivel: Math.max(0, c.estoque - c.jaComprometido),
+        })),
+      });
+    }
+
+    const dataAnterior = reserva.eventDate;
+
+    const [atualizada] = await prisma.$transaction([
+      prisma.reservation.update({
+        where: { id },
+        data: {
+          eventDate: novaData,
+          rescheduledAt: new Date(),
+          // Guarda a primeira data, não a penúltima: se a festa for remarcada
+          // duas vezes, o que interessa é de onde ela saiu originalmente.
+          rescheduledFrom: reserva.rescheduledFrom ?? dataAnterior,
+        },
+      }),
+      prisma.event.update({ where: { id: reserva.order.event.id }, data: { date: novaData } }),
+    ]);
+
+    this.logger.log(
+      `Reserva ${id} remarcada por ${usuarioId}: ` +
+        `${dataAnterior.toISOString().slice(0, 10)} -> ${novaData.toISOString().slice(0, 10)}.`,
+    );
+
+    return atualizada;
   }
 
   async updateStatus(id: string, input: UpdateReservationStatusInput) {
