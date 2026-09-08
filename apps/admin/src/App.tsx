@@ -15,6 +15,7 @@ import Funil from "@/pages/Funil";
 import Disponibilidade from "@/pages/Disponibilidade";
 import ProximasAcoes from "@/pages/ProximasAcoes";
 import NovaReservaManual from "@/pages/NovaReservaManual";
+import EditarReserva from "@/pages/EditarReserva";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -74,6 +75,11 @@ function Router() {
       <Route path="/reservas/nova">
         <Protected>
           <NovaReservaManual />
+        </Protected>
+      </Route>
+      <Route path="/reservas/:id/editar">
+        <Protected>
+          <EditarReserva />
         </Protected>
       </Route>
       <Route path="/reservas">

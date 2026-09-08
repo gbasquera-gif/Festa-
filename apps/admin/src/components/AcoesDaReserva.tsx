@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Ban, CalendarClock, Pencil, Trash2 } from "lucide-react";
+import { Ban, CalendarClock, Pencil, SquarePen, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,7 +32,7 @@ interface ConflitoDeData {
 const PALAVRA_DE_CONFIRMACAO = "EXCLUIR";
 
 /**
- * As três ações de uma reserva, na ordem do risco.
+ * As ações de uma reserva, na ordem do risco.
  *
  * Corrigir dados é reversível, cancelar guarda o histórico e excluir não tem
  * volta — e a tela precisa deixar essa diferença óbvia antes do toque, não
@@ -58,6 +59,7 @@ export function AcoesDaReserva({
   onDepoisDeExcluir?: () => void;
 }) {
   const { user } = useAuth();
+  const [, navegar] = useLocation();
   const queryClient = useQueryClient();
   const [corrigindo, setCorrigindo] = useState(false);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
@@ -137,9 +139,22 @@ export function AcoesDaReserva({
       <h3 className="text-sm font-bold text-navy">Ações</h3>
 
       <div className="flex flex-col gap-2">
+        {/* A edição completa vem primeiro porque é o que a operação procura
+            quando a cliente muda de ideia: data, kit, itens e valores numa
+            tela só. As ações abaixo são atalhos para os casos estreitos. */}
+        <Button
+          variant="outline"
+          className="justify-start"
+          disabled={jaCancelada}
+          onClick={() => navegar(`/reservas/${reservaId}/editar`)}
+        >
+          <SquarePen className="mr-2 size-4" />
+          Editar reserva completa
+        </Button>
+
         <Button variant="outline" className="justify-start" onClick={() => setCorrigindo(true)}>
           <Pencil className="mr-2 size-4" />
-          Editar dados
+          Corrigir contato e observações
         </Button>
 
         {/* Remarcar é o pedido mais comum depois que a festa já está fechada:

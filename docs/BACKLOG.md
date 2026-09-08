@@ -35,24 +35,23 @@ no login — precisa ser um passo antes de contratar.
 
 ---
 
-## Edição completa de reserva manual
+## ~~Edição completa de reserva manual~~ — feita em 08/09/2026
 
 **Registrado em:** 07/09/2026 · **Origem:** Sprint Operacional
+**Entregue em:** 08/09/2026 — `PATCH /reservations/:id` e a tela
+`/reservas/:id/editar`.
 
-A correção de dados cobre nome, telefone, endereço e observações. Data,
-itens e valores continuam exigindo cancelar e registrar de novo.
+Os dois obstáculos que a adiaram foram resolvidos assim:
 
-**Por que não foi feito agora:** dois obstáculos concretos.
+1. `isDateAvailable` e `conflitosDeItens` passaram a aceitar ignorar a
+   própria reserva. Sem isso nenhuma edição passaria: a festa disputaria
+   vaga e material consigo mesma.
+2. Pagamento não é campo do formulário. A edição muda os valores do pedido;
+   o saldo se recalcula a partir do que já foi recebido, e nenhuma linha de
+   `Payment` é criada, alterada ou apagada.
 
-1. `AvailabilityService.isDateAvailable` não aceita ignorar a própria
-   reserva. Editar sem mudar a data já falharia por capacidade, e mexer
-   nisso é alterar a trava que impede duas festas no mesmo dia.
-2. Alterar valores reescreveria um pagamento que pode já ter sido recebido,
-   sem deixar histórico do que foi mudado.
-
-**Quando deixa de poder esperar:** quando a operação relatar que cancelar e
-refazer está custando tempo demais, ou quando aparecer o primeiro caso de
-remarcação de data com sinal já pago.
+**O que continua fora:** registrar um pagamento novo pelo painel (o saldo
+recebido depois do sinal) — segue como item próprio abaixo.
 
 ---
 

@@ -181,8 +181,8 @@ export class OperationsService {
    *
    * Não toca em data, itens nem valores — por isso não precisa reconferir
    * agenda nem estoque. É a correção de erro de digitação, não uma edição
-   * de pedido: mudar o que foi vendido continua sendo cancelar e registrar
-   * de novo, que é o caminho que mantém a agenda honesta.
+   * de pedido: mudar o que foi vendido é `PATCH /reservations/:id`, que
+   * passa pelas conferências que este atalho pode dispensar.
    */
   async corrigirDados(
     reservaId: string,

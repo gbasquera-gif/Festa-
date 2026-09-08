@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { EVENT_TYPES, PAYMENT_METHODS, PAYMENT_STATUSES } from "../enums";
-import { MANUAL_SALE_CHANNELS } from "../sale-channels";
+import { MANUAL_SALE_CHANNELS, SALE_CHANNELS } from "../sale-channels";
 
 /**
  * Uma venda fechada fora da loja, digitada no painel.
@@ -97,6 +97,28 @@ export function totalDaVendaManual(f: {
   return Math.max(0, Math.round(bruto * 100) / 100);
 }
 
+/**
+ * O desconto que estava embutido num pedido já gravado.
+ *
+ * O banco não guarda desconto: guarda as parcelas (produtos, entrega,
+ * montagem) e o total combinado. Enquanto o pedido só era criado, isso
+ * bastava — o desconto era a diferença e ninguém precisava dela de volta.
+ *
+ * A edição precisa. Reabrir o formulário sem reconstituir o desconto faria a
+ * tela mostrar um total maior do que o que foi vendido, e a primeira gravação
+ * aumentaria o preço de uma festa que a cliente já pagou. É a inversa exata
+ * de `totalDaVendaManual`.
+ */
+export function descontoEmbutido(p: {
+  valorProdutos: number;
+  entrega?: number;
+  montagem?: number;
+  total: number;
+}): number {
+  const bruto = p.valorProdutos + (p.entrega ?? 0) + (p.montagem ?? 0);
+  return Math.max(0, Math.round((bruto - p.total) * 100) / 100);
+}
+
 export const marcarTarefaSchema = z.object({
   key: z.string().min(1).max(60),
   done: z.boolean(),
@@ -111,11 +133,10 @@ export type MarcarTarefaInput = z.infer<typeof marcarTarefaSchema>;
  * digitação acontece e onde ele dói — telefone errado é a festa que ninguém
  * confirma no dia; endereço errado é a entrega no lugar errado.
  *
- * Data, itens e valores ficam de fora de propósito. Mudar a data exigiria
- * reconferir capacidade ignorando a própria reserva (a trava de capacidade
- * ainda não sabe fazer isso) e mudar valores reescreveria o histórico de um
- * pagamento que pode já ter sido recebido. Para esses casos, o caminho
- * seguro continua sendo cancelar e registrar de novo.
+ * Data, itens e valores ficam de fora porque têm caminho próprio: mudar
+ * qualquer um deles reconfere agenda e estoque, e isso é `editarReservaSchema`.
+ * Aqui é o atalho para o que não move nada — e é atalho justamente por não
+ * precisar tirar quem está atendendo da lista de festas do dia.
  */
 export const corrigirDadosSchema = z.object({
   nome: z.string().min(2).max(160).optional(),
@@ -137,3 +158,31 @@ export const alterarDataSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD."),
 });
 export type AlterarDataInput = z.infer<typeof alterarDataSchema>;
+
+/**
+ * Edição completa de uma reserva já existente.
+ *
+ * Mesma forma da reserva manual, porque é a mesma festa sendo descrita — mas
+ * com duas diferenças que vêm de a reserva já existir:
+ *
+ * 1. `origem` é opcional. Uma reserva nascida na loja tem origem WEB, e
+ *    obrigar a operação a reescolher o canal para corrigir uma quantidade
+ *    seria pedir que ela invente um dado que já existe.
+ *
+ * 2. O bloco financeiro não fala em pagamento recebido. Sinal já pago é
+ *    registro de dinheiro que entrou, com referência no Mercado Pago; um
+ *    formulário de edição não pode reescrever isso. O que muda aqui são os
+ *    valores do pedido — e o saldo se ajusta sozinho.
+ */
+export const editarReservaSchema = manualReservationSchema
+  .extend({
+    origem: z.enum(SALE_CHANNELS as unknown as [string, ...string[]]).optional(),
+    financeiro: z.object({
+      valorProdutos: z.coerce.number().min(0),
+      entrega: z.coerce.number().min(0).default(0),
+      montagem: z.coerce.number().min(0).default(0),
+      desconto: z.coerce.number().min(0).default(0),
+    }),
+  });
+
+export type EditarReservaInput = z.infer<typeof editarReservaSchema>;

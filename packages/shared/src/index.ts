@@ -159,6 +159,8 @@ export {
   marcarTarefaSchema,
   corrigirDadosSchema,
   alterarDataSchema,
+  editarReservaSchema,
+  descontoEmbutido,
   totalDaVendaManual,
 } from "./schemas/manual-reservation";
 export type {
@@ -166,4 +168,5 @@ export type {
   MarcarTarefaInput,
   CorrigirDadosInput,
   AlterarDataInput,
+  EditarReservaInput,
 } from "./schemas/manual-reservation";

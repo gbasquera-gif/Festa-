@@ -1,6 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { totalDaVendaManual, type ManualReservationInput } from "@festae/shared";
+import {
+  totalDaVendaManual,
+  type EditarReservaInput,
+  type ManualReservationInput,
+} from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
 import { getMaxReservationsPerDay } from "../../common/operations-config";
 
@@ -170,6 +180,194 @@ export class ManualReservationService {
     return reserva;
   }
 
+
+  /**
+   * Reescreve uma reserva já existente.
+   *
+   * Antes disso, mudar o que foi vendido só tinha um caminho: cancelar e
+   * lançar de novo. Isso funcionava, mas cobrava caro — o histórico, o sinal
+   * já recebido e o checklist do dia iam junto, e a operação passava a ter
+   * duas reservas onde houve uma festa só.
+   *
+   * A edição passa pelas mesmas duas barreiras da reserva nova, agora
+   * ignorando a própria reserva nas duas contagens: ela não disputa vaga nem
+   * material consigo mesma. Isso é o que permite acrescentar um item sem que
+   * o sistema acuse conflito com as peças que essa mesma festa já segurava.
+   *
+   * Duas coisas o formulário não toca, de propósito:
+   *
+   * 1. **Pagamentos.** Sinal recebido é dinheiro que entrou, com referência
+   *    no Mercado Pago. Um formulário de edição que reescrevesse isso
+   *    transformaria erro de digitação em divergência de caixa. Os valores do
+   *    pedido mudam; o saldo se recalcula sozinho a partir do que já foi pago.
+   *
+   * 2. **A identidade do cliente.** Nome e telefone se corrigem, porque é
+   *    onde o erro de digitação acontece. O e-mail só entra quando a ficha
+   *    ainda não tem nenhum — trocar o e-mail de uma conta com senha seria
+   *    trocar o login da cliente por dentro de uma tela de reserva.
+   */
+  async editar(id: string, input: EditarReservaInput, editadoPorId: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        order: {
+          select: {
+            id: true,
+            eventId: true,
+            event: {
+              select: {
+                id: true,
+                userId: true,
+                user: { select: { id: true, passwordHash: true, email: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    if (reserva.status === "CANCELLED" || reserva.status === "REJECTED") {
+      throw new BadRequestException(
+        "Esta reserva está cancelada. Registre uma nova reserva em vez de editar esta.",
+      );
+    }
+
+    const dataDaFesta = new Date(input.evento.data);
+    if (Number.isNaN(dataDaFesta.getTime())) {
+      throw new BadRequestException("Data inválida.");
+    }
+    dataDaFesta.setUTCHours(12, 0, 0, 0);
+
+    const mudouDeDia =
+      reserva.eventDate.toISOString().slice(0, 10) !== dataDaFesta.toISOString().slice(0, 10);
+
+    // 1. A agenda comporta esta festa na data escolhida?
+    if (!(await this.availability.isDateAvailable(dataDaFesta, id))) {
+      const limite = getMaxReservationsPerDay();
+      throw new ConflictException(
+        `Esta data já tem ${limite} festa(s) — o limite operacional do dia. ` +
+          "Cancele ou remarque uma das reservas antes de mover esta.",
+      );
+    }
+
+    // 2. O material do pedido novo está livre nesta data?
+    const kit = input.produtos.kitId
+      ? await prisma.kit.findUnique({
+          where: { id: input.produtos.kitId },
+          select: {
+            id: true,
+            products: {
+              where: { product: { active: true } },
+              select: { productId: true, quantity: true },
+            },
+          },
+        })
+      : null;
+
+    if (input.produtos.kitId && !kit) {
+      throw new BadRequestException("O kit escolhido não existe mais.");
+    }
+
+    const conflitos = await this.availability.conflitosDeItens(
+      dataDaFesta,
+      { itensDoKit: kit?.products ?? [], itensAvulsos: input.produtos.itens },
+      reserva.order.id,
+    );
+    if (conflitos.length > 0) {
+      throw new ConflictException({
+        message: "Faltam itens para esta data.",
+        conflitos: await this.detalhar(conflitos, dataDaFesta, reserva.order.id),
+      });
+    }
+
+    const total = totalDaVendaManual(input.financeiro);
+    const precos = await this.precosDosItens(input.produtos.itens.map((i) => i.productId));
+    const cliente = reserva.order.event.user;
+    const emailNovo = input.cliente.email?.trim() || null;
+    const observacoes = input.evento.observacoes?.trim() || null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: cliente.id },
+        data: {
+          name: input.cliente.nome.trim(),
+          phone: input.cliente.telefone.trim(),
+          // E-mail só preenche vazio. Ver a nota 2 acima.
+          ...(emailNovo && !cliente.email && !cliente.passwordHash ? { email: emailNovo } : {}),
+        },
+      });
+
+      await tx.event.update({
+        where: { id: reserva.order.eventId },
+        data: {
+          type: input.evento.tipo,
+          date: dataDaFesta,
+          guestCount: input.evento.guestCount ?? null,
+          themeId: input.evento.themeId || null,
+          address: input.logistica.endereco?.trim() || null,
+          neighborhood: input.logistica.bairro?.trim() || null,
+          city: input.logistica.cidade?.trim() || "Chapecó",
+          ...(input.origem ? { saleChannel: input.origem as never } : {}),
+        },
+      });
+
+      // Os itens avulsos são substituídos, não conciliados: a lista que veio
+      // do formulário é a verdade sobre o que foi vendido, e tentar casar
+      // linha a linha só abriria caminho para sobrar item que a operação
+      // acha que tirou.
+      await tx.orderItem.deleteMany({ where: { orderId: reserva.order.id } });
+
+      await tx.order.update({
+        where: { id: reserva.order.id },
+        data: {
+          kitId: kit?.id ?? null,
+          subtotalKit: input.financeiro.valorProdutos,
+          subtotalExtras: 0,
+          fulfillment: input.logistica.fulfillment,
+          assembly: input.logistica.assembly,
+          deliveryFee: input.financeiro.entrega,
+          assemblyFee: input.financeiro.montagem,
+          total,
+          notes: observacoes,
+          items: {
+            create: input.produtos.itens.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPriceSnapshot: precos.get(item.productId) ?? 0,
+            })),
+          },
+        },
+      });
+
+      await tx.reservation.update({
+        where: { id },
+        data: {
+          eventDate: dataDaFesta,
+          notes: observacoes,
+          ...(mudouDeDia
+            ? {
+                rescheduledAt: new Date(),
+                // A primeira data, não a penúltima: remarcada duas vezes, o
+                // que interessa é de onde a festa saiu originalmente.
+                rescheduledFrom: reserva.rescheduledFrom ?? reserva.eventDate,
+              }
+            : {}),
+        },
+      });
+    });
+
+    this.logger.log(
+      `Reserva ${id} editada por ${editadoPorId}` +
+        (mudouDeDia
+          ? ` — data ${reserva.eventDate.toISOString().slice(0, 10)} -> ` +
+            `${dataDaFesta.toISOString().slice(0, 10)}`
+          : "") +
+        `, total R$ ${total.toFixed(2)}.`,
+    );
+
+    return { id, data: dataDaFesta.toISOString().slice(0, 10), total, remarcada: mudouDeDia };
+  }
+
   /**
    * Reaproveita o cadastro do cliente quando ele já existe.
    *
@@ -227,6 +425,7 @@ export class ManualReservationService {
   private async detalhar(
     conflitos: { productId: string; nome: string; estoque: number; jaComprometido: number; pedido: number }[],
     data: Date,
+    ignorarOrderId?: string,
   ): Promise<ConflitoDetalhado[]> {
     const inicio = new Date(data);
     inicio.setUTCHours(0, 0, 0, 0);
@@ -236,7 +435,12 @@ export class ManualReservationService {
     const idsEmFalta = new Set(conflitos.map((c) => c.productId));
 
     const reservas = await prisma.reservation.findMany({
-      where: { eventDate: { gte: inicio, lt: fim }, status: { in: [...RESERVAS_ATIVAS] } },
+      where: {
+        eventDate: { gte: inicio, lt: fim },
+        status: { in: [...RESERVAS_ATIVAS] },
+        // Na edição, a própria reserva não é "outra festa segurando a peça".
+        ...(ignorarOrderId ? { orderId: { not: ignorarOrderId } } : {}),
+      },
       select: {
         id: true,
         status: true,

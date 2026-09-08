@@ -3,12 +3,14 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
   alterarDataSchema,
   createReservationSchema,
+  editarReservaSchema,
   manualReservationSchema,
   updateReservationStatusSchema,
 } from "@festae/shared";
 import type {
   AlterarDataInput,
   CreateReservationInput,
+  EditarReservaInput,
   ManualReservationInput,
   UpdateReservationStatusInput,
 } from "@festae/shared";
@@ -49,6 +51,14 @@ export class ReservationsController {
     return this.reservationsService.findAllAdmin();
   }
 
+  /** Uma reserva só, com cliente, kit, itens e pagamentos — para reabrir na edição. */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Get("reservations/:id")
+  findOne(@Param("id") id: string) {
+    return this.reservationsService.findOneAdmin(id);
+  }
+
   /**
    * Venda fechada por fora da loja, registrada no painel.
    *
@@ -64,6 +74,27 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(manualReservationSchema)) body: ManualReservationInput,
   ) {
     return this.manualReservations.criar(body, user.userId);
+  }
+
+  /**
+   * Reescreve a reserva inteira: data, itens, kit, tema, logística e valores.
+   *
+   * Reconfere agenda e estoque na data final, ignorando a própria reserva —
+   * caso contrário nenhuma edição passaria, porque a festa brigaria com o
+   * material que ela mesma já segura. Pagamentos ficam intactos.
+   *
+   * OPS edita junto com ADMIN: corrigir o que foi vendido é atendimento do
+   * dia a dia. O que continua exclusivo de ADMIN é apagar.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Patch("reservations/:id")
+  editar(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(editarReservaSchema)) body: EditarReservaInput,
+  ) {
+    return this.manualReservations.editar(id, body, user.userId);
   }
 
   /**

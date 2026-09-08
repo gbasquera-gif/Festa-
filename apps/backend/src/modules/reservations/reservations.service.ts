@@ -93,6 +93,31 @@ export class ReservationsService {
   }
 
   /**
+   * Uma reserva só, com tudo que o formulário de edição precisa reabrir.
+   *
+   * Existe em vez de o painel baixar a lista inteira e procurar dentro:
+   * a tela de edição costuma ser aberta do celular, e trazer todas as
+   * reservas para preencher um formulário é dado que não se usa.
+   */
+  async findOneAdmin(id: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        order: {
+          include: {
+            event: { include: { user: true, theme: true } },
+            kit: { include: { products: { include: { product: true } } } },
+            items: { include: { product: true } },
+            payments: { orderBy: { createdAt: "desc" } },
+          },
+        },
+      },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    return reserva;
+  }
+
+  /**
    * Cancela uma reserva, guardando o histórico.
    *
    * Cancelar não apaga nada: a reserva continua no banco com status
