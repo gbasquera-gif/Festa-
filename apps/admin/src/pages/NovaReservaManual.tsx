@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MANUAL_SALE_CHANNELS, saleChannelLabel, totalDaVendaManual } from "@festae/shared";
+import {
+  MANUAL_SALE_CHANNELS,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABEL,
+  saleChannelLabel,
+  totalDaVendaManual,
+} from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -160,10 +166,11 @@ export default function NovaReservaManual() {
                   value={formaPagamento}
                   onChange={(e) => setFormaPagamento(e.target.value)}
                 >
-                  <option value="PIX">Pix</option>
-                  <option value="CARTAO">Cartão</option>
-                  <option value="BOLETO">Boleto</option>
-                  <option value="OUTRO">Outro</option>
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {PAYMENT_METHOD_LABEL[m]}
+                    </option>
+                  ))}
                 </select>
               </Campo>
               <Campo label="Situação do sinal">

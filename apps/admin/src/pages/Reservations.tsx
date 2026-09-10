@@ -332,6 +332,7 @@ function Detail({ row }: { row: ReservationRow }) {
         endereco={event.address}
         data={eventDate}
         total={Number(row.order.total)}
+        jaPago={payment.received}
         jaCancelada={row.status === "CANCELLED"}
       />
     </div>

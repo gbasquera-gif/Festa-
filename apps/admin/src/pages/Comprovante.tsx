@@ -3,12 +3,14 @@ import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   COMPANY,
+  PAYMENT_METHOD_LABEL,
   FESTAE_CONTATO,
   TERMS_VERSION,
   eventTypeLabel,
   montarComprovante,
   numeroDoContrato,
   type DadosDoComprovante,
+  type PaymentMethod,
 } from "@festae/shared";
 import { api } from "@/lib/api";
 import { ALLURA_WOFF2_BASE64 } from "./assinatura-manuscrita";
@@ -57,13 +59,6 @@ function telefoneLegivel(bruto: string): string {
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return bruto;
 }
-
-const FORMA: Record<string, string> = {
-  PIX: "Pix",
-  CARTAO: "Cartão",
-  BOLETO: "Boleto",
-  OUTRO: "Outro",
-};
 
 /**
  * O comprovante que a cliente guarda.
@@ -135,7 +130,7 @@ export default function Comprovante() {
     },
     pagamentos: reserva.order.payments.map((p) => ({
       valor: Number(p.amount),
-      forma: FORMA[p.method] ?? p.method,
+      forma: PAYMENT_METHOD_LABEL[p.method as PaymentMethod] ?? p.method,
       pagoEm: p.paidAt,
       recebido: p.status === "PAID",
     })),

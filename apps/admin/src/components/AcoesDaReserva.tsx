@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Ban, CalendarClock, Pencil, Receipt, SquarePen, Trash2 } from "lucide-react";
+import { Ban, BadgeDollarSign, CalendarClock, Pencil, Receipt, SquarePen, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  PAYMENT_METHODS,
+  diaEmChapeco,
+  PAYMENT_METHOD_LABEL,
+  saldoAPagar,
+  splitPayment,
+} from "@festae/shared";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { CorrigirDadosReserva } from "@/components/CorrigirDadosReserva";
@@ -46,6 +53,7 @@ export function AcoesDaReserva({
   endereco,
   data,
   total,
+  jaPago,
   jaCancelada,
   onDepoisDeExcluir,
 }: {
@@ -55,6 +63,8 @@ export function AcoesDaReserva({
   endereco: string | null;
   data: string;
   total: number;
+  /** Soma dos pagamentos já recebidos. Define o valor proposto e o saldo. */
+  jaPago: number;
   jaCancelada: boolean;
   onDepoisDeExcluir?: () => void;
 }) {
@@ -65,6 +75,11 @@ export function AcoesDaReserva({
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
   const [confirmandoExcluir, setConfirmandoExcluir] = useState(false);
   const [digitado, setDigitado] = useState("");
+  const [registrando, setRegistrando] = useState(false);
+  const [valorRecebido, setValorRecebido] = useState("");
+  const [formaRecebida, setFormaRecebida] = useState("PIX");
+  const [recebidoEm, setRecebidoEm] = useState("");
+  const [tipoRecebido, setTipoRecebido] = useState<"DEPOSIT" | "BALANCE">("DEPOSIT");
   const [remarcando, setRemarcando] = useState(false);
   const [novaData, setNovaData] = useState("");
   const [conflitos, setConflitos] = useState<ConflitoDeData[] | null>(null);
@@ -104,6 +119,68 @@ export function AcoesDaReserva({
       }
       setMotivoRecusa(e instanceof Error ? e.message : "Não foi possível alterar a data.");
     },
+  });
+
+  const saldo = saldoAPagar(total, jaPago);
+
+  /**
+   * O valor que a operação provavelmente vai digitar, por tipo.
+   *
+   * Sinal é a fração combinada do total; saldo é o que falta. Propor o total
+   * inteiro como "sinal" faria a pessoa apagar e redigitar toda vez — e o
+   * campo já vem selecionado, então um número errado é um número que entra
+   * por descuido.
+   */
+  function valorSugerido(tipo: "DEPOSIT" | "BALANCE") {
+    const proposto = tipo === "DEPOSIT" ? Math.min(splitPayment(total).deposit, saldo) : saldo;
+    return proposto > 0 ? proposto.toFixed(2) : "";
+  }
+
+  function escolherTipo(tipo: "DEPOSIT" | "BALANCE") {
+    setTipoRecebido(tipo);
+    setValorRecebido(valorSugerido(tipo));
+    setMotivoRecusa(null);
+  }
+
+  function abrirRegistro() {
+    // Sem nada pago, o que entra é o sinal. Com sinal já recebido, o que
+    // falta é o saldo — que é o outro momento em que dinheiro chega.
+    const tipo = jaPago > 0 ? "BALANCE" : "DEPOSIT";
+    setTipoRecebido(tipo);
+    setValorRecebido(valorSugerido(tipo));
+    setFormaRecebida("PIX");
+    setRecebidoEm(diaEmChapeco(new Date()));
+    setMotivoRecusa(null);
+    setRegistrando(true);
+  }
+
+  const registrarPagamento = useMutation({
+    mutationFn: () =>
+      api<{ pago: number; saldo: number; reservaConfirmada: boolean }>(
+        `/reservations/${reservaId}/pagamentos`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            tipo: tipoRecebido,
+            valor: Number(valorRecebido),
+            forma: formaRecebida,
+            recebidoEm: recebidoEm || undefined,
+          }),
+        },
+      ),
+    onSuccess: (r) => {
+      toast.success(
+        r.reservaConfirmada
+          ? "Pagamento registrado. A reserva está confirmada."
+          : r.saldo > 0
+            ? `Pagamento registrado. Saldo restante de ${brl(r.saldo)}.`
+            : "Pagamento registrado. A festa está paga integralmente.",
+      );
+      setRegistrando(false);
+      recarregar();
+    },
+    onError: (e) =>
+      setMotivoRecusa(e instanceof Error ? e.message : "Não foi possível registrar o pagamento."),
   });
 
   const cancelar = useMutation({
@@ -162,6 +239,19 @@ export function AcoesDaReserva({
         >
           <SquarePen className="mr-2 size-4" />
           Editar reserva completa
+        </Button>
+
+        {/* Sem pagamento nenhum, é isto que a operação precisa fazer antes de
+            qualquer outra coisa: o comprovante depende de dinheiro que
+            entrou, e a reserva só confirma quando o sinal é registrado. */}
+        <Button
+          variant="outline"
+          className="justify-start"
+          disabled={jaCancelada}
+          onClick={abrirRegistro}
+        >
+          <BadgeDollarSign className="mr-2 size-4" />
+          Registrar pagamento recebido
         </Button>
 
         <Button variant="outline" className="justify-start" onClick={() => setCorrigindo(true)}>
@@ -228,6 +318,138 @@ export function AcoesDaReserva({
           onFechar={() => setCorrigindo(false)}
         />
       )}
+
+      {/* Registrar pagamento: o caminho para o dinheiro que entrou por fora do
+          aplicativo — Pix na chave, transferência, dinheiro na retirada. Não
+          reescreve pagamento nenhum; acrescenta o que chegou. */}
+      <Dialog
+        open={registrando}
+        onOpenChange={(v) => {
+          if (!v) {
+            setRegistrando(false);
+            setMotivoRecusa(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar pagamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Festa de <strong className="text-navy">{cliente}</strong> em {data}. Total{" "}
+              {brl(total)} · já recebido {brl(jaPago)} ·{" "}
+              <strong className="text-navy">saldo {brl(saldo)}</strong>.
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>O que foi recebido</Label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["DEPOSIT", "Sinal (garante a data)"],
+                    ["BALANCE", "Saldo (na retirada ou entrega)"],
+                  ] as const
+                ).map(([valor, rotulo]) => (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => escolherTipo(valor)}
+                    className={`min-h-11 rounded-full border px-4 py-2 text-sm transition ${
+                      tipoRecebido === valor
+                        ? "border-navy bg-navy text-white"
+                        : "border-input hover:bg-muted"
+                    }`}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label>Valor recebido</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min={0}
+                  value={valorRecebido}
+                  onChange={(e) => {
+                    setValorRecebido(e.target.value);
+                    setMotivoRecusa(null);
+                  }}
+                  placeholder="0,00"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Forma</Label>
+                <select
+                  className="h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs sm:h-9"
+                  value={formaRecebida}
+                  onChange={(e) => setFormaRecebida(e.target.value)}
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {PAYMENT_METHOD_LABEL[m]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Quando entrou</Label>
+              <Input
+                type="date"
+                value={recebidoEm}
+                onChange={(e) => setRecebidoEm(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                A data em que o dinheiro entrou, não a de hoje — é ela que sai no comprovante.
+              </p>
+            </div>
+
+            {Number(valorRecebido) > saldo && saldo > 0 && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                Esse valor é maior que o saldo de {brl(saldo)}. Registre assim mesmo se a cliente
+                pagou a mais — o comprovante mostra saldo zerado, nunca negativo.
+              </p>
+            )}
+
+            {motivoRecusa && (
+              <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                {motivoRecusa}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              O pagamento é acrescentado ao histórico; nada do que já foi registrado é alterado.
+              {jaPago === 0 && " Com o sinal registrado, a reserva passa a confirmada."}
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                setRegistrando(false);
+                setMotivoRecusa(null);
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              className="w-full sm:w-auto"
+              disabled={!Number(valorRecebido) || registrarPagamento.isPending}
+              onClick={() => registrarPagamento.mutate()}
+            >
+              {registrarPagamento.isPending ? "Registrando..." : "Registrar pagamento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Remarcar: a data de destino passa pelas mesmas conferências de uma
           reserva nova. Quando não cabe, a tela mostra a conta em vez de um

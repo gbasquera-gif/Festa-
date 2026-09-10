@@ -175,7 +175,10 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
+      // pr-8 reserva a coluna do botão de fechar, que fica sobreposto no canto:
+      // sem isso um título longo como "Registrar pagamento recebido" tem a
+      // última letra coberta pelo X no celular.
+      className={cn("pr-8 text-lg leading-tight font-semibold", className)}
       {...props}
     />
   );

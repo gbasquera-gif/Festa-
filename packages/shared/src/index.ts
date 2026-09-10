@@ -10,6 +10,7 @@ export {
   RESERVATION_STATUSES,
   PARTNER_TYPES,
   PAYMENT_METHODS,
+  PAYMENT_METHOD_LABEL,
   PAYMENT_STATUSES,
   PAYMENT_TYPES,
   ANALYTICS_EVENT_TYPES,
@@ -184,6 +185,7 @@ export {
   corrigirDadosSchema,
   alterarDataSchema,
   editarReservaSchema,
+  registrarPagamentoSchema,
   descontoEmbutido,
   totalDaVendaManual,
 } from "./schemas/manual-reservation";
@@ -193,4 +195,5 @@ export type {
   CorrigirDadosInput,
   AlterarDataInput,
   EditarReservaInput,
+  RegistrarPagamentoInput,
 } from "./schemas/manual-reservation";

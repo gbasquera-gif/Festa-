@@ -4,6 +4,7 @@ import {
   alterarDataSchema,
   createReservationSchema,
   editarReservaSchema,
+  registrarPagamentoSchema,
   manualReservationSchema,
   updateReservationStatusSchema,
 } from "@festae/shared";
@@ -11,6 +12,7 @@ import type {
   AlterarDataInput,
   CreateReservationInput,
   EditarReservaInput,
+  RegistrarPagamentoInput,
   ManualReservationInput,
   UpdateReservationStatusInput,
 } from "@festae/shared";
@@ -113,6 +115,28 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(alterarDataSchema)) body: AlterarDataInput,
   ) {
     return this.reservationsService.alterarData(id, body.data, user.userId);
+  }
+
+  /**
+   * Registra um pagamento recebido por fora do aplicativo.
+   *
+   * Pix na chave da Maria Luiza, transferência, dinheiro na retirada — tudo
+   * que o Mercado Pago não tem como avisar. Acrescenta o pagamento, confirma
+   * a reserva quando é o sinal, e encerra o Pix pendente que a cliente não
+   * vai mais pagar.
+   *
+   * OPS registra junto com ADMIN: quem recebe o dinheiro na retirada é quem
+   * está no balcão.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Post("reservations/:id/pagamentos")
+  registrarPagamento(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(registrarPagamentoSchema)) body: RegistrarPagamentoInput,
+  ) {
+    return this.reservationsService.registrarPagamento(id, body, user.userId);
   }
 
   /**

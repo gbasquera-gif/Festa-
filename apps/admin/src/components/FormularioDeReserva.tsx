@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { EVENT_TYPES, eventTypeLabel } from "@festae/shared";
+import { EVENT_TYPES, diaEmChapeco, eventTypeLabel } from "@festae/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -94,7 +94,14 @@ export const reservaEmBranco: DadosDaReserva = {
 export const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export const hojeISO = () => new Date().toISOString().slice(0, 10);
+/**
+ * Hoje, no calendário de Chapecó.
+ *
+ * `toISOString()` devolve o dia em UTC: às 21h aqui já é o dia seguinte lá.
+ * O formulário avisaria "essa data já passou" numa festa marcada para hoje,
+ * toda noite depois das nove.
+ */
+export const hojeISO = () => diaEmChapeco(new Date());
 
 export const selectClass =
   "h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs sm:h-9";

@@ -161,6 +161,41 @@ export const alterarDataSchema = z.object({
 export type AlterarDataInput = z.infer<typeof alterarDataSchema>;
 
 /**
+ * Dinheiro que entrou por fora do aplicativo.
+ *
+ * A loja marca o pagamento sozinha quando a cliente paga o Pix pelo app, e a
+ * venda manual registra o sinal no ato do cadastro. Faltava o meio-termo, que
+ * é o caso mais comum de todos: a cliente que mandou Pix direto para a chave
+ * da Maria Luiza, transferiu, pagou em dinheiro na retirada, ou pagou dias
+ * depois de a reserva ter sido lançada como "a receber".
+ *
+ * Sem isto, essas reservas ficavam presas em "aguardando o Pix" para sempre,
+ * e o comprovante saía como confirmação de reserva em vez de comprovante de
+ * pagamento — porque afirmar que recebeu sem ter recebido seria mentira.
+ *
+ * Registrar ACRESCENTA um pagamento; nunca reescreve um que já existe. É a
+ * diferença que protege o caixa: dinheiro que entrou é sempre seguro de
+ * registrar, e editar pagamento antigo é como se apagam divergências sem
+ * ninguém perceber.
+ */
+export const registrarPagamentoSchema = z.object({
+  /** DEPOSIT é o sinal que garante a data; BALANCE é o saldo da entrega. */
+  tipo: z.enum(["DEPOSIT", "BALANCE"]).default("DEPOSIT"),
+  valor: z.coerce.number().positive("Diga quanto foi recebido."),
+  forma: z.enum(PAYMENT_METHODS).default("PIX"),
+  /**
+   * Quando o dinheiro entrou, não quando alguém lembrou de registrar. Um
+   * sinal recebido na sexta e lançado na segunda é da sexta — é essa data
+   * que sai no comprovante e no relatório.
+   */
+  recebidoEm: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD.")
+    .optional(),
+});
+export type RegistrarPagamentoInput = z.infer<typeof registrarPagamentoSchema>;
+
+/**
  * Edição completa de uma reserva já existente.
  *
  * Mesma forma da reserva manual, porque é a mesma festa sendo descrita — mas

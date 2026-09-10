@@ -58,6 +58,20 @@ export type PartnerType = (typeof PARTNER_TYPES)[number];
 export const PAYMENT_METHODS = ["PIX", "CARTAO", "BOLETO", "OUTRO"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+/**
+ * A forma de pagamento como se escreve para gente ler.
+ *
+ * Um mapa só, porque o mesmo pagamento aparece no formulário de venda
+ * manual, no diálogo de registrar recebimento e no comprovante que a cliente
+ * guarda. Escrito à mão em cada tela, "CARTAO" acabava saindo cru num deles.
+ */
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  PIX: "Pix",
+  CARTAO: "Cartão",
+  BOLETO: "Boleto",
+  OUTRO: "Outro",
+};
+
 export const PAYMENT_STATUSES = ["PENDING", "PAID", "FAILED", "REFUNDED"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 

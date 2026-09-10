@@ -272,12 +272,20 @@
    rótulo inteiro que recebe o toque.
 */
 @media (max-width: 1023px) {
+  /* Os diálogos entram nesta conta porque abrem num portal, fora do <main>:
+     a regra antiga não os alcançava, e justamente ali estão as ações que
+     mexem em dinheiro e em data — registrar pagamento, remarcar, excluir. */
   main input:not([type="checkbox"]):not([type="radio"]),
   main select,
   main textarea,
   main button:not([role="checkbox"]),
   main a[data-slot="button"],
-  main [role="combobox"] {
+  main [role="combobox"],
+  [data-slot="dialog-content"] input:not([type="checkbox"]):not([type="radio"]),
+  [data-slot="dialog-content"] select,
+  [data-slot="dialog-content"] textarea,
+  [data-slot="dialog-content"] button:not([role="checkbox"]):not([data-slot="dialog-close"]),
+  [data-slot="dialog-content"] [role="combobox"] {
     min-height: 2.75rem;
   }
 
@@ -285,7 +293,8 @@
      recebe o toque é o rótulo que os embrulha. */
   main label:has(> button[role="checkbox"]),
   main label:has(> input[type="checkbox"]),
-  main label:has(> input[type="radio"]) {
+  main label:has(> input[type="radio"]),
+  [data-slot="dialog-content"] label:has(> button[role="checkbox"]) {
     min-height: 2.75rem;
   }
 }

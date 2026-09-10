@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { diaDaFesta, normalizarDataDaFesta } from "@festae/shared";
+import { diaDaFesta, normalizarDataDaFesta, saldoAPagar } from "@festae/shared";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
 import { getMaxReservationsPerDay } from "../../common/operations-config";
@@ -116,6 +116,121 @@ export class ReservationsService {
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
     return reserva;
+  }
+
+  /**
+   * Registra dinheiro que entrou por fora do aplicativo.
+   *
+   * Acrescenta um pagamento; nunca reescreve um existente. Dinheiro que
+   * entrou é sempre seguro de registrar — editar um pagamento antigo é como
+   * se apaga uma divergência de caixa sem ninguém perceber.
+   *
+   * Duas consequências acompanham o registro do sinal, e são o motivo de
+   * isto viver no servidor e não numa tela:
+   *
+   * 1. A reserva que estava só solicitada passa a confirmada. É o mesmo que
+   *    acontece quando o Pix da loja é aprovado — quem pagou o sinal tem a
+   *    data, e a origem do dinheiro não muda isso.
+   *
+   * 2. Um Pix ainda pendente do mesmo tipo é encerrado. A cliente pagou por
+   *    outro caminho; deixar o QR antigo "aguardando" faria o painel cobrar
+   *    de novo alguém que já pagou.
+   */
+  async registrarPagamento(
+    id: string,
+    dados: { tipo: "DEPOSIT" | "BALANCE"; valor: number; forma: string; recebidoEm?: string },
+    usuarioId: string,
+  ) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        order: { select: { id: true, total: true, payments: true } },
+      },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    if (reserva.status === "CANCELLED" || reserva.status === "REJECTED") {
+      throw new BadRequestException(
+        "Esta reserva está cancelada. Reative ou registre uma nova antes de lançar o pagamento.",
+      );
+    }
+
+    // Meio-dia UTC pela mesma razão da data da festa: é dia de calendário, e
+    // meia-noite viraria o dia anterior no fuso de Chapecó.
+    const recebidoEm = dados.recebidoEm ? normalizarDataDaFesta(dados.recebidoEm) : new Date();
+    if (recebidoEm.getTime() > Date.now() + 86_400_000) {
+      throw new BadRequestException("A data do pagamento não pode estar no futuro.");
+    }
+
+    const jaPago = reserva.order.payments
+      .filter((p) => p.status === "PAID")
+      .reduce((soma, p) => soma + Number(p.amount), 0);
+
+    const confirmaAReserva = dados.tipo === "DEPOSIT" && reserva.status === "PENDING";
+    const pendentesDoMesmoTipo = reserva.order.payments.filter(
+      (p) => p.type === dados.tipo && p.status === "PENDING",
+    );
+
+    await prisma.$transaction([
+      prisma.payment.create({
+        data: {
+          orderId: reserva.order.id,
+          type: dados.tipo,
+          amount: dados.valor,
+          method: dados.forma as never,
+          status: "PAID",
+          paidAt: recebidoEm,
+        },
+      }),
+      ...(pendentesDoMesmoTipo.length > 0
+        ? [
+            prisma.payment.updateMany({
+              where: { id: { in: pendentesDoMesmoTipo.map((p) => p.id) } },
+              data: { status: "FAILED" },
+            }),
+          ]
+        : []),
+      ...(confirmaAReserva
+        ? [
+            prisma.reservation.update({
+              where: { id },
+              data: { status: "CONFIRMED", confirmedAt: new Date() },
+            }),
+            prisma.order.update({ where: { id: reserva.order.id }, data: { status: "CONFIRMED" } }),
+          ]
+        : []),
+      // O funil só sabe que a loja vende quando o dinheiro entra. Pagamento
+      // recebido por fora conta igual — senão o relatório subestima a
+      // empresa justamente nas vendas fechadas na conversa.
+      prisma.analyticsEvent.create({
+        data: {
+          type: "PAGAMENTO_REALIZADO",
+          metadata: {
+            orderId: reserva.order.id,
+            tipo: dados.tipo,
+            valor: String(dados.valor),
+            registradoPor: usuarioId,
+            manual: true,
+          },
+        },
+      }),
+    ]);
+
+    const total = Number(reserva.order.total);
+    const pagoAgora = jaPago + dados.valor;
+
+    this.logger.log(
+      `Pagamento de R$ ${dados.valor.toFixed(2)} (${dados.tipo}) registrado por ${usuarioId} ` +
+        `na reserva ${id}${confirmaAReserva ? " — reserva confirmada" : ""}.`,
+    );
+
+    return {
+      registrado: true,
+      total,
+      pago: pagoAgora,
+      saldo: saldoAPagar(total, pagoAgora),
+      reservaConfirmada: confirmaAReserva,
+      pixPendentesEncerrados: pendentesDoMesmoTipo.length,
+    };
   }
 
   /**
