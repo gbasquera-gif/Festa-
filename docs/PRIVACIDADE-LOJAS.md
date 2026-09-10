@@ -162,7 +162,7 @@ rejeição por "uso de sistema de pagamento externo" é comum.
 Cole isto no campo de notas para o revisor, junto com uma conta de teste:
 
 > A Festaê aluga artigos para festas em Chapecó/SC. O cliente monta o
-> orçamento, reserva a data e paga 50% de sinal via Pix; os itens são
+> orçamento, reserva a data e paga 30% de sinal via Pix; os itens são
 > retirados na sede da empresa ou entregues no local mediante taxa. Todos os
 > pagamentos correspondem a bens e serviços físicos consumidos fora do
 > aplicativo (App Store Review Guidelines 3.1.3(e)).
@@ -181,7 +181,7 @@ nova nas lojas, confira que os quatro estão dizendo a mesma coisa:
 
 | Assunto | Onde está | Valor atual |
 | --- | --- | --- |
-| Pagamento | Termos §Preços e pagamento | 50% na reserva + 50% na retirada, Pix |
+| Pagamento | Termos §Preços e pagamento | 30% de sinal na reserva + 70% na retirada, Pix |
 | Cancelamento | Termos §Cancelamento e reembolso | 100% / 75% / 50% / 0% por faixa |
 | Entrega | Termos §Retirada, entrega e devolução | Retirada na sede; entrega opcional com taxa |
 | Danos | Termos §Responsabilidade pelos itens alugados | Cliente responde da retirada à devolução |

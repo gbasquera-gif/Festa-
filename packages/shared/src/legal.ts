@@ -13,13 +13,20 @@
  * gravada no aceite de cada usuário.
  */
 
-import { ASSEMBLY_FEE, DELIVERY_CITY, DELIVERY_FEE, DELIVERY_WITH_ASSEMBLY_FEE } from "./pricing";
+import {
+  ASSEMBLY_FEE,
+  DELIVERY_CITY,
+  DELIVERY_FEE,
+  DELIVERY_WITH_ASSEMBLY_FEE,
+  PERCENTUAL_DO_SALDO,
+  PERCENTUAL_DO_SINAL,
+} from "./pricing";
 
 /** Sobe a cada alteração de conteúdo. Gravada no aceite do usuário. */
-export const TERMS_VERSION = "1.4.0";
+export const TERMS_VERSION = "1.5.0";
 
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
-export const TERMS_UPDATED_AT = "2026-08-07";
+export const TERMS_UPDATED_AT = "2026-09-10";
 
 /** ISO vira dd/mm/aaaa — é assim que a data é lida no Brasil. */
 export function formatLegalDate(isoDate: string) {
@@ -181,9 +188,10 @@ export const TERMS_OF_USE: LegalDocument = {
       title: "Preços e pagamento",
       paragraphs: [
         "O valor final do pedido é a soma dos produtos escolhidos, mais as taxas da forma de entrega que você escolher. O resumo mostra cada parcela dessa conta antes de você confirmar.",
-        "O pagamento é feito em duas parcelas iguais: 50% no ato da reserva, que é o que garante a data, e 50% na retirada dos itens.",
+        `O pagamento é feito em duas parcelas: ${PERCENTUAL_DO_SINAL} no ato da reserva, que é o que garante a data, e os ${PERCENTUAL_DO_SALDO} restantes na retirada dos itens.`,
         "A forma de pagamento aceita é Pix. Pagamento com cartão será oferecido em versão futura do aplicativo.",
-        "A data só fica reservada depois que o pagamento dos primeiros 50% for confirmado.",
+        `A data só fica reservada depois que o pagamento do sinal de ${PERCENTUAL_DO_SINAL} for confirmado.`,
+        "Se você reservou antes desta versão dos termos, vale o sinal combinado na época: o que você já pagou é abatido integralmente, e na retirada você paga apenas a diferença.",
       ],
     },
     {

@@ -1,13 +1,53 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { PIX_EXPIRATION_MINUTES, splitPayment } from "@festae/shared";
+import {
+  PERCENTUAL_DO_SALDO,
+  PERCENTUAL_DO_SINAL,
+  PIX_EXPIRATION_MINUTES,
+  saldoAPagar,
+  splitPayment,
+} from "@festae/shared";
 import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
 
+/**
+ * O que a cliente lê na fatura do Mercado Pago.
+ *
+ * A porcentagem vem da constante, não da mão: é texto que sai da Festaê e
+ * chega no extrato de outra pessoa, e prometer 50% num lugar onde o sistema
+ * cobra 30% é o tipo de divergência que só aparece na reclamação.
+ */
 const PAYMENT_TYPE_LABEL: Record<string, string> = {
-  DEPOSIT: "Sinal (50%) da festa",
-  BALANCE: "Saldo restante (50%) da festa",
+  DEPOSIT: `Sinal (${PERCENTUAL_DO_SINAL}) da festa`,
+  BALANCE: `Saldo restante (${PERCENTUAL_DO_SALDO}) da festa`,
 };
+
+/**
+ * Quanto cobrar neste Pix.
+ *
+ * As duas metades desta conta são diferentes, e a diferença tem valor em
+ * reais. O SINAL é uma fração do total — é o que a Festaê pede para segurar
+ * a data. O SALDO é dívida: o que falta depois de tudo que já entrou.
+ *
+ * Enquanto o sinal foi 50% para todo mundo, `total − sinal` e `total − pago`
+ * davam sempre o mesmo número, e a distinção não aparecia. Baixar o sinal
+ * para 30% separou as duas: uma festa de R$ 600 cujo sinal de 50% (R$ 300)
+ * já entrou cobraria R$ 420 de saldo se a conta fosse refeita pela taxa de
+ * hoje — R$ 120 a mais do que a cliente deve. Por isso o saldo se mede pelo
+ * que foi pago, nunca pela taxa vigente.
+ *
+ * Função separada e exportada porque é uma decisão sobre o dinheiro de outra
+ * pessoa: merece teste próprio, sem precisar de banco nem de gateway.
+ */
+export function valorACobrar(
+  tipo: "DEPOSIT" | "BALANCE" | string,
+  total: number,
+  pagamentosPagos: number[],
+): number {
+  if (tipo === "DEPOSIT") return splitPayment(total).deposit;
+  const jaPago = pagamentosPagos.reduce((soma, valor) => soma + valor, 0);
+  return saldoAPagar(total, jaPago);
+}
 
 /** Intervalo mínimo entre duas consultas ao Mercado Pago sobre o mesmo Pix. */
 const SYNC_INTERVAL_MS = 20_000;
@@ -116,10 +156,15 @@ export class PaymentsService {
       });
     }
 
-    // A divisão vem do pacote compartilhado: o valor cobrado no Pix é
-    // exatamente o que o cliente viu no resumo, calculado pela mesma função.
-    const { deposit, balance } = splitPayment(Number(order.total));
-    const amount = input.type === "DEPOSIT" ? deposit : balance;
+    const amount = valorACobrar(
+      input.type,
+      Number(order.total),
+      order.payments.filter((p) => p.status === "PAID").map((p) => Number(p.amount)),
+    );
+
+    if (amount <= 0) {
+      throw new ConflictException("Esta festa já está paga integralmente.");
+    }
     const expiresAt = new Date(now + PIX_EXPIRATION_MINUTES * 60_000);
 
     const payment = await prisma.payment.create({

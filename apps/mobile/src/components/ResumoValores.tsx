@@ -1,5 +1,5 @@
 import { Text, View } from "react-native";
-import { DELIVERY_CITY, type PricingResult } from "@festae/shared";
+import { DELIVERY_CITY, PERCENTUAL_DO_SALDO, PERCENTUAL_DO_SINAL, type PricingResult } from "@festae/shared";
 import { Card } from "./Card";
 import { formatBRL } from "@/lib/catalog";
 
@@ -121,8 +121,14 @@ export function CartaoValores({ pricing }: { pricing: PricingResult }) {
 
       <View className="mt-4 gap-1 rounded-2xl bg-linen p-3.5">
         <Text className="font-sans-bold text-navy">Pagamento em duas partes</Text>
-        <Line label="Sinal de 50% — agora, via Pix" value={formatBRL(pricing.deposit)} />
-        <Line label="Restante de 50% — na retirada/entrega" value={formatBRL(pricing.balance)} />
+        <Line
+          label={`Sinal de ${PERCENTUAL_DO_SINAL} — agora, via Pix`}
+          value={formatBRL(pricing.deposit)}
+        />
+        <Line
+          label={`Restante de ${PERCENTUAL_DO_SALDO} — na retirada/entrega`}
+          value={formatBRL(pricing.balance)}
+        />
       </View>
     </Card>
   );

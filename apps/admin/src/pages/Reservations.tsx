@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import {
   RESERVATION_STATUSES,
   formatarDataDaFesta,
+  PERCENTUAL_DO_SINAL,
+  saldoAPagar,
   splitPayment,
   type ReservationStatus,
 } from "@festae/shared";
@@ -87,11 +89,24 @@ function whatsappLink(phone: string, message: string) {
  */
 function paymentSummary(row: ReservationRow) {
   const total = Number(row.order.total);
-  const { deposit, balance } = splitPayment(total);
   const depositPaid = row.order.payments.some((p) => p.type === "DEPOSIT" && p.status === "PAID");
   const balancePaid = row.order.payments.some((p) => p.type === "BALANCE" && p.status === "PAID");
 
-  const received = (depositPaid ? deposit : 0) + (balancePaid ? balance : 0);
+  // O recebido é a soma do que entrou de verdade, não a projeção da taxa de
+  // hoje. Recalcular pela taxa mostraria "recebido R$ 180" para a cliente
+  // que pagou R$ 300 de sinal quando ele ainda era 50% — e mandaria a
+  // operação cobrar R$ 120 a mais na entrega.
+  const received = row.order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((soma, p) => soma + Number(p.amount), 0);
+
+  // O sinal exibido é o que entrou quando já entrou; enquanto não entrou, é
+  // a projeção — que é exatamente o que vai ser cobrado.
+  const depositPago = row.order.payments
+    .filter((p) => p.type === "DEPOSIT" && p.status === "PAID")
+    .reduce((soma, p) => soma + Number(p.amount), 0);
+  const deposit = depositPaid ? depositPago : splitPayment(total).deposit;
+  const balance = saldoAPagar(total, received);
 
   return {
     total,
@@ -100,7 +115,7 @@ function paymentSummary(row: ReservationRow) {
     depositPaid,
     balancePaid,
     received,
-    pending: total - received,
+    pending: saldoAPagar(total, received),
     label: balancePaid
       ? "Pago integralmente"
       : depositPaid
@@ -280,7 +295,9 @@ function Detail({ row }: { row: ReservationRow }) {
             <dd>{money(payment.total)}</dd>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2">
-            <dt className="text-muted-foreground">Sinal 50%</dt>
+            <dt className="text-muted-foreground">
+              {payment.depositPaid ? "Sinal recebido" : `Sinal ${PERCENTUAL_DO_SINAL}`}
+            </dt>
             <dd className={payment.depositPaid ? "text-emerald-700" : "text-amber-700"}>
               {money(payment.deposit)}
             </dd>
@@ -289,7 +306,7 @@ function Detail({ row }: { row: ReservationRow }) {
             </p>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2">
-            <dt className="text-muted-foreground">Restante 50%</dt>
+            <dt className="text-muted-foreground">Restante</dt>
             <dd className={payment.balancePaid ? "text-emerald-700" : ""}>
               {money(payment.balance)}
             </dd>

@@ -3,12 +3,30 @@ import {
   ASSEMBLY_FEE,
   DELIVERY_FEE,
   DELIVERY_WITH_ASSEMBLY_FEE,
+  DEPOSIT_RATE,
+  PERCENTUAL_DO_SALDO,
+  PERCENTUAL_DO_SINAL,
   calculateOrderPricing,
   checkFulfillment,
+  fromCentsInt,
   isDeliveryCity,
+  saldoAPagar,
+  splitPayment,
   toCents,
+  toCentsInt,
   type PricingInput,
 } from "./pricing";
+
+/**
+ * O sinal esperado, calculado pela regra e não digitado.
+ *
+ * Um teste que crava "250" está provando o número de hoje; este prova a
+ * regra — e continua pegando erro de arredondamento quando a taxa muda.
+ */
+const sinalDe = (total: number) => fromCentsInt(Math.round(toCentsInt(total) * DEPOSIT_RATE));
+
+/** O saldo é sempre a diferença, nunca um segundo cálculo da taxa. */
+const saldoDe = (total: number) => fromCentsInt(toCentsInt(total) - toCentsInt(sinalDe(total)));
 
 /**
  * Erro de cálculo aqui é dinheiro cobrado a mais ou a menos de um cliente
@@ -33,8 +51,8 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.deliveryFee).toBe(0);
     expect(result.assemblyFee).toBe(0);
     expect(result.total).toBe(500);
-    expect(result.deposit).toBe(250);
-    expect(result.balance).toBe(250);
+    expect(result.deposit).toBe(sinalDe(result.total));
+    expect(result.balance).toBe(saldoDe(result.total));
   });
 
   // A equipe monta no local da festa mesmo quando foi a cliente quem buscou
@@ -46,8 +64,8 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.deliveryFee).toBe(0);
     expect(result.assemblyFee).toBe(50);
     expect(result.total).toBe(550);
-    expect(result.deposit).toBe(275);
-    expect(result.balance).toBe(275);
+    expect(result.deposit).toBe(sinalDe(result.total));
+    expect(result.balance).toBe(saldoDe(result.total));
   });
 
   it("C) entrega sem montagem: produtos + R$ 20", () => {
@@ -56,8 +74,8 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.deliveryFee).toBe(20);
     expect(result.assemblyFee).toBe(0);
     expect(result.total).toBe(520);
-    expect(result.deposit).toBe(260);
-    expect(result.balance).toBe(260);
+    expect(result.deposit).toBe(sinalDe(result.total));
+    expect(result.balance).toBe(saldoDe(result.total));
   });
 
   it("D) entrega com montagem: o exemplo do documento oficial", () => {
@@ -72,8 +90,8 @@ describe("as quatro combinações oficiais de logística e montagem", () => {
     expect(result.deliveryFee).toBe(20);
     expect(result.assemblyFee).toBe(50);
     expect(result.total).toBe(570);
-    expect(result.deposit).toBe(285);
-    expect(result.balance).toBe(285);
+    expect(result.deposit).toBe(sinalDe(result.total));
+    expect(result.balance).toBe(saldoDe(result.total));
   });
 });
 
@@ -136,7 +154,7 @@ describe("subtotal dos produtos", () => {
   });
 });
 
-describe("sinal de 50% e saldo restante", () => {
+describe("sinal e saldo restante", () => {
   it("sinal mais saldo sempre fecha o total exato", () => {
     // Valores escolhidos para produzir metades quebradas de propósito.
     const valores = [0, 0.01, 33.33, 99.99, 500, 570, 1234.57, 7777.77];
@@ -148,7 +166,8 @@ describe("sinal de 50% e saldo restante", () => {
   });
 
   it("em total ímpar, o centavo sobra no sinal e o saldo fecha a conta", () => {
-    // 570,01 → 285,005 arredonda para 285,01; o saldo é a diferença.
+    // Total ímpar de propósito: a fração do sinal cai num meio-centavo e
+    // o saldo tem que absorver a diferença sem o total escapar.
     const result = calculateOrderPricing({
       ...base,
       subtotalKit: 500.01,
@@ -158,9 +177,10 @@ describe("sinal de 50% e saldo restante", () => {
     });
 
     expect(result.total).toBe(570.01);
-    expect(result.deposit).toBe(285.01);
-    expect(result.balance).toBe(285);
+    expect(result.deposit).toBe(sinalDe(570.01));
     expect(toCents(result.deposit + result.balance)).toBe(570.01);
+    // O centavo tem que cair em algum lado, e não pode sumir nem duplicar.
+    expect(toCents(result.deposit + result.balance)).toBe(result.total);
   });
 
   it("não deixa resto de ponto flutuante escapar para o total", () => {
@@ -262,5 +282,61 @@ describe("taxas oficiais", () => {
     expect(fora.deliveryFee).toBe(0);
     expect(fora.assemblyFee).toBe(0);
     expect(fora.total).toBe(base.subtotalKit + base.subtotalExtras);
+  });
+});
+
+/**
+ * O saldo é dívida, e dívida se mede pelo que entrou.
+ *
+ * Enquanto o sinal foi 50% para todo mundo, `total − sinal` e `total − pago`
+ * davam sempre o mesmo número, e ninguém precisou separar as duas contas.
+ * Baixar o sinal para 30% separou: refazer a divisão pela taxa de hoje
+ * cobraria a mais de toda cliente que pagou 50% antes da mudança.
+ */
+describe("saldo de quem já pagou", () => {
+  it("a cliente que pagou sinal de 50% deve só a diferença, não 70% do total", () => {
+    const total = 600;
+    const sinalAntigo = 300; // 50%, pago antes da mudança de taxa
+
+    expect(saldoAPagar(total, sinalAntigo)).toBe(300);
+    // A conta errada, que este teste existe para impedir:
+    expect(splitPayment(total).balance).toBe(420);
+  });
+
+  it("quem ainda não pagou nada deve o total inteiro", () => {
+    expect(saldoAPagar(500, 0)).toBe(500);
+  });
+
+  it("quem pagou tudo não deve nada", () => {
+    expect(saldoAPagar(500, 500)).toBe(0);
+  });
+
+  it("nunca devolve cobrança negativa", () => {
+    expect(saldoAPagar(500, 620)).toBe(0);
+  });
+
+  it("fecha ao centavo, sem herdar erro de ponto flutuante", () => {
+    expect(saldoAPagar(570.01, 285.01)).toBe(285);
+    expect(saldoAPagar(0.03, 0.01)).toBe(0.02);
+  });
+
+  it("sinal novo mais saldo fecha o total, para quem entra agora", () => {
+    for (const total of [0.01, 33.33, 99.99, 500, 570.01, 1234.57]) {
+      const { deposit } = splitPayment(total);
+      expect(toCents(deposit + saldoAPagar(total, deposit))).toBe(total);
+    }
+  });
+});
+
+describe("os textos da porcentagem saem da constante", () => {
+  it("nunca divergem da taxa que o sistema cobra", () => {
+    expect(PERCENTUAL_DO_SINAL).toBe(`${Math.round(DEPOSIT_RATE * 100)}%`);
+    expect(PERCENTUAL_DO_SALDO).toBe(`${Math.round((1 - DEPOSIT_RATE) * 100)}%`);
+  });
+
+  it("hoje a Festaê cobra 30% de sinal", () => {
+    expect(DEPOSIT_RATE).toBe(0.3);
+    expect(PERCENTUAL_DO_SINAL).toBe("30%");
+    expect(PERCENTUAL_DO_SALDO).toBe("70%");
   });
 });

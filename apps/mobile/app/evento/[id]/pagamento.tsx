@@ -4,7 +4,12 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import { formatarDataDaFesta, splitPayment } from "@festae/shared";
+import {
+  PERCENTUAL_DO_SINAL,
+  formatarDataDaFesta,
+  saldoAPagar,
+  splitPayment,
+} from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -94,7 +99,15 @@ export default function Pagamento() {
   }
 
   const total = Number(event?.order.total ?? 0);
-  const { deposit: depositAmount, balance } = splitPayment(total);
+  // Quando o sinal já entrou, o valor mostrado é o que entrou de verdade —
+  // não a fração de hoje. Quem pagou R$ 300 quando o sinal era 50% precisa
+  // continuar lendo "recebemos R$ 300", e o saldo dela é o que falta, não
+  // 70% do total.
+  const jaPago = (payments ?? [])
+    .filter((p) => p.status === "PAID")
+    .reduce((soma, p) => soma + Number(p.amount), 0);
+  const depositAmount = paid && deposit ? Number(deposit.amount) : splitPayment(total).deposit;
+  const balance = saldoAPagar(total, jaPago);
   const festaEm = event ? formatarDataDaFesta(event.date) : null;
 
   if (paid) {
@@ -144,14 +157,16 @@ export default function Pagamento() {
       <View>
         <Text className="font-sans-extrabold text-2xl text-navy">Garanta sua data</Text>
         <Text className="text-navy/70">
-          A data fica reservada quando o sinal de 50% é confirmado. O restante você paga na
-          retirada ou na entrega.
+          A data fica reservada quando o sinal de {PERCENTUAL_DO_SINAL} é confirmado. O restante
+          você paga na retirada ou na entrega.
         </Text>
       </View>
 
       <Card>
         <View className="flex-row items-baseline justify-between">
-          <Text className="font-sans-bold text-navy">Sinal de 50%</Text>
+          <Text className="font-sans-bold text-navy">
+            {paid ? "Sinal recebido" : `Sinal de ${PERCENTUAL_DO_SINAL}`}
+          </Text>
           <Text className="font-sans-extrabold text-2xl text-coral">{formatBRL(depositAmount)}</Text>
         </View>
         <View className="mt-1 flex-row justify-between">

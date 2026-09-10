@@ -12,7 +12,7 @@
  *   entrega           R$ 20,00, exclusivamente em Chapecó
  *   entrega+montagem  R$ 70,00 (a montagem custa R$ 50,00 e só existe junto
  *                     da entrega — se a equipe vai montar, ela já leva)
- *   pagamento         50% de sinal na reserva, 50% na retirada/entrega
+ *   pagamento         sinal na reserva (DEPOSIT_RATE), saldo na retirada/entrega
  *
  * Estes valores são constantes porque hoje existe uma empresa só. Se um dia a
  * plataforma atender outras (ver docs/VISAO-SAAS.md), viram configuração de
@@ -42,8 +42,23 @@ export const DELIVERY_WITH_ASSEMBLY_FEE = DELIVERY_FEE + ASSEMBLY_FEE;
 /** Única cidade atendida com entrega no lançamento. */
 export const DELIVERY_CITY = "Chapecó";
 
-/** Fração paga na reserva. O restante é pago na retirada/entrega. */
-export const DEPOSIT_RATE = 0.5;
+/**
+ * Fração paga na reserva. O restante é pago na retirada/entrega.
+ *
+ * Mudar este número muda o que a Festaê recebe para segurar uma data, e por
+ * isso ele é a única fonte: os textos que a cliente lê ("sinal de 30%") são
+ * derivados dele logo abaixo. Enquanto a porcentagem era escrita à mão em
+ * oito lugares — resumo, tela de pagamento, painel, cobrança do Mercado Pago,
+ * Termos de Uso —, mudar a regra queria dizer caçar strings, e uma esquecida
+ * é o app prometendo um valor e o Pix cobrando outro.
+ */
+export const DEPOSIT_RATE = 0.3;
+
+/** "30%" — como a cliente lê o sinal. Derivado, nunca digitado. */
+export const PERCENTUAL_DO_SINAL = `${Math.round(DEPOSIT_RATE * 100)}%`;
+
+/** "70%" — o que fica para a retirada/entrega. */
+export const PERCENTUAL_DO_SALDO = `${Math.round((1 - DEPOSIT_RATE) * 100)}%`;
 
 export const DELIVERY_UNAVAILABLE_MESSAGE =
   "No momento, realizamos entregas somente em Chapecó. Para outras cidades, a retirada deverá ser realizada na Festaê.";
@@ -95,6 +110,12 @@ export function toCents(value: number): number {
  * Existe separada porque o pagamento precisa dividir um total que já está
  * gravado no pedido, sem refazer a conta dos produtos. O saldo é sempre a
  * diferença, para que sinal + saldo feche o total ao centavo.
+ *
+ * ATENÇÃO: isto é uma PROJEÇÃO, e vale para o pedido que ainda não recebeu
+ * dinheiro nenhum. Depois que a cliente paga, quem manda é o que ela pagou —
+ * use `saldoAPagar`. A diferença deixou de ser teórica no dia em que o sinal
+ * mudou de 50% para 30%: dividir de novo o total de uma festa cujo sinal de
+ * 50% já entrou geraria um Pix de saldo maior do que a dívida real.
  */
 export function splitPayment(total: number): { deposit: number; balance: number } {
   const totalCents = toCentsInt(total);
@@ -103,6 +124,25 @@ export function splitPayment(total: number): { deposit: number; balance: number 
     deposit: fromCentsInt(depositCents),
     balance: fromCentsInt(totalCents - depositCents),
   };
+}
+
+/**
+ * Quanto a cliente ainda deve, a partir do que ela realmente pagou.
+ *
+ * É a única conta honesta de saldo. `splitPayment` responde "quanto seria o
+ * saldo se o sinal fosse cobrado hoje"; esta responde "quanto falta", que é
+ * o que vai no Pix e o que a operação cobra na entrega.
+ *
+ * As duas davam o mesmo resultado enquanto a taxa do sinal nunca mudava.
+ * Passaram a divergir quando o sinal virou 30%, e a divergência tinha valor
+ * em reais: uma festa de R$ 600 com sinal de 50% já pago (R$ 300) passaria a
+ * cobrar R$ 420 de saldo — R$ 120 a mais do que a cliente deve.
+ *
+ * Nunca devolve negativo: quem pagou a mais tem crédito a resolver por fora,
+ * não uma cobrança de valor negativo.
+ */
+export function saldoAPagar(total: number, jaPago: number): number {
+  return fromCentsInt(Math.max(0, toCentsInt(total) - toCentsInt(jaPago)));
 }
 
 export interface PricingInput {
@@ -124,9 +164,9 @@ export interface PricingResult {
   deliveryFee: number;
   assemblyFee: number;
   total: number;
-  /** 50% pagos na reserva. */
+  /** A fração paga na reserva (DEPOSIT_RATE). */
   deposit: number;
-  /** 50% pagos na retirada/entrega. Sempre total − deposit. */
+  /** O que fica para a retirada/entrega. Sempre total − deposit. */
   balance: number;
 }
 
@@ -157,7 +197,7 @@ export function calculateOrderPricing(input: PricingInput): PricingResult {
 
   const totalCents = productsCents + deliveryCents + assemblyCents;
 
-  // O saldo é sempre a diferença, nunca um segundo cálculo de 50%: assim
+  // O saldo é sempre a diferença, nunca um segundo cálculo da taxa: assim
   // sinal + saldo fecha exatamente o total mesmo em valor ímpar
   // (R$ 570,01 → 285,01 de sinal e 285,00 de saldo, nunca 285,01 + 285,01).
   const { deposit, balance } = splitPayment(fromCentsInt(totalCents));
