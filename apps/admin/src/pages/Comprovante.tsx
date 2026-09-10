@@ -173,9 +173,7 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
 }
 
 function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean }) {
-  const titulo = c.temPagamento
-    ? "Comprovante de pagamento e confirmação de reserva"
-    : "Confirmação de reserva";
+  const titulo = c.temPagamento ? "Comprovante de pagamento" : "Confirmação de reserva";
   const quitada = c.temPagamento && c.valores.saldo === 0;
 
   return (
@@ -212,7 +210,6 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
         <section className="bloco">
           <h2>A festa</h2>
           <dl>
-            <Linha rotulo="Data" valor={c.dataDaFesta} />
             <Linha rotulo="Ocasião" valor={c.festa.tipo} />
             {c.festa.tema && <Linha rotulo="Tema" valor={c.festa.tema} />}
             {c.festa.convidados && <Linha rotulo="Convidados" valor={String(c.festa.convidados)} />}
@@ -223,43 +220,38 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
                 (c.logistica.montagem ? " · com montagem" : "")
               }
             />
-            {c.logistica.endereco && <Linha rotulo="Endereço" valor={c.logistica.endereco} />}
-            <Linha rotulo="Cidade" valor={c.festa.cidade} />
+            {c.logistica.endereco && (
+              <Linha rotulo="Endereço" valor={`${c.logistica.endereco} — ${c.festa.cidade}`} />
+            )}
           </dl>
         </section>
       </div>
 
       <section className="bloco">
         <h2>O que vem na sua festa</h2>
-        <table className="itens">
-          <tbody>
-            {c.itens.map((item) => (
-              <tr key={item.descricao}>
-                <td>{item.descricao}</td>
-                <td className="quantidade">{item.quantidade}×</td>
-              </tr>
-            ))}
-            {c.itens.length === 0 && (
-              <tr>
-                <td colSpan={2} className="vazio">
-                  Itens a combinar.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        {/* O número de colunas acompanha o tamanho da lista. Medido: em
+            coluna única, treze linhas já empurram o documento para a segunda
+            folha — que é o que a operação relatou. Em duas, cabem dezessete;
+            em três, a lista deixa de ser o que decide o número de páginas. */}
+        <ul
+          className={`itens ${
+            c.itens.length > 12 ? "itens-tres-colunas" : c.itens.length > 5 ? "itens-duas-colunas" : ""
+          }`}
+        >
+          {c.itens.map((item) => (
+            <li key={item.descricao}>
+              <span className="item-nome">{item.descricao}</span>
+              <span className="quantidade">{item.quantidade}×</span>
+            </li>
+          ))}
+          {c.itens.length === 0 && <li className="vazio">Itens a combinar.</li>}
+        </ul>
       </section>
 
       <section className="bloco valores">
         <h2>Valores</h2>
         <dl>
           <Linha rotulo="Total da festa" valor={brl(c.valores.total)} />
-          {c.valores.entrega > 0 && (
-            <Linha rotulo="Já incluída a taxa de entrega" valor={brl(c.valores.entrega)} />
-          )}
-          {c.valores.montagem > 0 && (
-            <Linha rotulo="Já incluída a montagem" valor={brl(c.valores.montagem)} />
-          )}
         </dl>
 
         {/* Os dois rótulos mudam com o estado porque os dois seriam mentira
@@ -313,13 +305,10 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
         <p className="marca-assinatura">Maria Luiza Pocai</p>
         <p className="linha-assinatura" />
         <p className="quem-assina">
-          Maria Luiza Pocai · {COMPANY.tradeName}
-          <br />
-          {COMPANY.legalName} · CNPJ {COMPANY.taxId}
+          Maria Luiza Pocai · {COMPANY.tradeName} · CNPJ {COMPANY.taxId}
         </p>
         <p className="emitido-por">
-          Documento emitido eletronicamente pela Festaê em {c.emitidoEm}. Vale como comprovante do
-          valor recebido e da data reservada.
+          Emitido eletronicamente. Vale como comprovante do valor recebido e da data reservada.
         </p>
       </section>
 
@@ -428,11 +417,25 @@ const CSS_DO_COMPROVANTE = `
 .linha-dado dt { margin: 0; color: #56708C; font-size: 13px; flex-shrink: 0; }
 .linha-dado dd { margin: 0; text-align: right; font-weight: 600; min-width: 0; word-break: break-word; }
 
-.itens { width: 100%; border-collapse: collapse; }
-.itens td { padding: 6px 0; border-bottom: 1px dotted var(--sand); }
-.itens tr:last-child td { border-bottom: none; }
+.itens { list-style: none; margin: 0; padding: 0; }
+.itens li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-bottom: 1px dotted var(--sand);
+}
+.itens li:last-child { border-bottom: none; }
+.item-nome { min-width: 0; }
+.itens-duas-colunas,
+.itens-tres-colunas { display: grid; column-gap: 22px; }
+.itens-duas-colunas { grid-template-columns: 1fr 1fr; }
+.itens-tres-colunas { grid-template-columns: 1fr 1fr 1fr; column-gap: 16px; }
+.itens-tres-colunas .item-nome { font-size: 13px; }
+/* No celular as colunas espremeriam os nomes; lá a folha rola. */
+@media (max-width: 640px) {
+  .itens-duas-colunas,
+  .itens-tres-colunas { grid-template-columns: 1fr; }
+}
 .quantidade { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.vazio { color: #56708C; font-style: italic; }
+.vazio { color: #56708C; font-style: italic; border-bottom: none !important; }
 
 .placar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 /* No celular os dois valores empilham: lado a lado eles estouravam a folha,
@@ -490,31 +493,33 @@ const CSS_DO_COMPROVANTE = `
     position: absolute; left: 0; top: 0; width: 100%; max-width: none;
     border: none; border-radius: 0; padding: 0;
     background: #fff;
-    font-size: 9.5pt;
+    font-size: 9pt;
   }
   /* Compactação só do papel. Um comprovante que vira duas folhas, com a
      segunda carregando apenas a assinatura, é folha e tinta gastas — e
      chega na cliente com cara de documento mal feito. Na tela o espaço
      continua largo, porque lá ele não custa nada. */
-  #comprovante .logo { width: 96px; }
-  #comprovante .cabecalho { padding-bottom: 12px; }
-  #comprovante .numero-contrato { font-size: 21px; }
-  #comprovante .declaracao { margin: 10px 0 10px; padding: 7px 11px; font-size: 11.5px; }
+  #comprovante .logo { width: 88px; }
+  #comprovante .cabecalho { padding-bottom: 9px; }
+  #comprovante .numero-contrato { font-size: 19px; }
+  #comprovante .declaracao { margin: 8px 0; padding: 6px 10px; font-size: 11px; }
   #comprovante .colunas { gap: 14px; }
-  #comprovante .bloco { margin-bottom: 8px; }
+  #comprovante .bloco { margin-bottom: 7px; }
   #comprovante .bloco h2 { margin-bottom: 5px; padding-bottom: 3px; }
   #comprovante .linha-dado { padding: 1.5px 0; }
-  #comprovante .itens td { padding: 4px 0; }
-  #comprovante .placar { margin-top: 10px; gap: 10px; }
-  #comprovante .placar-item { padding: 8px 12px; }
-  #comprovante .placar-item strong { font-size: 18px; }
+  #comprovante .itens li { padding: 3px 0; }
+  #comprovante .itens-duas-colunas { grid-template-columns: 1fr 1fr !important; }
+  #comprovante .itens-tres-colunas { grid-template-columns: 1fr 1fr 1fr !important; }
+  #comprovante .placar { margin-top: 8px; gap: 8px; }
+  #comprovante .placar-item { padding: 6px 12px; }
+  #comprovante .placar-item strong { font-size: 17px; }
   #comprovante .nota-saldo { margin-top: 7px; }
   #comprovante .pagamentos { margin-top: 8px; }
   #comprovante .placar-item.quitado strong { font-size: 16px; }
-  #comprovante .assinatura { margin-top: 10px; padding-top: 9px; }
-  #comprovante .marca-assinatura { font-size: 32px; padding-bottom: 4px; }
+  #comprovante .assinatura { margin-top: 9px; padding-top: 8px; }
+  #comprovante .marca-assinatura { font-size: 27px; padding-bottom: 3px; }
   #comprovante .emitido-por { margin-top: 7px; }
-  #comprovante .rodape { margin-top: 10px; padding-top: 8px; }
+  #comprovante .rodape { margin-top: 8px; padding-top: 7px; }
   #comprovante .linha-assinatura { margin-bottom: 6px; }
   #comprovante .emitido-por { font-size: 10px; }
   #comprovante .rodape p { font-size: 10px; }
