@@ -11,6 +11,7 @@ import {
   type DadosDoComprovante,
 } from "@festae/shared";
 import { api } from "@/lib/api";
+import { ALLURA_WOFF2_BASE64 } from "./assinatura-manuscrita";
 
 interface ReservaCompleta {
   id: string;
@@ -276,7 +277,7 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
             <strong>{brl(c.valores.pago)}</strong>
           </div>
           <div className={`placar-item ${quitada ? "quitado" : "saldo"}`}>
-            <span>{quitada ? "Pago integralmente" : "Falta pagar"}</span>
+            <span>{quitada ? "Pago integralmente" : "Saldo restante"}</span>
             <strong>{quitada ? "Nada a pagar" : brl(c.valores.saldo)}</strong>
           </div>
         </div>
@@ -310,12 +311,16 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
       )}
 
       <section className="assinatura">
-        <p className="marca-assinatura">Festaê</p>
+        {/* O nome vem acima do fio, como assinatura sobre linha de
+            assinatura, e repetido em letra de imprensa abaixo — é assim que
+            um documento assinado se lê, e é o que permite conferir o nome
+            quando a letra cursiva não entrega uma letra. */}
+        <p className="marca-assinatura">Maria Luiza Pocai</p>
         <p className="linha-assinatura" />
         <p className="quem-assina">
-          {COMPANY.tradeName} · {COMPANY.legalName}
+          Maria Luiza Pocai · {COMPANY.tradeName}
           <br />
-          CNPJ {COMPANY.taxId}
+          {COMPANY.legalName} · CNPJ {COMPANY.taxId}
         </p>
         <p className="emitido-por">
           Documento emitido eletronicamente pela Festaê em {c.emitidoEm}. Vale como comprovante do
@@ -349,6 +354,12 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
  * fundo em folha inteira é cartucho gasto à toa.
  */
 const CSS_DO_COMPROVANTE = `
+@font-face {
+  font-family: "Assinatura Festae";
+  src: url(data:font/woff2;base64,${ALLURA_WOFF2_BASE64}) format("woff2");
+  font-weight: 400;
+  font-display: block;
+}
 .acoes-do-comprovante {
   display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
 }
@@ -458,12 +469,16 @@ const CSS_DO_COMPROVANTE = `
 .observacoes { margin: 0; white-space: pre-wrap; }
 
 .assinatura { margin-top: 26px; padding-top: 18px; border-top: 2px solid var(--gold); text-align: center; }
+/* A cursiva tem hastes que descem abaixo da linha de base (o "z" do Luiza).
+   O padding embaixo é o que impede o fio da assinatura de cortá-las. */
 .marca-assinatura {
-  margin: 0; font-size: 30px; font-weight: 800; color: var(--navy);
-  font-style: italic; letter-spacing: -.01em;
+  margin: 0; padding-bottom: 6px;
+  font-family: "Assinatura Festae", "Segoe Script", cursive;
+  font-size: 40px; font-weight: 400; color: var(--navy);
+  line-height: 1.1; letter-spacing: .01em;
 }
 .linha-assinatura {
-  width: 220px; margin: 4px auto 8px; border-bottom: 1px solid var(--navy);
+  width: 260px; margin: 0 auto 8px; border-bottom: 1px solid var(--navy);
 }
 .quem-assina { margin: 0; font-size: 12px; color: #56708C; line-height: 1.5; }
 .emitido-por { margin: 10px auto 0; max-width: 460px; font-size: 11px; color: #7A8FA6; line-height: 1.5; }
@@ -502,7 +517,7 @@ const CSS_DO_COMPROVANTE = `
   #comprovante .pagamentos { margin-top: 8px; }
   #comprovante .placar-item.quitado strong { font-size: 16px; }
   #comprovante .assinatura { margin-top: 10px; padding-top: 9px; }
-  #comprovante .marca-assinatura { font-size: 21px; }
+  #comprovante .marca-assinatura { font-size: 32px; padding-bottom: 4px; }
   #comprovante .emitido-por { margin-top: 7px; }
   #comprovante .rodape { margin-top: 10px; padding-top: 8px; }
   #comprovante .linha-assinatura { margin-bottom: 6px; }
