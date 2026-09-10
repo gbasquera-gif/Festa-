@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Ban, CalendarClock, Pencil, SquarePen, Trash2 } from "lucide-react";
+import { Ban, CalendarClock, Pencil, Receipt, SquarePen, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -139,7 +139,19 @@ export function AcoesDaReserva({
       <h3 className="text-sm font-bold text-navy">Ações</h3>
 
       <div className="flex flex-col gap-2">
-        {/* A edição completa vem primeiro porque é o que a operação procura
+        {/* O comprovante encabeça a lista porque é a ação que a cliente está
+            esperando do outro lado: assim que o sinal cai, alguém precisa
+            mandar o papel. As outras ações são para quando algo muda. */}
+        <Button
+          variant="outline"
+          className="justify-start"
+          onClick={() => navegar(`/reservas/${reservaId}/comprovante`)}
+        >
+          <Receipt className="mr-2 size-4" />
+          Comprovante do sinal
+        </Button>
+
+        {/* A edição completa vem logo depois porque é o que a operação procura
             quando a cliente muda de ideia: data, kit, itens e valores numa
             tela só. As ações abaixo são atalhos para os casos estreitos. */}
         <Button

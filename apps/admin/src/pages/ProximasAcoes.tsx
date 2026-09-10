@@ -2,7 +2,15 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { CalendarPlus, ChevronDown, ChevronRight, Pencil, Phone, SquarePen } from "lucide-react";
+import {
+  CalendarPlus,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Phone,
+  Receipt,
+  SquarePen,
+} from "lucide-react";
 import {
   RESERVATION_TASK_LABELS,
   SITUACAO_LABELS,
@@ -214,12 +222,20 @@ function CartaoDaFesta({ festa }: { festa: Festa }) {
               {/* A edição completa mora aqui dentro, e não na fileira de
                   ícones do cartão: mudar data, kit ou valor tira a pessoa
                   desta lista, e não é a ação que ela repete o dia inteiro. */}
-              <Button asChild variant="outline" size="sm" className="mt-3 h-11 sm:h-9">
-                <Link href={`/reservas/${festa.reservaId}/editar`}>
-                  <SquarePen className="mr-2 size-4" />
-                  Editar reserva completa
-                </Link>
-              </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm" className="h-11 sm:h-9">
+                  <Link href={`/reservas/${festa.reservaId}/comprovante`}>
+                    <Receipt className="mr-2 size-4" />
+                    Comprovante
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="sm" className="h-11 sm:h-9">
+                  <Link href={`/reservas/${festa.reservaId}/editar`}>
+                    <SquarePen className="mr-2 size-4" />
+                    Editar reserva
+                  </Link>
+                </Button>
+              </div>
             </div>
 
             <div>

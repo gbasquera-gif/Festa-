@@ -158,6 +158,18 @@ export type {
 } from "./operacao";
 
 export {
+  FESTAE_CONTATO,
+  montarComprovante,
+  numeroDoContrato,
+} from "./comprovante";
+export type {
+  DadosDoComprovante,
+  EntradaDoComprovante,
+  ItemDoComprovante,
+  PagamentoDoComprovante,
+} from "./comprovante";
+
+export {
   FUSO_DE_CHAPECO_EM_MINUTOS,
   dataDaFestaSchema,
   diaDaFesta,

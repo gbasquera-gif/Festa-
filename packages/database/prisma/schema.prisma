@@ -336,6 +336,23 @@ model Reservation {
   requestedAt DateTime          @default(now())
   confirmedAt DateTime?
 
+  /// Número do contrato, impresso no comprovante que a cliente guarda.
+  ///
+  /// Vem de uma sequência do banco, e não de uma contagem feita na
+  /// aplicação: duas reservas fechadas no mesmo segundo pegariam o mesmo
+  /// número se alguém contasse linhas para decidir o próximo. É o banco que
+  /// garante que cada contrato tem um número só seu.
+  ///
+  /// O ano não entra no número, entra na data do contrato ao lado. Um
+  /// número que reinicia todo ano exigiria contador por ano; um que não
+  /// reinicia mas carrega o ano ("FE-2027-0043") diria que houve 43
+  /// contratos em 2027, o que seria mentira.
+  ///
+  /// Int, e não BigInt: BigInt não sobrevive a `JSON.stringify` e derrubava
+  /// a lista de reservas com erro 500. Um inteiro do Postgres comporta dois
+  /// bilhões de contratos — o limite que a Festaê não vai alcançar.
+  contractSeq Int               @unique @default(autoincrement())
+
   /// Quem cancelou e quando.
   ///
   /// Cancelar libera data e material, e é a operação inteira que sente o

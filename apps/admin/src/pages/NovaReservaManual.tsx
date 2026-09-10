@@ -76,9 +76,18 @@ export default function NovaReservaManual() {
           origem,
         }),
       }),
-    onSuccess: () => {
-      toast.success("Reserva registrada. A data já está bloqueada na loja.");
-      navegar("/operacao");
+    // Com o sinal já recebido, a cliente está esperando o comprovante do
+    // outro lado — cair direto nele poupa a operação de procurar a reserva
+    // que ela acabou de digitar. Sem sinal não há o que comprovar, e o
+    // caminho segue para a lista de festas do dia.
+    onSuccess: (reserva) => {
+      const sinalRecebido = statusPagamento === "PAID" && Number(sinal) > 0;
+      toast.success(
+        sinalRecebido
+          ? "Reserva registrada. Aqui está o comprovante para enviar à cliente."
+          : "Reserva registrada. A data já está bloqueada na loja.",
+      );
+      navegar(sinalRecebido ? `/reservas/${reserva.id}/comprovante` : "/operacao");
     },
     onError: (erro) => {
       setConflitos(null);
