@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
+import { diaDaFesta, normalizarDataDaFesta } from "@festae/shared";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
 import { getMaxReservationsPerDay } from "../../common/operations-config";
@@ -275,13 +276,14 @@ export class ReservationsService {
       );
     }
 
-    const novaData = new Date(`${novaDataISO}T12:00:00.000Z`);
-    if (Number.isNaN(novaData.getTime())) {
+    let novaData: Date;
+    try {
+      novaData = normalizarDataDaFesta(novaDataISO);
+    } catch {
       throw new BadRequestException("Data inválida.");
     }
 
-    const mesmoDia =
-      reserva.eventDate.toISOString().slice(0, 10) === novaData.toISOString().slice(0, 10);
+    const mesmoDia = diaDaFesta(reserva.eventDate) === diaDaFesta(novaData);
     if (mesmoDia) {
       throw new BadRequestException("A festa já está marcada para esta data.");
     }
@@ -333,7 +335,7 @@ export class ReservationsService {
 
     this.logger.log(
       `Reserva ${id} remarcada por ${usuarioId}: ` +
-        `${dataAnterior.toISOString().slice(0, 10)} -> ${novaData.toISOString().slice(0, 10)}.`,
+        `${diaDaFesta(dataAnterior)} -> ${diaDaFesta(novaData)}.`,
     );
 
     return atualizada;

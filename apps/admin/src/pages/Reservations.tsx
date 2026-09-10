@@ -3,7 +3,12 @@ import { Link } from "wouter";
 import { Plus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { RESERVATION_STATUSES, splitPayment, type ReservationStatus } from "@festae/shared";
+import {
+  RESERVATION_STATUSES,
+  formatarDataDaFesta,
+  splitPayment,
+  type ReservationStatus,
+} from "@festae/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -154,7 +159,7 @@ function Detail({ row }: { row: ReservationRow }) {
   const payment = paymentSummary(row);
   const items = packingList(row);
   const isDelivery = row.order.fulfillment === "DELIVERY";
-  const eventDate = new Date(row.eventDate).toLocaleDateString("pt-BR");
+  const eventDate = formatarDataDaFesta(row.eventDate);
 
   const message =
     `Oi ${event.user.name.split(" ")[0]}! Aqui é da Festaê. ` +
@@ -348,7 +353,7 @@ function CartaoDeReserva({
                 obriga a abrir o detalhe só para saber de quem é a festa. */}
             <p className="font-semibold break-words text-navy">{event.user.name}</p>
             <p className="text-sm text-muted-foreground">
-              {new Date(row.eventDate).toLocaleDateString("pt-BR")}
+              {formatarDataDaFesta(row.eventDate)}
               {event.theme?.name ? ` · ${event.theme.name}` : ""}
             </p>
           </div>
@@ -493,7 +498,7 @@ export default function Reservations() {
                 >
                   <TableCell className="text-muted-foreground">{isOpen ? "▾" : "▸"}</TableCell>
                   <TableCell className="font-medium">
-                    {new Date(row.eventDate).toLocaleDateString("pt-BR")}
+                    {formatarDataDaFesta(row.eventDate)}
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{row.order.event.user.name}</div>

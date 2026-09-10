@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import { splitPayment } from "@festae/shared";
+import { formatarDataDaFesta, splitPayment } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -95,7 +95,7 @@ export default function Pagamento() {
 
   const total = Number(event?.order.total ?? 0);
   const { deposit: depositAmount, balance } = splitPayment(total);
-  const festaEm = event ? new Date(event.date).toLocaleDateString("pt-BR") : null;
+  const festaEm = event ? formatarDataDaFesta(event.date) : null;
 
   if (paid) {
     return (

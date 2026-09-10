@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "../enums";
+import { dataDaFestaSchema } from "../data-da-festa";
 
 export const availabilityQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use o formato AAAA-MM."),
@@ -28,7 +29,14 @@ export type AvailabilityQuery = z.infer<typeof availabilityQuerySchema>;
 
 export const createEventSchema = z.object({
   type: z.enum(EVENT_TYPES),
-  date: z.coerce.date(),
+  /**
+   * Dia do calendário, ancorado ao meio-dia UTC pelo schema.
+   *
+   * Era `z.coerce.date()`, que transformava "2026-09-25" em meia-noite UTC —
+   * 21h do dia 24 em Chapecó. A festa aparecia um dia antes no resumo da
+   * cliente, na tela de Reservas e na régua da operação.
+   */
+  date: dataDaFestaSchema,
   /**
    * Quantos convidados. Opcional de propósito: muita gente reserva a data
    * antes de fechar a lista, e exigir o número no primeiro passo parava

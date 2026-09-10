@@ -155,6 +155,15 @@ export type {
 } from "./operacao";
 
 export {
+  FUSO_DE_CHAPECO_EM_MINUTOS,
+  dataDaFestaSchema,
+  diaDaFesta,
+  diaEmChapeco,
+  formatarDataDaFesta,
+  normalizarDataDaFesta,
+} from "./data-da-festa";
+
+export {
   manualReservationSchema,
   marcarTarefaSchema,
   corrigirDadosSchema,

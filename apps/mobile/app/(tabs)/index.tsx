@@ -20,6 +20,7 @@ import { openWhatsApp } from "@/lib/contato";
 import { FESTAS, MENSAGEM_FESTA_PERSONALIZADA } from "@/lib/festas";
 import { EVENT_TYPE_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
+import { formatarDataDaFesta } from "@festae/shared";
 
 /**
  * O destaque da home diz o que a Festaê faz e manda escolher a ocasião —
@@ -105,7 +106,7 @@ export default function Home() {
           <Badge label="Continuar de onde parou" variant="coral" />
           <Text className="mt-2 text-lg font-sans-bold text-navy">{EVENT_TYPE_LABEL[ongoing.type]}</Text>
           <Text className="text-navy/70">
-            {new Date(ongoing.date).toLocaleDateString("pt-BR")}
+            {formatarDataDaFesta(ongoing.date)}
             {sufixoConvidados(ongoing.guestCount)}
           </Text>
         </Card>

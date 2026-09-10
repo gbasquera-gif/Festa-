@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { EVENT_TYPE_META, isEventType } from "@festae/shared";
+import { EVENT_TYPE_META, formatarDataDaFesta, isEventType } from "@festae/shared";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
@@ -53,7 +53,7 @@ export default function Events() {
           )}
           {data?.map((event) => (
             <TableRow key={event.id}>
-              <TableCell data-label="Data">{new Date(event.date).toLocaleDateString("pt-BR")}</TableCell>
+              <TableCell data-label="Data">{formatarDataDaFesta(event.date)}</TableCell>
               <TableCell data-label="Cliente">
                 <div className="font-medium">{event.user.name}</div>
                 <div className="text-xs text-muted-foreground">{event.user.email}</div>

@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { goToLogin } from "@/lib/login-gate";
 import { EVENT_TYPE_LABEL, ORDER_STATUS_LABEL, type EventRecord, type Kit, type Product } from "@/lib/types";
 import { colors } from "@/theme";
+import { formatarDataDaFesta } from "@festae/shared";
 
 const STATUS_VARIANT: Record<string, "neutral" | "coral" | "success" | "danger"> = {
   CART: "neutral",
@@ -172,7 +173,7 @@ export default function Pedidos() {
               />
             </View>
             <Text className="mt-1 text-navy/70">
-              {new Date(event.date).toLocaleDateString("pt-BR")}
+              {formatarDataDaFesta(event.date)}
               {sufixoConvidados(event.guestCount)}
             </Text>
             <Text className="text-navy/70">{event.theme?.name ?? "Tema não escolhido"}</Text>

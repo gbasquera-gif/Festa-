@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { calculateOrderPricing } from "@festae/shared";
+import { calculateOrderPricing, formatarDataDaFesta } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -82,7 +82,7 @@ export default function Resumo() {
 
       <Card>
         <Text className="font-bold text-navy">{EVENT_TYPE_LABEL[event.type]}</Text>
-        <Text className="text-navy/70">{new Date(event.date).toLocaleDateString("pt-BR")}</Text>
+        <Text className="text-navy/70">{formatarDataDaFesta(event.date)}</Text>
         {/* O tema pode ter vindo do kit, e não do formulário: quem escolhe
             "Kit Safari" na vitrine já disse qual é o tema, e mostrar "Sem
             tema definido" logo abaixo faria o resumo parecer errado. */}

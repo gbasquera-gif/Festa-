@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EVENT_TYPES, PAYMENT_METHODS, PAYMENT_STATUSES } from "../enums";
 import { MANUAL_SALE_CHANNELS, SALE_CHANNELS } from "../sale-channels";
+import { dataDaFestaSchema } from "../data-da-festa";
 
 /**
  * Uma venda fechada fora da loja, digitada no painel.
@@ -29,7 +30,7 @@ export const manualReservationSchema = z.object({
   }),
 
   evento: z.object({
-    data: z.coerce.date(),
+    data: dataDaFestaSchema,
     tipo: z.enum(EVENT_TYPES),
     themeId: z.string().cuid().optional().or(z.literal("")),
     guestCount: z.coerce.number().int().min(1).max(2000).optional(),

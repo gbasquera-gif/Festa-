@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { router, useIsFocused } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { calculateOrderPricing } from "@festae/shared";
+import { calculateOrderPricing, formatarDataDaFesta } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -211,7 +211,7 @@ export default function ResumoLocal() {
           {EVENT_TYPE_LABEL[eventType ?? "ANIVERSARIO"]}
         </Text>
         <Text className="text-navy/70">
-          {date ? new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR") : "Data a escolher"}
+          {date ? formatarDataDaFesta(date) : "Data a escolher"}
         </Text>
         <Text className="text-navy/70">{kit?.theme?.name ?? "Sem tema definido"}</Text>
         <Text className="text-navy/70">{city}</Text>

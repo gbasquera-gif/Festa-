@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import {
+  diaDaFesta,
   totalDaVendaManual,
   type EditarReservaInput,
   type ManualReservationInput,
@@ -57,8 +58,9 @@ export class ManualReservationService {
    * agenda justamente por não ter reserva.
    */
   async criar(input: ManualReservationInput, criadoPorId: string) {
-    const dataDaFesta = new Date(input.evento.data);
-    dataDaFesta.setUTCHours(12, 0, 0, 0);
+    // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
+    // segunda regra de fuso à espera de divergir da primeira.
+    const dataDaFesta = input.evento.data;
 
     // 1. A agenda ainda comporta esta festa?
     if (!(await this.availability.isDateAvailable(dataDaFesta))) {
@@ -232,14 +234,9 @@ export class ManualReservationService {
       );
     }
 
-    const dataDaFesta = new Date(input.evento.data);
-    if (Number.isNaN(dataDaFesta.getTime())) {
-      throw new BadRequestException("Data inválida.");
-    }
-    dataDaFesta.setUTCHours(12, 0, 0, 0);
+    const dataDaFesta = input.evento.data;
 
-    const mudouDeDia =
-      reserva.eventDate.toISOString().slice(0, 10) !== dataDaFesta.toISOString().slice(0, 10);
+    const mudouDeDia = diaDaFesta(reserva.eventDate) !== diaDaFesta(dataDaFesta);
 
     // 1. A agenda comporta esta festa na data escolhida?
     if (!(await this.availability.isDateAvailable(dataDaFesta, id))) {
@@ -359,13 +356,12 @@ export class ManualReservationService {
     this.logger.log(
       `Reserva ${id} editada por ${editadoPorId}` +
         (mudouDeDia
-          ? ` — data ${reserva.eventDate.toISOString().slice(0, 10)} -> ` +
-            `${dataDaFesta.toISOString().slice(0, 10)}`
+          ? ` — data ${diaDaFesta(reserva.eventDate)} -> ${diaDaFesta(dataDaFesta)}`
           : "") +
         `, total R$ ${total.toFixed(2)}.`,
     );
 
-    return { id, data: dataDaFesta.toISOString().slice(0, 10), total, remarcada: mudouDeDia };
+    return { id, data: diaDaFesta(dataDaFesta), total, remarcada: mudouDeDia };
   }
 
   /**

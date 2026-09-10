@@ -1,3 +1,5 @@
+import { FUSO_DE_CHAPECO_EM_MINUTOS } from "./data-da-festa";
+
 /**
  * A régua de preparação de uma festa.
  *
@@ -198,15 +200,28 @@ export const REGUA: Record<PreparationStage, EtapaDaRegua> = {
  * Quantos dias inteiros faltam para a festa.
  *
  * Compara só a data, ignorando a hora: uma festa de hoje às 8h continua
- * sendo "hoje" às 18h, e não "ontem". Trabalha no fuso de Chapecó porque é
- * o calendário de quem lê — em UTC, tudo depois das 21h já seria amanhã.
+ * sendo "hoje" às 18h, e não "ontem".
+ *
+ * Os dois lados são lidos de maneiras diferentes porque são coisas
+ * diferentes. `agora` é um instante de verdade, e o dia dele é o dia de
+ * Chapecó — às 22h aqui já é amanhã em UTC, e a operação não virou o dia. A
+ * data da festa não é instante nenhum: é uma âncora de dia do calendário
+ * (meio-dia UTC), e o dia dela é o dia em UTC, literalmente.
+ *
+ * Ler a festa no fuso local era o que fazia a régua andar um dia antes da
+ * conta para as reservas antigas da loja, gravadas à meia-noite UTC: a tela
+ * dizia "hoje é a festa" na véspera, e "devolução" no dia. Lendo em UTC, até
+ * aquelas linhas antigas caem no dia certo.
  */
 export function diasAteAFesta(dataDaFesta: Date, agora: Date = new Date()): number {
-  const dia = (d: Date) => {
-    const local = new Date(d.getTime() - 3 * 60 * 60 * 1000);
-    return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
-  };
-  return Math.round((dia(dataDaFesta) - dia(agora)) / 86_400_000);
+  const emDias = (iso: string) => Date.parse(`${iso}T00:00:00.000Z`);
+  const hojeEmChapeco = new Date(agora.getTime() + FUSO_DE_CHAPECO_EM_MINUTOS * 60_000);
+
+  return Math.round(
+    (emDias(dataDaFesta.toISOString().slice(0, 10)) -
+      emDias(hojeEmChapeco.toISOString().slice(0, 10))) /
+      86_400_000,
+  );
 }
 
 /**
