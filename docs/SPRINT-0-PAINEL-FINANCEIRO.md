@@ -100,7 +100,7 @@ function mesVenda(v){ return mesDe(v.data);                          }  // data 
 function mesConta(c){ return mesDe(c.dataPgto || c.venc || c.data);  }  // data do PAGAMENTO
 ```
 
-### 4.1 Os três problemas conceituais
+### 4.1 Os cinco problemas conceituais
 
 **a) Lucro mistura dois regimes.** Faturamento é contado pela data do contrato;
 despesa, pela data do pagamento. `lucro = fat − desp` subtrai competência de
@@ -167,10 +167,20 @@ nenhuma reserva pode informar.
 | Backup pode estar desatualizado | Médio | Exportar de novo antes da carga |
 | Contratos podem existir nos dois sistemas | Médio | Conferir os 6 — §7 |
 | Regime de caixa impossível de reconstituir | Médio | Sem data de recebimento na origem — §4.1c |
+| Recebido gravado em dois campos que discordam | **Alto** | Não somar `sinal` sem ler `status` — §8.1 |
 | Versão do código ≠ versão dos dados | Baixo | `seed:v3` no zip, `seed:v1` na exportação — §3.2 |
 | Contrato presente só na exportação antiga | **Alto** | Correção ou perda? Decidir antes da carga — §3.1 |
 | Origem não tem histórico de alteração | Alto | Resolvido pela migração ao Postgres — §3.1 |
 | Lucro exibido hoje está errado | Médio | Não replicar as fórmulas |
+
+### 6.1 Sobre a falta de autenticação
+
+A função aceita `GET` sem qualquer verificação e `POST` com as ações `set`,
+`importar` e `apagar`. Não é só leitura exposta: **é escrita e exclusão
+abertas**. Enquanto o painel existir no ar, isso vale.
+
+Mitigações possíveis, em ordem de esforço: proteção por senha do próprio
+Netlify, ou remover o site do ar assim que o financeiro novo estiver conferido.
 
 ### 6.2 Os dados estão dentro do HTML público
 
@@ -182,15 +192,6 @@ abertas para o mesmo dado.
 
 A cópia em `legado/painel-financeiro/` foi versionada **sem** essa constante,
 porque o repositório é público.
-
-### 6.1 Sobre a falta de autenticação
-
-A função aceita `GET` sem qualquer verificação e `POST` com as ações `set`,
-`importar` e `apagar`. Não é só leitura exposta: **é escrita e exclusão
-abertas**. Enquanto o painel existir no ar, isso vale.
-
-Mitigações possíveis, em ordem de esforço: proteção por senha do próprio
-Netlify, ou remover o site do ar assim que o financeiro novo estiver conferido.
 
 ## 7. Conferência pendente de duplicidade
 
@@ -213,7 +214,40 @@ obrigatória para as demais cidades. Ou a regra mudou na prática, ou o contrato
 foi uma exceção combinada. Isso precisa ser decidido antes da carga — senão a
 migração cria uma reserva que o próprio sistema considera inválida.
 
-## 8. Método
+## 8. Conferência contra o painel no ar
+
+Os indicadores exibidos hoje na tela foram conferidos um a um contra a
+exportação, por script. **Todos batem** — faturamento do mês, nº de contratos,
+ticket médio, despesas, lucro, margem, capital investido, faturamento
+acumulado, ROI, gap e linha de ritmo. As únicas diferenças são de
+arredondamento na exibição (centavos suprimidos na linha de ritmo).
+
+Isso confirma duas coisas: a exportação **está atualizada**, e as fórmulas que
+documentei na §4 são mesmo as que produzem os números da tela. A crítica da §4
+não é sobre os cálculos estarem errados em relação ao dado — é sobre **o dado
+não sustentar a pergunta** que o indicador diz responder.
+
+### 8.1 O valor recebido está gravado em dois lugares que discordam
+
+A conferência do "saldo a receber" revelou o achado mais sério do modelo atual.
+Um contrato quitado fica com `status: "Pago"` e o campo `sinal` **continua
+zerado**. Quem soma o campo `sinal` subestima o caixa; quem soma só os não-Pago
+acerta o saldo mas não sabe quanto entrou.
+
+Ou seja: **não existe um campo que responda "quanto já recebi"**. A resposta
+tem de ser montada cruzando um número com uma string, e as duas podem discordar
+sem que nada acuse.
+
+Foi exatamente aqui que eu errei: somei o campo `sinal` e reportei um recebido
+menor que o real. O painel no ar acerta o saldo, porque filtra por `status` —
+mas acerta por um caminho que nenhum outro indicador usa.
+
+No Postgres isso não tem como acontecer: cada pagamento é uma linha própria com
+valor e `paidAt`, o recebido é a soma dessas linhas, e o status é **derivado**
+delas em vez de ser digitado ao lado. Junto com a §4.1c (a data do recebimento
+que a origem nunca guardou), este é o argumento central da migração.
+
+## 9. Método
 
 Todo número deste relatório e do relatório separado foi calculado **por script,
 lendo o JSON exportado** — não por leitura visual dos registros. O script está
@@ -224,7 +258,12 @@ Isso importa porque numa primeira passagem eu havia conferido parte dos
 lançamentos à mão e errei um dos totais. Conferência manual não é aceitável
 para carga financeira, mesmo com volume pequeno.
 
-## 9. O que NÃO foi feito
+E script sozinho também não basta: a segunda versão do script somava o campo
+`sinal` e errava o recebido por não conhecer a regra do `status` — erro que só
+apareceu ao confrontar o resultado com a tela (§8.1). A carga da Sprint 1 tem
+de fechar **contra os dois**: a exportação e os indicadores exibidos.
+
+## 10. O que NÃO foi feito
 
 Nada de reconstrução. Sem migração, sem alteração de banco, sem deploy, sem
 apagar o painel atual. Produção segue em `61ee80e`.

@@ -41,6 +41,10 @@ def brl(valor):
     return f"R$ {valor:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
 
 
+def quitado(venda):
+    return str(venda.get("status", "")).strip().lower() == "pago"
+
+
 def classificar(aporte):
     finalidade = sem_acento(aporte["finalidade"])
     if any(termo in finalidade for termo in CUSTEIO):
@@ -63,9 +67,17 @@ def main(caminho):
     aportes = dados.get("festae:aportes", [])
 
     contratado = sum(v["valor"] for v in vendas)
-    recebido = sum(v["sinal"] for v in vendas)
+    # O valor recebido está gravado em DOIS lugares que podem discordar: o campo
+    # `sinal` e a string `status`. Um contrato quitado fica com status "Pago" e
+    # `sinal` continua zerado — somar só o campo `sinal` subestima o caixa.
+    # Foi assim que a primeira apuração errou o total.
+    recebido = sum(v["valor"] if quitado(v) else v["sinal"] for v in vendas)
     print(f"CONTRATOS: {len(vendas)} | contratado {brl(contratado)} | "
-          f"sinal recebido {brl(recebido)} | a receber {brl(contratado - recebido)}")
+          f"recebido {brl(recebido)} | a receber {brl(contratado - recebido)}")
+    for venda in vendas:
+        if quitado(venda) and venda["sinal"] == 0:
+            print(f"  quitado pelo status, com campo sinal zerado: "
+                  f"{venda['num']} {brl(venda['valor'])}")
 
     por_contrato = defaultdict(float)
     por_festa = defaultdict(float)
