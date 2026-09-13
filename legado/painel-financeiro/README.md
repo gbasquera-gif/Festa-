@@ -79,3 +79,9 @@ As fórmulas atuais estão documentadas no relatório da Sprint 0. Elas **não**
 devem ser copiadas para o sistema novo sem correção: o painel de hoje soma
 faturamento por data do contrato e despesas por data de pagamento, o que
 mistura competência com caixa num mesmo indicador de lucro.
+
+## O que veio depois
+
+A reconstrução está descrita em `docs/SPRINT-1-FINANCEIRO.md`. A carga fica em
+`apps/backend/scripts/importar-painel-financeiro.ts` e roda em simulação por
+padrão — ela não grava nada sem `--aplicar`.

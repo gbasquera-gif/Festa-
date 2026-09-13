@@ -13,6 +13,7 @@ import {
   TrendingUp,
   LogOut,
   Menu,
+  Wallet,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,12 @@ const NAV_ITEMS = [
   { href: "/produtos", label: "Produtos", icon: Package },
   { href: "/kits", label: "Kits", icon: Boxes },
   { href: "/funil", label: "Funil", icon: TrendingUp },
+  /**
+   * Só para ADMIN. Quem monta a festa precisa saber o que entregar e quando,
+   * não a margem do negócio — e o endpoint recusa OPS de qualquer forma, então
+   * deixar o item visível só entregaria um 403 a quem clicasse.
+   */
+  { href: "/financeiro", label: "Financeiro", icon: Wallet, somenteAdmin: true },
 ];
 
 /** O nome da tela atual, para o cabeçalho do celular dizer onde a pessoa está. */
@@ -63,7 +70,7 @@ function Menu_({ onNavegar }: { onNavegar?: () => void }) {
   return (
     <>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((item) => !item.somenteAdmin || user?.role === "ADMIN").map(({ href, label, icon: Icon }) => {
           const active = location === href;
           return (
             <Link

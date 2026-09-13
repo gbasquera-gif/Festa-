@@ -351,7 +351,7 @@ model Reservation {
   /// Int, e não BigInt: BigInt não sobrevive a `JSON.stringify` e derrubava
   /// a lista de reservas com erro 500. Um inteiro do Postgres comporta dois
   /// bilhões de contratos — o limite que a Festaê não vai alcançar.
-  contractSeq Int               @unique @default(autoincrement())
+  contractSeq Int @unique @default(autoincrement())
 
   /// Quem cancelou e quando.
   ///
@@ -462,4 +462,96 @@ model AnalyticsEvent {
   @@index([type])
   @@index([createdAt])
   @@map("analytics_events")
+}
+
+// ---------- Financeiro ----------
+
+/// O que o dinheiro que saiu virou.
+///
+/// Não é categoria contábil: é a pergunta que a operação faz. Um painel
+/// romano continua valendo depois da festa e pode ser alugado de novo; um
+/// rolo de fita de cetim acaba; um anúncio no Meta nem chega a existir como
+/// coisa. As três respostas entram de formas diferentes no resultado, e é
+/// por isso que a distinção é um campo do lançamento, e não a aba onde
+/// alguém digitou.
+enum NaturezaDoGasto {
+  /// Vira patrimônio alugável. Não é despesa do mês: é capital que fica.
+  ACERVO
+
+  /// Some na festa — balão, fita, cola, linha, tinta, sacola. É custo de
+  /// entregar a festa, e pertence ao mês em que foi gasto.
+  CONSUMO
+
+  /// Mantém a empresa de pé sem virar coisa nem festa — anúncio, domínio,
+  /// assinatura, imposto, curso, uniforme. Despesa do mês, sempre.
+  CUSTEIO
+}
+
+/// Dinheiro que saiu da Festaê.
+///
+/// Uma tabela só, e não duas. O painel antigo separava "Contas" de
+/// "Aportes" em abas diferentes, e era essa separação que produzia o erro
+/// central do financeiro: o cálculo de despesa só lia a aba Contas, então
+/// cada balão comprado como "aporte" sumia do resultado do mês *e* inflava
+/// o capital investido que alimenta o ROI. O lucro exibido chegava a ficar
+/// quase três vezes maior que o real.
+///
+/// Aqui a diferença entre comprar um painel e comprar um rolo de fita é
+/// `natureza` — um campo do lançamento, que o cálculo lê. Não existe lugar
+/// onde digitar errado esconda o gasto do resultado.
+///
+/// Ver docs/SPRINT-0-PAINEL-FINANCEIRO.md §4.1d.
+model Gasto {
+  id        String          @id @default(cuid())
+  descricao String
+  natureza  NaturezaDoGasto
+  valor     Decimal         @db.Decimal(10, 2)
+
+  /// Quando o dinheiro saiu de fato. Nulo enquanto não foi pago.
+  ///
+  /// É este campo que separa "a pagar" de "pago" — não existe status ao
+  /// lado que possa discordar dele. O painel antigo guardava o quanto num
+  /// campo e o se num outro, e os dois discordavam sem que nada acusasse
+  /// (§8.1). Aqui a pergunta "saiu?" tem uma resposta só.
+  pagoEm DateTime?
+
+  /// Quando vence. Serve para a tela ordenar o que ainda falta pagar.
+  venceEm DateTime?
+
+  categoria        String?
+  formaDePagamento String?
+  observacao       String?
+
+  /// Chave estável do registro de origem, quando veio do painel antigo.
+  ///
+  /// Existe para a carga poder rodar duas vezes sem duplicar nada: a
+  /// segunda execução reconhece o que já entrou. Nulo para tudo que for
+  /// lançado daqui pra frente.
+  referenciaExterna String? @unique
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([pagoEm])
+  @@index([natureza])
+  @@map("gastos")
+}
+
+/// A meta de lucro de um mês.
+///
+/// Um registro por mês, e não um valor global como no painel antigo. Lá a
+/// meta era um número só: mudá-la para outubro reescrevia retroativamente
+/// se agosto e setembro tinham batido ou não. Uma meta que muda o passado
+/// não serve para cobrar o presente.
+model MetaMensal {
+  id String @id @default(cuid())
+
+  /// O mês, como "2026-09".
+  competencia String  @unique
+  lucroAlvo   Decimal @db.Decimal(10, 2)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@map("metas_mensais")
 }

@@ -171,6 +171,51 @@ export type {
 } from "./comprovante";
 
 export {
+  criarGastoSchema,
+  editarGastoSchema,
+  definirMetaSchema,
+  mesQuerySchema,
+} from "./schemas/financeiro";
+export type {
+  CriarGastoInput,
+  EditarGastoInput,
+  DefinirMetaInput,
+  MesQuery,
+} from "./schemas/financeiro";
+
+export {
+  REGIMES,
+  REGIME_LABEL,
+  NATUREZAS_DO_GASTO,
+  NATUREZA_LABEL,
+  NATUREZAS_DE_DESPESA,
+  mesEmChapeco,
+  recebidoDoContrato,
+  saldoDoContrato,
+  receitaPorCompetencia,
+  receitaPorCaixa,
+  recebidoSemData,
+  despesaDoMes,
+  acervoDoMes,
+  acervoAcumulado,
+  gastoAcumulado,
+  totalAReceber,
+  totalRecebido,
+  linhaDeRitmo,
+  indicadoresDoMes,
+} from "./financeiro";
+export type {
+  Regime,
+  NaturezaDoGasto,
+  RecebimentoApurado,
+  ContratoApurado,
+  GastoApurado,
+  ResultadoDoMes,
+  LinhaDeRitmo,
+  IndicadoresDoMes,
+} from "./financeiro";
+
+export {
   FUSO_DE_CHAPECO_EM_MINUTOS,
   dataDaFestaSchema,
   diaDaFesta,

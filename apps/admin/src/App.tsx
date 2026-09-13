@@ -17,6 +17,7 @@ import ProximasAcoes from "@/pages/ProximasAcoes";
 import NovaReservaManual from "@/pages/NovaReservaManual";
 import EditarReserva from "@/pages/EditarReserva";
 import Comprovante from "@/pages/Comprovante";
+import Financeiro from "@/pages/Financeiro";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -41,6 +42,11 @@ function Router() {
       <Route path="/">
         <Protected>
           <Dashboard />
+        </Protected>
+      </Route>
+      <Route path="/financeiro">
+        <Protected>
+          <Financeiro />
         </Protected>
       </Route>
       <Route path="/funil">
