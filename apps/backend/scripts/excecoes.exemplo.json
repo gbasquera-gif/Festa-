@@ -1,0 +1,22 @@
+{
+  "_leia": [
+    "Exceções comerciais conhecidas, declaradas por quem fechou a venda.",
+    "O script detecta sozinho só o que consegue PROVAR pelo dado (entrega fora",
+    "da cidade atendida, por exemplo). O que depende de memória da negociação",
+    "entra aqui, revisado por uma pessoa — não fica escrito no código.",
+    "",
+    "Copie este arquivo para fora do repositório, preencha, e passe o caminho",
+    "com --excecoes. O repositório é público.",
+    "",
+    "Regras reconhecidas:",
+    "  ENTREGA_FORA_DA_CIDADE_ATENDIDA  entrega feita fora de Chapecó",
+    "  TAXA_DE_ENTREGA_CORTESIA         entrega e/ou montagem sem custo",
+    "  VALOR_NEGOCIADO_FORA_DA_TABELA   desconto ou preço combinado à parte"
+  ],
+  "001/2026": [
+    {
+      "regra": "TAXA_DE_ENTREGA_CORTESIA",
+      "justificativa": "Entrega e montagem sem custo para o cliente, combinado na venda."
+    }
+  ]
+}
