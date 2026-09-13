@@ -24,7 +24,9 @@ JOIN orders   o ON o.id = r."orderId"
 JOIN events   e ON e.id = o."eventId"
 JOIN users    u ON u.id = e."userId"
 LEFT JOIN payments p ON p."orderId" = o.id
-WHERE r.status NOT IN ('CANCELLED', 'REJECTED')
-  AND r."eventDate" >= DATE '2026-08-01'
+-- Canceladas e recusadas entram de propósito, com o status à vista: uma
+-- reserva cancelada que bate com um contrato do painel antigo é conflito de
+-- dado, não ausência. Esconder isso faria a carga recriar a reserva.
+WHERE r."eventDate" >= DATE '2026-07-01'
 GROUP BY r."contractSeq", u.name, r."eventDate", e.city, o.fulfillment, o.total, r.status
 ORDER BY r."eventDate";
