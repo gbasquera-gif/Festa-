@@ -1,0 +1,5 @@
+# Os DADOS financeiros nunca entram aqui: este repositório é público.
+# O backup fica fora do Git — ver README, seção "Onde está o backup".
+backup*.txt
+backup*.json
+dados*.json
