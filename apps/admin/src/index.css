@@ -59,6 +59,27 @@
   --chart-3: #C7A360;
   --chart-4: #FDF9F4;
   --chart-5: #E5DCC8;
+  /* Cores de ESTADO, separadas da cor da marca.
+     O coral é a cor de AÇÃO — botão que se aperta, link que se segue. Usar
+     o mesmo coral para "atrasado" e para "salvar" ensina o olho a ignorar
+     os dois. Estado tem paleta própria, e ela não compete com a marca. */
+  --ok: #0E7C66;
+  --ok-fraco: #E6F4F0;
+  --atencao: #B26A00;
+  --atencao-fraco: #FDF2E2;
+  --risco: #C3352B;
+  --risco-fraco: #FBEAE8;
+  --info: #1B5E9E;
+  --info-fraco: #E8F1F9;
+
+  /* Superfícies: a régua de profundidade do painel. Fio fino em vez de
+     sombra pesada — sombra espalhada por toda tela vira ruído, e some na
+     impressão e no celular sob sol. */
+  --superficie: #FFFFFF;
+  --superficie-2: #F7F2EA;
+  --fio: #E7DECB;
+  --fio-forte: #D5C8AE;
+
   --radius: 0.75rem;
   --background: #FDF9F4;
   --foreground: #0F2A4F;
@@ -77,11 +98,11 @@
   --border: #E5DCC8;
   --input: #E5DCC8;
   --ring: #F06853;
-  --sidebar: #FDF9F4;
-  --sidebar-foreground: #0F2A4F;
-  --sidebar-accent: #F0E6D8;
-  --sidebar-accent-foreground: #0F2A4F;
-  --sidebar-border: #E5DCC8;
+  --sidebar: #0C2340;
+  --sidebar-foreground: #D7E2EE;
+  --sidebar-accent: #163A62;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #1B3D63;
   --sidebar-ring: #F06853;
 }
 
@@ -298,3 +319,156 @@
     min-height: 2.75rem;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Calendário de reservas
+   ──────────────────────────────────────────────────────────────────────────
+
+   A lista responde "quais são as reservas"; a grade responde "como está o
+   mês". Duas festas no mesmo sábado, uma semana vazia, o fim de semana que
+   ninguém reservou — nada disso aparece numa lista ordenada por data.
+
+   A cor de cada festa é a do DINHEIRO, não a do status: quem varre o mês
+   procura o que exige ação, e "confirmada" não exige nada. */
+
+.calendario {
+  border: 1px solid var(--fio);
+  border-radius: var(--radius);
+  background: var(--superficie);
+  overflow: hidden;
+}
+
+.calendario-topo {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--fio);
+  background: var(--superficie-2);
+}
+.calendario-navegacao { display: flex; align-items: center; gap: 4px; }
+.calendario-navegacao button {
+  display: flex; align-items: center; justify-content: center;
+  width: 2.75rem; height: 2.75rem; border-radius: 999px;
+  color: var(--color-navy); transition: background-color .15s;
+}
+.calendario-navegacao button:hover { background: var(--fio); }
+.calendario-navegacao h2 {
+  margin: 0 6px; min-width: 9.5rem; text-align: center;
+  font-size: 1.05rem; font-weight: 800; color: var(--color-navy);
+  text-transform: capitalize;
+}
+.calendario-navegacao h2 span { font-weight: 500; color: var(--muted-foreground); }
+
+.calendario-resumo { display: flex; gap: 22px; margin: 0; }
+.calendario-resumo div { text-align: right; }
+.calendario-resumo dt {
+  font-size: .68rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted-foreground);
+}
+.calendario-resumo dd {
+  margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--color-navy);
+  font-variant-numeric: tabular-nums;
+}
+.tom-ok { color: var(--ok) !important; }
+.tom-atencao { color: var(--atencao) !important; }
+
+.calendario-grade { display: grid; grid-template-columns: repeat(7, 1fr); }
+.calendario-cabecalho {
+  padding: 8px 4px; text-align: center;
+  font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted-foreground); background: var(--superficie-2);
+  border-bottom: 1px solid var(--fio);
+}
+
+.calendario-dia {
+  min-height: 7rem; padding: 5px;
+  border-right: 1px solid var(--fio); border-bottom: 1px solid var(--fio);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.calendario-dia:nth-child(7n + 7) { border-right: none; }
+.calendario-dia.fora { background: var(--superficie-2); }
+
+/* Hoje ganha um fio coral em cima, não um fundo: fundo colorido numa célula
+   competiria com as tarjas das festas, que é onde a informação mora. */
+.calendario-dia.hoje { box-shadow: inset 0 3px 0 var(--color-coral); }
+.calendario-dia.hoje .numero-do-dia { color: var(--color-coral); font-weight: 800; }
+
+.numero-do-dia {
+  font-size: .78rem; font-weight: 600; color: var(--muted-foreground);
+  padding: 1px 3px; font-variant-numeric: tabular-nums;
+}
+.festas-do-dia { display: flex; flex-direction: column; gap: 3px; }
+
+.festa {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+  padding: 4px 7px; border-radius: 6px;
+  font-size: .75rem; line-height: 1.25; font-weight: 700;
+  border-left: 3px solid transparent;
+  transition: filter .15s;
+}
+.festa:hover { filter: brightness(.94); }
+.festa-cliente { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.festa-saldo { font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85; white-space: nowrap; }
+
+.festa-sem-sinal { background: var(--risco-fraco); color: #8E241C; border-left-color: var(--risco); }
+.festa-sinal { background: var(--atencao-fraco); color: #7A4700; border-left-color: var(--atencao); }
+.festa-paga { background: var(--ok-fraco); color: #0A5A4A; border-left-color: var(--ok); }
+.festa-cancelada {
+  background: var(--superficie-2); color: var(--muted-foreground);
+  border-left-color: var(--fio-forte); text-decoration: line-through;
+}
+
+.calendario-legenda {
+  display: flex; flex-wrap: wrap; gap: 16px; margin: 0;
+  padding: 10px 16px; list-style: none;
+  border-top: 1px solid var(--fio); background: var(--superficie-2);
+  font-size: .75rem; color: var(--muted-foreground);
+}
+.calendario-legenda li { display: flex; align-items: center; gap: 6px; }
+/* O ponto da legenda usa a cor FORTE, não o fundo pálido das tarjas: num
+   quadrado de 11px o tom claro desaparece, e uma legenda que não se vê é
+   pior que legenda nenhuma. */
+.ponto {
+  width: .7rem; height: .7rem; border-radius: 3px; display: inline-block;
+  background: var(--cor-do-ponto, var(--fio-forte));
+}
+.ponto.festa-sem-sinal { --cor-do-ponto: var(--risco); }
+.ponto.festa-sinal { --cor-do-ponto: var(--atencao); }
+.ponto.festa-paga { --cor-do-ponto: var(--ok); }
+.ponto.festa-cancelada { --cor-do-ponto: var(--fio-forte); }
+/* A legenda herda as classes das tarjas só pela cor; o resto do estilo de
+   tarja (linha riscada, borda esquerda) não pode vazar para o quadradinho. */
+.ponto.festa-cancelada { text-decoration: none; border-left: none; }
+
+/* No celular a grade de sete colunas viraria sete tiras ilegíveis. Os dias
+   com festa viram uma lista; os dias vazios somem, porque num mês de oito
+   festas rolar por trinta células vazias não ajuda ninguém. */
+@media (max-width: 767px) {
+  .calendario-grade { grid-template-columns: 1fr; }
+  .calendario-cabecalho { display: none; }
+  .calendario-dia { min-height: 0; border-right: none; padding: 0; }
+  .calendario-dia.fora { display: none; }
+  .calendario-dia:not(:has(.festa)) { display: none; }
+  .calendario-dia { flex-direction: row; align-items: flex-start; gap: 10px; padding: 9px 12px; }
+  .calendario-dia.hoje { box-shadow: inset 3px 0 0 var(--color-coral); }
+  .numero-do-dia { min-width: 1.6rem; font-size: .95rem; padding-top: 2px; }
+  .festas-do-dia { flex: 1; min-width: 0; }
+  .festa { padding: 7px 9px; font-size: .82rem; min-height: 2.75rem; align-items: center; }
+}
+
+/* Alternador de visão: dois estados mutuamente exclusivos numa cápsula só.
+   Dois botões soltos não dizem que são alternativas um do outro. */
+.alternador {
+  display: inline-flex; padding: 3px; gap: 2px;
+  border: 1px solid var(--fio); border-radius: 999px; background: var(--superficie-2);
+}
+.alternador button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 2.25rem; padding: 0 14px; border-radius: 999px;
+  font-size: .85rem; font-weight: 700; color: var(--muted-foreground);
+  transition: background-color .15s, color .15s;
+}
+.alternador button:hover { color: var(--color-navy); }
+.alternador button[aria-selected="true"] {
+  background: var(--color-navy); color: #fff;
+  box-shadow: 0 1px 2px rgb(12 35 64 / .25);
+}
+@media (max-width: 1023px) { .alternador button { min-height: 2.75rem; } }

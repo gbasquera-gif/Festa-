@@ -38,13 +38,22 @@ function tituloDaRota(location: string): string {
   return item?.label ?? "Painel";
 }
 
-function Marca() {
+/**
+ * A marca na barra lateral, agora sobre fundo marinho.
+ *
+ * `escura` existe porque a mesma marca aparece no cabeçalho claro do
+ * celular: marinho sobre marinho some, e duas cópias do componente
+ * divergiriam na primeira vez que alguém mexesse numa delas.
+ */
+function Marca({ escura = false }: { escura?: boolean }) {
   return (
     <div>
-      <span className="text-xl font-extrabold text-navy">
+      <span className={cn("text-xl font-extrabold", escura ? "text-white" : "text-navy")}>
         Festa<span className="text-coral">ê!</span>
       </span>
-      <p className="text-xs text-muted-foreground">Painel administrativo</p>
+      <p className={cn("text-xs", escura ? "text-sidebar-foreground/60" : "text-muted-foreground")}>
+        Painel administrativo
+      </p>
     </div>
   );
 }
@@ -86,11 +95,11 @@ function Menu_({ onNavegar }: { onNavegar?: () => void }) {
       </nav>
 
       <div className="mt-auto border-t border-sidebar-border pt-4">
-        <p className="px-2 text-sm font-medium">{user?.name}</p>
-        <p className="px-2 text-xs text-muted-foreground">{user?.role}</p>
+        <p className="px-2 text-sm font-medium text-white">{user?.name}</p>
+        <p className="px-2 text-xs text-sidebar-foreground/60">{user?.role}</p>
         <button
           onClick={logout}
-          className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <LogOut className="size-4" />
           Sair
@@ -133,7 +142,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* Computador: barra fixa. */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 lg:flex">
         <div className="mb-8 px-2">
-          <Marca />
+          <Marca escura />
         </div>
         <Menu_ />
       </aside>
@@ -148,11 +157,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           />
           <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 shadow-xl">
             <div className="mb-6 flex items-start justify-between">
-              <Marca />
+              <Marca escura />
               <button
                 aria-label="Fechar menu"
                 onClick={() => setGaveta(false)}
-                className="-mr-1 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent"
+                className="-mr-1 flex size-11 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-white"
               >
                 <X className="size-5" />
               </button>

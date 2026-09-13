@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link } from "wouter";
-import { Plus } from "lucide-react";
+import { CalendarDays, Plus, Rows3 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { CalendarioDeReservas } from "@/components/CalendarioDeReservas";
 import { AcoesDaReserva } from "@/components/AcoesDaReserva";
 
 interface ProductRef {
@@ -420,6 +421,19 @@ function CartaoDeReserva({
 export default function Reservations() {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
+  // A escolha fica guardada: quem prefere o calendário prefere todo dia, e
+  // reabrir sempre na lista seria pedir dois toques a cada visita.
+  const [visao, setVisao] = useState<"calendario" | "lista">(
+    () => (localStorage.getItem("reservas:visao") as "calendario" | "lista") ?? "calendario",
+  );
+  const trocarVisao = (v: "calendario" | "lista") => {
+    setVisao(v);
+    try {
+      localStorage.setItem("reservas:visao", v);
+    } catch {
+      // Navegador com armazenamento bloqueado: a tela funciona, só não lembra.
+    }
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["reservations"],
@@ -449,13 +463,61 @@ export default function Reservations() {
         {/* Venda de WhatsApp entra por aqui. Sem este caminho ela ficava só
             no caderno, e o calendário da loja seguia oferecendo a data.
             Largura inteira no celular: é a ação principal desta tela. */}
-        <Button asChild className="h-11 w-full sm:h-9 sm:w-auto">
-          <Link href="/reservas/nova">
-            <Plus className="mr-1 size-4" />
-            Nova reserva manual
-          </Link>
-        </Button>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="alternador" role="tablist" aria-label="Como ver as reservas">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={visao === "calendario"}
+              onClick={() => trocarVisao("calendario")}
+            >
+              <CalendarDays className="size-4" />
+              Calendário
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={visao === "lista"}
+              onClick={() => trocarVisao("lista")}
+            >
+              <Rows3 className="size-4" />
+              Lista
+            </button>
+          </div>
+
+          <Button asChild className="h-11 w-full sm:h-9 sm:w-auto">
+            <Link href="/reservas/nova">
+              <Plus className="mr-1 size-4" />
+              Nova reserva manual
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      {visao === "calendario" && (
+        <>
+          {isLoading && <p className="text-muted-foreground">Carregando...</p>}
+          {data && (
+            <CalendarioDeReservas
+              festas={data.map((r) => {
+                const p = paymentSummary(r);
+                return {
+                  id: r.id,
+                  eventDate: r.eventDate,
+                  cliente: r.order.event.user.name,
+                  status: r.status,
+                  entrega: r.order.fulfillment === "DELIVERY",
+                  total: p.total,
+                  saldo: p.balance,
+                };
+              })}
+            />
+          )}
+        </>
+      )}
+
+      {visao === "lista" && (
+      <>
 
       {/* Celular: um cartão por reserva. Oito colunas em 390px viravam uma
           tabela de 1056px que só cabia girando o aparelho — e girar para ler
@@ -581,6 +643,8 @@ export default function Reservations() {
         A etapa muda o andamento da festa; o pagamento é atualizado sozinho quando o Pix é
         confirmado pelo Mercado Pago.
       </p>
+      </>
+      )}
     </div>
   );
 }
