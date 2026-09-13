@@ -26,20 +26,60 @@ A inferência feita na auditoria anterior — "provável Netlify Blobs" — est�
 
 ## 3. Volume de dados
 
+Exportação de 13/09/2026:
+
 | Chave | Registros |
 |---|---|
-| `festae:vendas` | 1 contrato |
-| `festae:contas` | 1 lançamento (valor R$ 0,00) |
-| `festae:aportes` | 37 lançamentos |
+| `festae:vendas` | 6 contratos |
+| `festae:contas` | 3 lançamentos, todos PAGAR e quitados |
+| `festae:aportes` | 58 lançamentos |
 | `festae:meta` | 1 valor mensal |
-| `festae:orcamentos` | vazio |
+| `festae:orcamentos` | ausente da exportação |
 
-**O volume é pequeno.** Isso muda o risco da migração: não é um banco de anos
-de histórico, é um punhado de lançamentos que cabem numa conferência manual.
+**O volume é pequeno** — cabe em conferência manual, o que reduz muito o risco
+da carga.
 
-> **Ressalva:** o backup recebido é uma exportação de um instante. Se houve
-> lançamento depois dela, ele não está aqui. Uma exportação nova deve ser
-> tirada imediatamente antes da carga definitiva.
+> **Os valores reais não estão neste arquivo.** O repositório é público; os
+> números foram entregues em relatório separado. Aqui ficam só a estrutura e
+> os achados.
+
+### 3.1 As duas exportações e o contrato que sumiu
+
+Recebi duas exportações: a que veio junto com o zip e a que você enviou depois
+como "backup atualizado". Confirmei por script qual é qual — os 37 aportes da
+primeira estão **todos contidos** nos 58 da segunda (após normalizar o formato
+de data, que a origem mistura entre ISO e `DD/MM/AAAA`). A segunda é mesmo a
+mais recente, e é a base de toda a apuração deste relatório.
+
+Só que a aba de vendas **não** se comporta como acréscimo. A exportação antiga
+tem um contrato `001/2026` — um cliente, um valor, modalidade Retirada — que
+**não existe em nenhum registro da exportação nova**, com nenhum número. Na
+nova, esse mesmo cliente aparece com outro número de contrato, outro valor,
+outra modalidade e a data da festa dois dias diferente.
+
+Duas leituras possíveis, e elas levam a cargas diferentes:
+
+- **foi correção** — o contrato foi refeito com os dados certos, a numeração
+  reiniciou quando a operação começou de fato, e não há nada a recuperar;
+- **foi perda** — a aba foi limpa e reescrita, e esse contrato deixou de
+  existir junto com o que ele faturava.
+
+Só você sabe qual. Se foi correção, seguimos direto. Se foi perda, a
+exportação antiga é a única cópia que resta dele, e ela está preservada.
+
+O que isso já prova, independente da resposta: **a origem não tem histórico.**
+Um registro reescrito não deixa rastro, e um apagado não deixa nenhum. É o
+mesmo argumento da falta de autenticação, visto por outro ângulo — e no
+Postgres esse problema não existe, porque a reserva tem `createdAt`,
+`updatedAt` e os pagamentos são linhas próprias em vez de um campo `sinal`
+sobrescrito.
+
+### 3.2 Divergência de versão
+
+A exportação traz a chave `festae:seed:v1`; o código preservado usa
+`festae:seed:v3`. O que está no ar e o que está no zip **não são a mesma
+versão**. Não muda o formato dos dados, mas convém saber qual é qual antes de
+concluir que o painel antigo pode ser desligado.
 
 ## 4. As fórmulas de hoje
 
@@ -67,28 +107,35 @@ despesa, pela data do pagamento. `lucro = fat − desp` subtrai competência de
 caixa. É exatamente a mistura que a direção aprovada proíbe.
 
 **b) Faturamento não é nem caixa nem competência.** É "valor contratado no mês
-da assinatura". O contrato 001/2026 ilustra os três resultados possíveis:
+da assinatura". Com os seis contratos exportados, a diferença entre as réguas
+é material: um contrato fechado num mês para festa no mês seguinte aparece
+inteiro no mês da assinatura, e o mês da festa fica zerado.
 
-| Leitura | Mês | Valor |
-|---|---|---|
-| Como o painel conta hoje (data do contrato) | julho | R$ 350 |
-| Competência (data da festa, 26/09) | setembro | R$ 350 |
-| Caixa (sinal recebido) | — | R$ 0 |
+**c) O regime de caixa é impossível de apurar.** A planilha guarda o *valor* do
+sinal, mas **não guarda a data em que ele entrou** — só a data do contrato.
+Sem data de recebimento não existe visão de caixa, e nenhuma reclassificação
+posterior recupera isso. É a maior perda de informação do sistema atual, e o
+argumento mais forte para a migração: no Postgres, `Payment.paidAt` já existe
+e já é preenchido.
 
-Julho aparece com R$ 350 de receita de uma festa que ainda não aconteceu e de
-um dinheiro que nunca entrou.
+**d) Despesa operacional está lançada como aporte.** Dos 58 "aportes",
+**85,3% do valor** é compra de patrimônio. Os outros **14,7%** se dividem em:
 
-**c) Despesa operacional está lançada como aporte.** Dos 37 "aportes",
-**7 são despesa de custeio** — Meta Ads, assinatura Zoho, registro de domínio —
-e não compra de patrimônio. Como `desp` só lê a aba Contas (que tem um único
-lançamento de R$ 0,00), o resultado é:
+- **consumíveis** — balões, fita, cola, linha, tinta, bomba: somem na festa e
+  são despesa do mês, não acervo;
+- **custeio** — anúncios, assinatura de e-mail, domínio, curso, uniforme:
+  despesa pura.
 
-```
-lucro líquido exibido = faturamento − 0
-```
+Como `desp` só lê a aba Contas, essa parcela some do resultado e ao mesmo tempo
+infla o "capital investido", que alimenta o ROI. Recalculando mês a mês: em um
+dos meses apurados o painel exibe lucro **2,9× maior** que o real, e em outro
+exibe **lucro onde o resultado foi negativo**. Os valores estão no relatório
+separado.
 
-O painel reporta lucro ignorando praticamente toda a saída de caixa, e ao mesmo
-tempo infla o "capital investido", que alimenta o ROI.
+**e) A mesma natureza de compra está em dois lugares.** Compras de balões
+aparecem tanto em `contas` (categoria "Compra de Itens para Locação",
+contabilizadas como despesa) quanto em `aportes` (contabilizadas como capital).
+Não há critério que separe as duas — é escolha do momento do lançamento.
 
 ## 5. Mapa de migração para o Postgres
 
@@ -118,7 +165,11 @@ nenhuma reserva pode informar.
 | Repositório público | **Alto** | Por isso os dados não entraram no Git |
 | Fonte sem versionamento | Alto | **Resolvido** por esta Sprint |
 | Backup pode estar desatualizado | Médio | Exportar de novo antes da carga |
-| Contrato 001/2026 pode existir nos dois sistemas | Médio | Conferir — §7 |
+| Contratos podem existir nos dois sistemas | Médio | Conferir os 6 — §7 |
+| Regime de caixa impossível de reconstituir | Médio | Sem data de recebimento na origem — §4.1c |
+| Versão do código ≠ versão dos dados | Baixo | `seed:v3` no zip, `seed:v1` na exportação — §3.2 |
+| Contrato presente só na exportação antiga | **Alto** | Correção ou perda? Decidir antes da carga — §3.1 |
+| Origem não tem histórico de alteração | Alto | Resolvido pela migração ao Postgres — §3.1 |
 | Lucro exibido hoje está errado | Médio | Não replicar as fórmulas |
 
 ### 6.2 Os dados estão dentro do HTML público
@@ -143,15 +194,37 @@ Netlify, ou remover o site do ar assim que o financeiro novo estiver conferido.
 
 ## 7. Conferência pendente de duplicidade
 
-O único contrato lançado — **001/2026, festa em 26/09/2026, R$ 350, retirada,
-sinal R$ 0** — precisa ser conferido contra as reservas do Postgres de
-produção, às quais não tenho acesso deste ambiente.
+Os **seis contratos** precisam ser conferidos um a um contra as reservas do
+Postgres de produção, à qual não tenho acesso deste ambiente. Pelo menos um
+deles corresponde a uma festa que a operação já trata no sistema operacional.
 
-- **Se existir como reserva:** não migrar. A reserva é a fonte única.
-- **Se não existir:** decidir entre cadastrá-la como reserva manual (preferível,
-  entra na agenda e no estoque) ou migrá-la apenas como histórico financeiro.
+Para cada contrato:
 
-## 8. O que NÃO foi feito
+- **Se existir como reserva:** não migrar. A reserva é a fonte única, e o
+  financeiro passa a derivar dela.
+- **Se não existir:** cadastrar como reserva manual é preferível a migrar só o
+  histórico financeiro — assim ele entra também na agenda e no estoque.
+
+### 7.1 Conflito de regra de negócio encontrado
+
+Um dos contratos é **fora de Chapecó, com entrega e montagem**. O sistema
+operacional hoje só oferece entrega em Chapecó (`DELIVERY_CITY`), com retirada
+obrigatória para as demais cidades. Ou a regra mudou na prática, ou o contrato
+foi uma exceção combinada. Isso precisa ser decidido antes da carga — senão a
+migração cria uma reserva que o próprio sistema considera inválida.
+
+## 8. Método
+
+Todo número deste relatório e do relatório separado foi calculado **por script,
+lendo o JSON exportado** — não por leitura visual dos registros. O script está
+em `legado/painel-financeiro/README.md`, junto com a instrução de onde guardar
+a exportação (fora do repositório).
+
+Isso importa porque numa primeira passagem eu havia conferido parte dos
+lançamentos à mão e errei um dos totais. Conferência manual não é aceitável
+para carga financeira, mesmo com volume pequeno.
+
+## 9. O que NÃO foi feito
 
 Nada de reconstrução. Sem migração, sem alteração de banco, sem deploy, sem
 apagar o painel atual. Produção segue em `61ee80e`.
