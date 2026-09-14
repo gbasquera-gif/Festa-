@@ -101,8 +101,41 @@ enum PaymentStatus {
 }
 
 enum PaymentType {
+  /// Comprovadamente sinal.
   DEPOSIT
+
+  /// Comprovadamente saldo.
   BALANCE
+
+  /// Dinheiro comprovadamente recebido, sem informação suficiente para dizer
+  /// se foi sinal, saldo ou pagamento único.
+  ///
+  /// Existe por causa de um caso real: um contrato do painel antigo estava
+  /// marcado "Pago" com o campo de sinal zerado. O dinheiro entrou — isso é
+  /// certo — mas a origem não guarda em quantas parcelas nem em que papel.
+  /// Sem este valor a carga teria de escolher entre duas afirmações falsas:
+  /// chamar de sinal um valor que a origem diz ser zero, ou chamar de saldo
+  /// um pagamento sem sinal antes dele.
+  ///
+  /// Conta como recebido e abate o saldo, como qualquer pagamento. Não é
+  /// sinal nem saldo, e a tela o mostra como recebimento histórico não
+  /// classificado. Vendas novas continuam usando DEPOSIT e BALANCE.
+  INDETERMINADO
+}
+
+/// Se um registro nasceu aqui ou veio de fora.
+///
+/// Valida política comercial quem responde "devemos aceitar este negócio?" —
+/// pergunta que só faz sentido antes do acordo. Sobre um acordo já cumprido
+/// e importado, ela não protege ninguém: ou bloqueia o registro, ou obriga a
+/// adulterar o dado para ele passar. Ver docs/MIGRACAO-DE-HISTORICO.md.
+enum OrigemDoRegistro {
+  /// Nasceu aqui e passou por todas as regras vigentes.
+  OPERACAO
+
+  /// Fato consumado, importado de sistema anterior. Integridade foi conferida;
+  /// política comercial, não.
+  MIGRACAO
 }
 
 // ---------- Models ----------
@@ -152,9 +185,10 @@ model User {
   // não expulsaria o invasor — ele seguiria dentro até o token expirar.
   passwordChangedAt DateTime?
 
-  events             Event[]
-  tarefasFeitas      ReservationTask[]
-  reservasCanceladas Reservation[]     @relation("ReservasCanceladas")
+  events              Event[]
+  tarefasFeitas       ReservationTask[]
+  reservasCanceladas  Reservation[]      @relation("ReservasCanceladas")
+  excecoesAutorizadas ExcecaoComercial[] @relation("ExcecoesAutorizadas")
 
   @@map("users")
 }
@@ -373,9 +407,19 @@ model Reservation {
 
   notes String?
 
-  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  cancelledBy User?             @relation("ReservasCanceladas", fields: [cancelledById], references: [id], onDelete: SetNull)
+  /// Se esta reserva passou pelas regras comerciais vigentes.
+  origemDoRegistro OrigemDoRegistro @default(OPERACAO)
+
+  /// Chave do contrato no sistema de origem, quando veio de migração.
+  ///
+  /// É o que torna a carga idempotente: rodar de novo reconhece o contrato
+  /// que já entrou em vez de criar uma segunda festa no mesmo dia.
+  referenciaExterna String? @unique
+
+  order       Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  cancelledBy User?              @relation("ReservasCanceladas", fields: [cancelledById], references: [id], onDelete: SetNull)
   tasks       ReservationTask[]
+  excecoes    ExcecaoComercial[]
 
   @@index([eventDate])
   @@index([cancelledById])
@@ -554,4 +598,49 @@ model MetaMensal {
   atualizadoEm DateTime @updatedAt
 
   @@map("metas_mensais")
+}
+
+/// Uma regra comercial que foi deixada de lado nesta reserva, e por quê.
+///
+/// Não é campo na reserva porque uma reserva pode ter mais de uma, e porque a
+/// pergunta interessante é pela regra e não pela reserva: "quantas entregas
+/// fora da cidade atendida já fizemos, e a que custo?" só tem resposta se a
+/// exceção for uma linha consultável.
+///
+/// A cidade, o cliente e o valor são dados — nenhuma regra os cita pelo nome.
+/// O que ganha nome estável é a regra excepcionada, para poder ser agrupada.
+///
+/// Serve também para exceção negociada numa venda nova, sem conceito novo: a
+/// regra bloqueia, a menos que venha uma exceção autorizada junto. A regra
+/// geral continua valendo para todo o resto.
+model ExcecaoComercial {
+  id            String @id @default(cuid())
+  reservationId String
+
+  /// Qual regra. Chave estável, não texto livre — texto livre não se agrupa.
+  regra String
+
+  /// O que foi combinado, em português, para quem ler daqui a dois anos.
+  justificativa String
+
+  /// Se a exceção foi provada pelo dado ou declarada por uma pessoa.
+  ///
+  /// Importa porque as duas têm peso diferente numa auditoria: "a entrega saiu
+  /// de Chapecó" está na exportação e é verificável; "a taxa foi cortesia"
+  /// depende da memória de quem fechou a venda.
+  origemDaInformacao String @default("declarada")
+
+  /// Quem decidiu. Nulo quando a decisão é anterior ao sistema.
+  autorizadaPorId String?
+  autorizadaEm    DateTime @default(now())
+
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  autorizadaPor User?       @relation("ExcecoesAutorizadas", fields: [autorizadaPorId], references: [id], onDelete: SetNull)
+
+  /// A mesma regra não se registra duas vezes na mesma reserva: é o que deixa
+  /// a carga rodar de novo sem empilhar exceção repetida.
+  @@unique([reservationId, regra])
+  @@index([regra])
+  @@index([autorizadaPorId])
+  @@map("excecoes_comerciais")
 }

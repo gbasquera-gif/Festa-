@@ -6,7 +6,7 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "test": "vitest run"
   },
   "dependencies": {

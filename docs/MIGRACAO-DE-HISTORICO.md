@@ -131,3 +131,62 @@ A migração vai gravar o total exato — que é o que alimenta todos os
 indicadores — e taxa zero, declarando que a decomposição é desconhecida. Se a
 operação souber a resposta contrato a contrato, dá para decompor depois sem
 mexer em nenhum total.
+
+## 7. Plano da carga real
+
+Ordem, e o porquê de cada passo.
+
+1. **Exportar o painel financeiro de novo**, no dia da carga. O backup usado na
+   simulação tem data; se alguém lançou algo depois, a carga precisa do estado
+   atual. Guardar fora do repositório.
+2. **Rodar em simulação** contra produção, com `--excecoes` apontando para o
+   arquivo de exceções declaradas. Ler as seções 1 a 5 do relatório: elas dizem
+   o que existe, o que falta e onde Admin e painel discordam.
+3. **Conferir os três totais de controle.** Se algum não fechar, parar. Um
+   controle que não fecha é erro de carga até prova em contrário.
+4. **Rodar com `--aplicar`.** A carga é transacional por contrato: ou entra
+   inteiro — cliente, evento, pedido, reserva, pagamentos, exceções — ou não
+   entra nada dele.
+5. **Conferir os totais de novo**, agora contra o banco, pela tela do painel.
+6. **Não desligar o painel antigo.** Ele continua no ar como referência até a
+   conferência de alguns dias dar certo.
+
+### Quando parar no meio
+
+- qualquer contrato reprovado na integridade (a carga lança e não grava aquele);
+- divergência financeira entre Admin e painel que você não tenha revisado;
+- um dos três controles fora.
+
+## 8. Rollback
+
+`apps/backend/scripts/desfazer-carga-historica.ts`, simulação por padrão.
+
+O critério é a referência externa `legado:`. Nada que a operação cadastre
+carrega essa marca — é para isso que ela existe. Apagar o evento derruba
+pedido, pagamentos, reserva e exceções em cascata, tudo numa transação só.
+
+**Testado de verdade**, não descrito: carga, contagem, rollback, contagem. As
+tabelas voltaram exatamente ao estado anterior.
+
+Duas coisas o rollback **não** desfaz, de propósito:
+
+- **clientes** — a carga cria quando não acha pelo nome, e não há marca que
+  separe "criado agora" de "já existia". Apagar um cliente que já estava ali
+  seria pior que deixar um cadastro vazio.
+- **meta mensal** — a carga faz upsert e pode ter sobrescrito um valor que
+  ninguém guardou. Restaurar exige saber qual era.
+
+## 9. Idempotência
+
+Rodar de novo não duplica nada. Três garantias, em camadas:
+
+| o quê | garantia |
+|---|---|
+| contrato | `Reservation.referenciaExterna` é único |
+| gasto | `Gasto.referenciaExterna` é único |
+| exceção | `(reservationId, regra)` é único, e o upsert não sobrescreve justificativa já revisada |
+| reserva da operação | a carga nunca a altera — só acrescenta exceção |
+
+**Verificado**: três execuções seguidas de `--aplicar`, contando linhas entre
+cada uma. Reservas, pedidos, pagamentos, clientes, exceções e gastos ficaram
+idênticos da primeira à terceira.

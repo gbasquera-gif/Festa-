@@ -25,6 +25,12 @@ import {
   type NaturezaDoGasto,
 } from "@festae/shared";
 import { classificarGasto } from "./classificar-gasto";
+import {
+  conferirIntegridade,
+  registrarExcecoes,
+  registrarHistorico,
+  type ContratoHistorico,
+} from "./registrar-historico";
 
 type VendaLegado = {
   num: string;
@@ -153,24 +159,6 @@ function normalizarNome(nome: string): string {
 }
 
 /** Como um contrato do painel antigo fica depois de migrado. */
-type Representacao = {
-  venda: VendaLegado;
-  jaExiste: boolean;
-  reservaId?: string;
-  duplicidadeProvavel: string[];
-  quebrasDeRegra: Excecao[];
-  recebido: number;
-  saldo: number;
-};
-
-/** O valor efetivamente recebido de um contrato do painel antigo.
- *
- * Não é o campo `sinal`: um contrato quitado ficava com status "Pago" e sinal
- * zerado. Somar só o campo cobraria de novo de quem já pagou. */
-function recebidoDaVenda(venda: VendaLegado): number {
-  return venda.status.trim().toLowerCase() === "pago" ? venda.valor : venda.sinal;
-}
-
 type Excecao = { regra: string; motivo: string; origem: "detectada" | "declarada" };
 
 /** Exceções declaradas por quem fechou a venda, num arquivo fora do código.
@@ -217,14 +205,92 @@ function quebrasDeRegra(venda: VendaLegado, declaracoes: Declaracoes): Excecao[]
   return quebras;
 }
 
+/** Os recebimentos de um contrato, e o que a origem prova sobre cada um.
+ *
+ * O campo `sinal` prova sinal. O status "Pago" prova que o resto entrou, mas
+ * não em que papel — daí INDETERMINADO. Não há terceiro caminho: inventar
+ * composição foi vetado, e com razão. */
+function recebimentosDaVenda(venda: VendaLegado) {
+  const recebimentos: { valor: number; tipo: "DEPOSIT" | "BALANCE" | "INDETERMINADO" }[] = [];
+  if (venda.sinal > 0) recebimentos.push({ valor: venda.sinal, tipo: "DEPOSIT" });
+  if (venda.status.trim().toLowerCase() === "pago") {
+    const resto = Number((venda.valor - venda.sinal).toFixed(2));
+    if (resto > 0) recebimentos.push({ valor: resto, tipo: "INDETERMINADO" });
+  }
+  return recebimentos;
+}
+
+function recebidoDaVenda(venda: VendaLegado): number {
+  return Number(recebimentosDaVenda(venda).reduce((s, r) => s + r.valor, 0).toFixed(2));
+}
+
+const TIPOS_DE_EVENTO: Record<string, ContratoHistorico["tipoDeEvento"]> = {
+  aniversario: "ANIVERSARIO",
+  batizado: "BATIZADO",
+  "cha revelacao": "CHA_REVELACAO",
+  "cha de bebe": "CHA_DE_BEBE",
+};
+
+function tipoDeEvento(venda: VendaLegado): ContratoHistorico["tipoDeEvento"] {
+  const chave = semAcento(venda.evento ?? "").trim();
+  return TIPOS_DE_EVENTO[chave] ?? "OUTRO";
+}
+
+function semAcento(texto: string): string {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function paraHistorico(venda: VendaLegado, excecoes: Excecao[]): ContratoHistorico {
+  const modalidade = semAcento(venda.modalidade ?? "");
+  return {
+    referenciaExterna: `legado:contrato:${venda.num.trim()}`,
+    cliente: venda.cliente.trim(),
+    fechadoEm: data(venda.data),
+    festaEm: data(venda.dataEvento),
+    cidade: (venda.cidade ?? "").trim() || DELIVERY_CITY,
+    tipoDeEvento: tipoDeEvento(venda),
+    entrega: modalidade.includes("entrega"),
+    montagem: modalidade.includes("montagem"),
+    valor: venda.valor,
+    recebimentos: recebimentosDaVenda(venda),
+    observacao: venda.obs || undefined,
+    excecoes: excecoes.map((e) => ({
+      regra: e.regra,
+      justificativa: e.motivo,
+      origemDaInformacao: e.origem,
+    })),
+  };
+}
+
+type Situacao = "ausente" | "corresponde" | "conflito-cancelada";
+
+type Representacao = {
+  venda: VendaLegado;
+  situacao: Situacao;
+  reservaId?: string;
+  statusDaReserva?: string;
+  /** Divergência financeira entre o Admin e o painel histórico. */
+  referenciaExternaDaReserva?: string | null;
+  divergencias: string[];
+  duplicidadeParcial: string[];
+  excecoes: Excecao[];
+  recebido: number;
+  saldo: number;
+};
+
 async function conciliar(vendas: VendaLegado[], declaracoes: Declaracoes): Promise<Representacao[]> {
   const reservas = await prisma.reservation.findMany({
-    where: { status: { notIn: ["CANCELLED", "REJECTED"] } },
     select: {
       id: true,
+      status: true,
       eventDate: true,
+      referenciaExterna: true,
       order: {
-        select: { total: true, event: { select: { user: { select: { name: true } } } } },
+        select: {
+          total: true,
+          payments: { where: { status: "PAID" }, select: { amount: true } },
+          event: { select: { user: { select: { name: true } } } },
+        },
       },
     },
   });
@@ -232,44 +298,65 @@ async function conciliar(vendas: VendaLegado[], declaracoes: Declaracoes): Promi
   return vendas.map((venda) => {
     const dia = data(venda.dataEvento).toISOString().slice(0, 10);
     const alvo = normalizarNome(venda.cliente);
-
-    const mesmoNomeEData = reservas.find((r) => {
-      const nome = normalizarNome(r.order.event.user.name ?? "");
-      return (
-        r.eventDate.toISOString().slice(0, 10) === dia &&
-        (nome === alvo || nome.includes(alvo) || alvo.includes(nome))
-      );
-    });
-
-    // Duplicidade provável: bate em dois dos três (nome, data, valor) mas não
-    // nos três. É onde mora o registro digitado duas vezes com um dedo trocado.
-    const duplicidadeProvavel = reservas
-      .filter((r) => r.id !== mesmoNomeEData?.id)
-      .filter((r) => {
-        const nome = normalizarNome(r.order.event.user.name ?? "");
-        const bateNome = nome === alvo || nome.includes(alvo) || alvo.includes(nome);
-        const bateData = r.eventDate.toISOString().slice(0, 10) === dia;
-        const bateValor = Math.abs(Number(r.order.total) - venda.valor) < 0.01;
-        return [bateNome, bateData, bateValor].filter(Boolean).length >= 2;
-      })
-      .map((r) => `${r.order.event.user.name} · ${r.eventDate.toISOString().slice(0, 10)} · ${brl(Number(r.order.total))}`);
-
+    const referencia = `legado:contrato:${venda.num.trim()}`;
     const recebido = recebidoDaVenda(venda);
+
+    const bateNome = (r: (typeof reservas)[number]) => {
+      const nome = normalizarNome(r.order.event.user.name ?? "");
+      return nome === alvo || nome.includes(alvo) || alvo.includes(nome);
+    };
+
+    // Mesma cliente + mesma data = mesmo negócio. Pagamento diferente é
+    // divergência financeira, não outra festa — foi a regra que você fixou.
+    const correspondente =
+      reservas.find((r) => r.referenciaExterna === referencia) ??
+      reservas.find((r) => r.eventDate.toISOString().slice(0, 10) === dia && bateNome(r));
+
+    const duplicidadeParcial = reservas
+      .filter((r) => r.id !== correspondente?.id)
+      .filter((r) => {
+        const criterios = [
+          bateNome(r),
+          r.eventDate.toISOString().slice(0, 10) === dia,
+          Math.abs(Number(r.order.total) - venda.valor) < 0.01,
+        ];
+        return criterios.filter(Boolean).length >= 2;
+      })
+      .map(
+        (r) =>
+          `${r.order.event.user.name} · ${r.eventDate.toISOString().slice(0, 10)} · ${brl(Number(r.order.total))} · ${r.status}`,
+      );
+
+    const divergencias: string[] = [];
+    let situacao: Situacao = "ausente";
+    if (correspondente) {
+      const cancelada = ["CANCELLED", "REJECTED"].includes(correspondente.status);
+      situacao = cancelada ? "conflito-cancelada" : "corresponde";
+      const totalAdmin = Number(correspondente.order.total);
+      const recebidoAdmin = correspondente.order.payments.reduce((s, p) => s + Number(p.amount), 0);
+      if (Math.abs(totalAdmin - venda.valor) >= 0.01)
+        divergencias.push(`contratado: Admin ${brl(totalAdmin)} × painel ${brl(venda.valor)}`);
+      if (Math.abs(recebidoAdmin - recebido) >= 0.01)
+        divergencias.push(`recebido: Admin ${brl(recebidoAdmin)} × painel ${brl(recebido)}`);
+    }
+
     return {
       venda,
-      jaExiste: mesmoNomeEData !== undefined,
-      reservaId: mesmoNomeEData?.id,
-      duplicidadeProvavel,
-      quebrasDeRegra: quebrasDeRegra(venda, declaracoes),
+      situacao,
+      reservaId: correspondente?.id,
+      statusDaReserva: correspondente?.status,
+      referenciaExternaDaReserva: correspondente?.referenciaExterna,
+      divergencias,
+      duplicidadeParcial,
+      excecoes: quebrasDeRegra(venda, declaracoes),
       recebido,
-      saldo: Math.max(0, Number((venda.valor - recebido).toFixed(2))),
+      saldo: Number(Math.max(0, venda.valor - recebido).toFixed(2)),
     };
   });
 }
 
-/** O lucro pelo método do painel antigo: faturamento por data do contrato,
- *  despesa lendo só a aba Contas. Existe para a comparação do item 9 — não
- *  deve ser usado como indicador. */
+/** O lucro pelo método do painel antigo. Só para a comparação — não é
+ *  indicador, e não deve virar um. */
 function lucroDoPainelAntigo(vendas: VendaLegado[], contas: ContaLegado[], mes: string) {
   const mesDe = (d: string) => data(d).toISOString().slice(0, 7);
   const doMes = vendas.filter((v) => mesDe(v.data) === mes);
@@ -277,23 +364,15 @@ function lucroDoPainelAntigo(vendas: VendaLegado[], contas: ContaLegado[], mes: 
   const despesa = contas
     .filter((c) => mesDe(c.dataPgto ?? c.venc ?? c.data ?? "") === mes)
     .reduce((s, c) => s + c.valor, 0);
-  return {
-    faturamento,
-    contratos: doMes.length,
-    despesa,
-    lucro: Number((faturamento - despesa).toFixed(2)),
-    ticket: doMes.length > 0 ? Number((faturamento / doMes.length).toFixed(2)) : null,
-  };
+  return { faturamento, contratos: doMes.length, despesa, lucro: Number((faturamento - despesa).toFixed(2)) };
 }
 
-/** Os contratos do painel antigo como o sistema novo os apuraria. */
 function contratosApurados(vendas: VendaLegado[]): ContratoApurado[] {
   return vendas.map((venda) => ({
     fechadoEm: data(venda.data),
     festaEm: data(venda.dataEvento),
     valor: venda.valor,
-    // Pagamento sem data: a origem guardava quanto, nunca quando.
-    recebimentos: recebidoDaVenda(venda) > 0 ? [{ valor: recebidoDaVenda(venda), recebidoEm: null }] : [],
+    recebimentos: recebimentosDaVenda(venda).map((r) => ({ valor: r.valor, recebidoEm: null })),
   }));
 }
 
@@ -304,168 +383,208 @@ async function main() {
     process.exit(1);
   }
   const aplicar = flags.includes("--aplicar");
-
   const indiceExcecoes = flags.indexOf("--excecoes");
-  const declaracoes = carregarDeclaracoes(
-    indiceExcecoes >= 0 ? flags[indiceExcecoes + 1] : undefined,
-  );
+  const declaracoes = carregarDeclaracoes(indiceExcecoes >= 0 ? flags[indiceExcecoes + 1] : undefined);
 
   const { vendas, contas, aportes, meta } = carregar(caminho);
   const gastos = gastosDaExportacao(contas, aportes);
   const conciliacao = await conciliar(vendas, declaracoes);
-  const linha = (t: string) => console.log(`\n${"=".repeat(74)}\n${t}\n${"=".repeat(74)}`);
+  const linha = (t: string) => console.log(`\n${"=".repeat(76)}\n${t}\n${"=".repeat(76)}`);
 
   console.log(aplicar ? "MODO: GRAVANDO\n" : "MODO: SIMULAÇÃO — nada será gravado\n");
   console.log(`banco: ${(process.env.DATABASE_URL ?? "").replace(/\/\/[^@]*@/, "//***@")}`);
 
-  // ---- 1, 5, 6, 8 ----
-  linha("1. OS CONTRATOS DA EXPORTAÇÃO");
-  for (const r of conciliacao) {
-    const excecao = r.quebrasDeRegra.length > 0;
-    console.log(
-      `  ${r.venda.num.padEnd(9)} ${r.venda.cliente.trim().slice(0, 30).padEnd(30)} ` +
-        `festa ${r.venda.dataEvento}  ${brl(r.venda.valor).padStart(11)}  ` +
-        `recebido ${brl(r.recebido).padStart(11)}  saldo ${brl(r.saldo).padStart(11)}` +
-        (excecao ? "  << exceção histórica" : ""),
-    );
-  }
   const contratado = vendas.reduce((s, v) => s + v.valor, 0);
   const recebido = conciliacao.reduce((s, r) => s + r.recebido, 0);
-  console.log(`\n  ${"TOTAL".padEnd(40)} ${brl(contratado).padStart(11)}  ${brl(recebido).padStart(20)}  ${brl(contratado - recebido).padStart(17)}`);
+  const saldo = Number((contratado - recebido).toFixed(2));
 
-  // ---- 2, 3, 4 ----
-  linha("2/3. O QUE JÁ EXISTE NO BANCO OPERACIONAL");
-  console.log("  Apurado contra o banco indicado no topo deste relatório. Se ele não for o");
-  console.log("  de produção, esta seção e a seguinte não respondem nada sobre produção.\n");
+  linha("1/2. CORRESPONDÊNCIA COM O BANCO OPERACIONAL");
+  console.log("  Apurado contra o banco do topo. Se ele não for o de produção, esta seção");
+  console.log("  e as duas seguintes não respondem nada sobre produção.\n");
   for (const r of conciliacao) {
-    console.log(`  ${r.venda.num.padEnd(9)} ${r.jaExiste ? `JÁ EXISTE (${r.reservaId})` : "ausente"}`);
+    const rotulo =
+      r.situacao === "corresponde"
+        ? `JÁ EXISTE  ${r.statusDaReserva}`
+        : r.situacao === "conflito-cancelada"
+          ? `CONFLITO: reserva ${r.statusDaReserva}`
+          : "ausente";
+    console.log(`  ${r.venda.num.padEnd(9)} ${r.venda.cliente.trim().slice(0, 28).padEnd(28)} ${rotulo}`);
   }
-  const ausentes = conciliacao.filter((r) => !r.jaExiste);
-  console.log(`\n  já no banco: ${conciliacao.length - ausentes.length} | ausentes: ${ausentes.length}`);
+  const ausentes = conciliacao.filter((r) => r.situacao === "ausente");
+  const existentes = conciliacao.filter((r) => r.situacao === "corresponde");
+  const conflitos = conciliacao.filter((r) => r.situacao === "conflito-cancelada");
+  console.log(`\n  já existem: ${existentes.length} | ausentes: ${ausentes.length} | conflitos: ${conflitos.length}`);
 
-  linha("4. DUPLICIDADES PROVÁVEIS");
-  const comDuplicidade = conciliacao.filter((r) => r.duplicidadeProvavel.length > 0);
-  if (comDuplicidade.length === 0) {
-    console.log("  nenhuma reserva do banco bate parcialmente com os contratos da exportação.");
-  }
+  linha("3. DUPLICIDADES PARCIAIS");
+  const comDuplicidade = conciliacao.filter((r) => r.duplicidadeParcial.length > 0);
+  if (comDuplicidade.length === 0) console.log("  nenhuma.");
   for (const r of comDuplicidade) {
     console.log(`  ${r.venda.num} (${r.venda.cliente.trim()}) parece com:`);
-    for (const c of r.duplicidadeProvavel) console.log(`      ${c}`);
+    for (const c of r.duplicidadeParcial) console.log(`      ${c}`);
   }
 
-  // ---- 5, 6 ----
-  linha("5/6. REGRAS COMERCIAIS VIGENTES");
-  for (const r of conciliacao) {
-    if (r.quebrasDeRegra.length === 0) {
-      console.log(`  ${r.venda.num.padEnd(9)} passa nas regras atuais`);
-      continue;
-    }
-    console.log(`  ${r.venda.num.padEnd(9)} EXCEÇÃO HISTÓRICA:`);
-    for (const q of r.quebrasDeRegra) {
-      console.log(`      [${q.origem}] ${q.regra}`);
-      console.log(`                 ${q.motivo}`);
-    }
-  }
-  const semDeclaracao = Object.keys(declaracoes).length === 0;
-  if (semDeclaracao) {
-    console.log("\n  Nenhum arquivo de exceções declaradas foi passado (--excecoes).");
-    console.log("  Só aparece acima o que o dado prova sozinho.");
+  linha("4. RESERVAS CANCELADAS CONFLITANTES");
+  if (conflitos.length === 0) console.log("  nenhuma.");
+  for (const r of conflitos) {
+    console.log(`  ${r.venda.num}: existe reserva ${r.statusDaReserva} para a mesma cliente e data.`);
+    console.log("     A carga NÃO cria outra festa. Decisão manual: reativar ou registrar à parte.");
   }
 
-  // ---- 7 ----
-  linha("7. COMO CADA CONTRATO FICA DEPOIS DA MIGRAÇÃO");
-  console.log("  Todos com origemDoRegistro = MIGRACAO, cidade, modalidade e valor inalterados.");
-  console.log("  Taxa de entrega e montagem gravadas como R$ 0,00: a origem não decompõe o");
-  console.log("  valor, e inventar a taxa da tabela faria o total discordar do contrato.\n");
-  for (const r of conciliacao) {
+  linha("5. DIVERGÊNCIAS FINANCEIRAS (Admin × painel histórico)");
+  const comDivergencia = conciliacao.filter((r) => r.divergencias.length > 0);
+  if (comDivergencia.length === 0) console.log("  nenhuma.");
+  for (const r of comDivergencia) {
+    console.log(`  ${r.venda.num} (${r.venda.cliente.trim()}):`);
+    for (const d of r.divergencias) console.log(`      ${d}`);
+  }
+  if (comDivergencia.length > 0) {
+    console.log("\n  A carga não reescreve pagamento de reserva existente. Fica para saneamento");
+    console.log("  manual, e os totais de controle abaixo vão acusar a diferença.");
+  }
+
+  linha("6. O QUE A CARGA VAI CRIAR E ALTERAR");
+  console.log("  CRIA (só para contratos ausentes):");
+  if (ausentes.length === 0) console.log("      nada.");
+  for (const r of ausentes) {
+    const h = paraHistorico(r.venda, r.excecoes);
     console.log(
-      `  ${r.venda.num.padEnd(9)} ${(r.venda.cidade ?? "").trim().padEnd(10)} ${(r.venda.modalidade ?? "").padEnd(22)} ` +
-        `total ${brl(r.venda.valor).padStart(11)}  ${r.recebido > 0 ? "1 pagamento sem data" : "sem pagamento"}` +
-        (r.quebrasDeRegra.length > 0 ? `  + ${r.quebrasDeRegra.length} exceção(ões)` : ""),
+      `      ${r.venda.num}  cliente, evento, pedido, reserva` +
+        `${h.recebimentos.length > 0 ? ` e ${h.recebimentos.length} pagamento(s)` : ""}` +
+        `${h.excecoes.length > 0 ? ` e ${h.excecoes.length} exceção(ões)` : ""}`,
     );
   }
+  console.log("\n  ACRESCENTA a reserva existente (aditivo, não altera o que já está lá):");
+  const acrescentos = existentes.filter((r) => r.excecoes.length > 0);
+  if (acrescentos.length === 0) console.log("      nada.");
+  for (const r of acrescentos) console.log(`      ${r.venda.num}  ${r.excecoes.length} exceção(ões) comercial(is)`);
+  console.log("\n  NUNCA altera: valor, pagamento, data ou status de reserva já existente.");
+  console.log(`\n  GASTOS: ${gastos.length} lançamentos. META: ${meta ? brl(meta.valor) : "—"}`);
 
-  // ---- 9 ----
-  linha("9. INDICADORES ANTES E DEPOIS");
-  // Os meses de contrato E os meses de festa: sob competência a festa de
-  // outubro tem receita mesmo sem nenhum contrato assinado em outubro, e é
-  // justamente essa diferença que a comparação existe para mostrar.
-  const mesesComContrato = [
-    ...new Set(
-      vendas.flatMap((v) => [
-        data(v.data).toISOString().slice(0, 7),
-        data(v.dataEvento).toISOString().slice(0, 7),
-      ]),
-    ),
-  ].sort();
-  const apurados = contratosApurados(vendas);
-  for (const mes of mesesComContrato) {
-    const antes = lucroDoPainelAntigo(vendas, contas, mes);
-    const depois = indicadoresDoMes(apurados, gastos, mes);
-    console.log(`\n  ${mes}`);
-    console.log(`    ${"".padEnd(26)} ${"painel antigo".padStart(14)}  ${"sistema novo".padStart(14)}`);
-    console.log(`    ${"faturamento".padEnd(26)} ${brl(antes.faturamento).padStart(14)}  ${brl(depois.competencia.receita).padStart(14)}  (antes: data do contrato; agora: data da festa)`);
-    console.log(`    ${"despesa".padEnd(26)} ${brl(antes.despesa).padStart(14)}  ${brl(depois.competencia.despesa).padStart(14)}  (agora inclui consumo e custeio)`);
-    console.log(`    ${"resultado".padEnd(26)} ${brl(antes.lucro).padStart(14)}  ${brl(depois.competencia.resultado).padStart(14)}`);
-    console.log(`    ${"contratos fechados".padEnd(26)} ${String(antes.contratos).padStart(14)}  ${String(depois.contratosFechados).padStart(14)}  (não muda: é a prova da carga)`);
+  linha("7. PAGAMENTOS HISTÓRICOS E SUAS CLASSIFICAÇÕES");
+  for (const r of conciliacao) {
+    const recs = recebimentosDaVenda(r.venda);
+    if (recs.length === 0) {
+      console.log(`  ${r.venda.num.padEnd(9)} sem recebimento`);
+      continue;
+    }
+    for (const rec of recs) {
+      const prova = rec.tipo === "DEPOSIT" ? "campo sinal da origem" : 'só a palavra "Pago" no status';
+      console.log(`  ${r.venda.num.padEnd(9)} ${brl(rec.valor).padStart(11)}  ${rec.tipo.padEnd(14)} paidAt=null  (prova: ${prova})`);
+    }
   }
-  const totalGasto = gastos.reduce((s, g) => s + g.valor, 0);
-  const acervo = gastos.filter((g) => g.natureza === "ACERVO").reduce((s, g) => s + g.valor, 0);
-  console.log(`\n  ACUMULADO`);
-  console.log(`    ${"capital investido".padEnd(26)} ${brl(totalGasto).padStart(14)}  ${brl(acervo).padStart(14)}  (consumo e custeio saem do acervo)`);
-  console.log(`    ${"faturamento acumulado".padEnd(26)} ${brl(contratado).padStart(14)}  ${brl(contratado).padStart(14)}  (não muda)`);
-  console.log(`    ${"recebido".padEnd(26)} ${brl(recebido).padStart(14)}  ${brl(recebido).padStart(14)}  (não muda)`);
-  console.log(`    ${"saldo a receber".padEnd(26)} ${brl(contratado - recebido).padStart(14)}  ${brl(contratado - recebido).padStart(14)}  (não muda)`);
+  console.log(`\n  Nenhuma data inventada. Os ${brl(recebido)} contam como recebido e abatem o saldo,`);
+  console.log("  mas ficam fora do caixa de qualquer mês até alguém saber quando entraram.");
 
-  // ---- 10 ----
-  linha("10. INCONSISTÊNCIAS ENCONTRADAS");
+  linha("8. EXCEÇÕES COMERCIAIS");
+  const comExcecao = conciliacao.filter((r) => r.excecoes.length > 0);
+  if (comExcecao.length === 0) console.log("  nenhuma.");
+  for (const r of comExcecao) {
+    console.log(`  ${r.venda.num}:`);
+    for (const e of r.excecoes) {
+      console.log(`      [${e.origem}] ${e.regra}`);
+      console.log(`                 ${e.motivo}`);
+    }
+  }
+  console.log("\n  A regra comercial geral não muda. Vendas novas continuam sujeitas a ela.");
+
+  linha("9. INCONSISTÊNCIAS PARA SANEAMENTO MANUAL");
   const problemas: string[] = [];
   for (const r of conciliacao) {
-    if (r.recebido > r.venda.valor) problemas.push(`${r.venda.num}: recebido maior que o contrato`);
+    const h = paraHistorico(r.venda, r.excecoes);
+    for (const p of conferirIntegridade(h)) problemas.push(`${r.venda.num}: ${p} (BLOQUEIA a carga)`);
     if (r.venda.status.trim().toLowerCase() === "pago" && r.venda.sinal === 0)
-      problemas.push(`${r.venda.num}: marcado "Pago" com o campo sinal zerado — o recebido só existe no status`);
-    if (data(r.venda.dataEvento) < data(r.venda.data))
-      problemas.push(`${r.venda.num}: festa antes do contrato`);
-    if (!r.venda.evento?.trim()) problemas.push(`${r.venda.num}: sem tipo de evento`);
+      problemas.push(`${r.venda.num}: quitado só pelo status, sem composição — gravado como INDETERMINADO`);
+    if (!r.venda.evento?.trim()) problemas.push(`${r.venda.num}: sem tipo de evento — entra como OUTRO`);
   }
-  const semData = gastos.filter((g) => g.pagoEm === null);
-  if (semData.length > 0)
-    problemas.push(`${semData.length} gasto(s) sem data de pagamento — ficam fora da despesa de qualquer mês`);
-  if (recebido > 0)
-    problemas.push(`${brl(recebido)} recebidos sem data de recebimento — a origem nunca guardou quando`);
-  problemas.push("nenhum contrato decompõe valor de serviço e taxa de entrega — a decomposição é desconhecida");
+  if (recebido > 0) problemas.push(`${brl(recebido)} sem data de recebimento — fora do caixa mensal até saneamento`);
+  problemas.push("nenhum contrato separa serviço de taxa de entrega — taxas gravadas como R$ 0,00");
   for (const p of problemas) console.log(`  · ${p}`);
 
-  // ---- Gastos ----
-  linha("GASTOS A CARREGAR");
-  const porNatureza = new Map<NaturezaDoGasto, { n: number; total: number }>();
-  for (const g of gastos) {
-    const atual = porNatureza.get(g.natureza) ?? { n: 0, total: 0 };
-    porNatureza.set(g.natureza, { n: atual.n + 1, total: atual.total + g.valor });
+  linha("10. COMPARAÇÃO FINANCEIRA ANTES E DEPOIS");
+  const meses = [
+    ...new Set(vendas.flatMap((v) => [data(v.data).toISOString().slice(0, 7), data(v.dataEvento).toISOString().slice(0, 7)])),
+  ].sort();
+  const apurados = contratosApurados(vendas);
+  for (const mes of meses) {
+    const antes = lucroDoPainelAntigo(vendas, contas, mes);
+    const depois = indicadoresDoMes(apurados, gastos, mes);
+    console.log(`\n  ${mes}${"".padEnd(20)}${"painel antigo".padStart(14)}${"sistema novo".padStart(16)}`);
+    console.log(`    ${"faturamento".padEnd(22)}${brl(antes.faturamento).padStart(14)}${brl(depois.competencia.receita).padStart(16)}`);
+    console.log(`    ${"despesa".padEnd(22)}${brl(antes.despesa).padStart(14)}${brl(depois.competencia.despesa).padStart(16)}`);
+    console.log(`    ${"resultado".padEnd(22)}${brl(antes.lucro).padStart(14)}${brl(depois.competencia.resultado).padStart(16)}`);
+    console.log(`    ${"caixa do mês".padEnd(22)}${"—".padStart(14)}${brl(depois.caixa.resultado).padStart(16)}`);
   }
-  for (const [nat, { n, total }] of [...porNatureza].sort()) {
-    console.log(`  ${nat.padEnd(10)} ${String(n).padStart(3)}  ${brl(total).padStart(14)}`);
+  const acervo = gastos.filter((g) => g.natureza === "ACERVO").reduce((s, g) => s + g.valor, 0);
+  console.log(`\n  ACUMULADO${"".padEnd(15)}${"painel antigo".padStart(14)}${"sistema novo".padStart(16)}`);
+  console.log(`    ${"capital investido".padEnd(22)}${brl(gastos.reduce((s, g) => s + g.valor, 0)).padStart(14)}${brl(acervo).padStart(16)}`);
+
+  linha("TOTAIS DE CONTROLE");
+  const ALVOS = { contratado: 2500, recebido: 941, saldo: 1559 };
+  const conferir = (rotulo: string, apurado: number, alvo: number) => {
+    const ok = Math.abs(apurado - alvo) < 0.01;
+    console.log(`  ${ok ? "OK     " : "FALHOU "} ${rotulo.padEnd(22)} ${brl(apurado).padStart(13)}  alvo ${brl(alvo)}`);
+    return ok;
+  };
+  const fecham =
+    [
+      conferir("faturamento contratado", contratado, ALVOS.contratado),
+      conferir("recebido histórico", recebido, ALVOS.recebido),
+      conferir("saldo a receber", saldo, ALVOS.saldo),
+    ].every(Boolean) && comDivergencia.length === 0;
+  if (!fecham) {
+    console.log("\n  Algum controle não fechou, ou há divergência financeira com o Admin.");
+    console.log("  Investigar antes de concluir a carga.");
   }
+
+  if (!aplicar) {
+    console.log("\n\nNada foi gravado. Rode com --aplicar para executar.");
+    return;
+  }
+
+  linha("EXECUTANDO");
+  let criadas = 0;
+  let jaMigradas = 0;
+  let preservadas = 0;
+  for (const r of conciliacao) {
+    if (r.situacao !== "ausente") {
+      // Distingue o que esta carga já trouxe do que a operação cadastrou por
+      // conta própria: numa segunda execução as duas coisas "já existem", mas
+      // só uma delas é responsabilidade da migração.
+      const daMigracao = r.referenciaExternaDaReserva === `legado:contrato:${r.venda.num.trim()}`;
+      if (daMigracao) jaMigradas += 1;
+      else preservadas += 1;
+      const n =
+        r.reservaId && r.excecoes.length > 0
+          ? await registrarExcecoes(
+              r.reservaId,
+              r.excecoes.map((e) => ({ regra: e.regra, justificativa: e.motivo, origemDaInformacao: e.origem })),
+            )
+          : 0;
+      const origem = daMigracao ? "já migrada por esta carga" : "reserva da operação, preservada";
+      console.log(`  ${r.venda.num}: ${origem}${n > 0 ? `, ${n} exceção(ões) conferidas` : ""}.`);
+      continue;
+    }
+    const resultado = await registrarHistorico(paraHistorico(r.venda, r.excecoes));
+    if (resultado.criada) criadas += 1;
+    else jaMigradas += 1;
+    console.log(`  ${r.venda.num}: ${resultado.criada ? "CRIADA" : "já existia"} (${resultado.reservaId})`);
+  }
+  console.log(
+    `\n  criados agora: ${criadas} | já migrados antes: ${jaMigradas} | reservas da operação preservadas: ${preservadas}`,
+  );
+
   const jaGravados = await prisma.gasto.findMany({
     where: { referenciaExterna: { in: gastos.map((g) => g.referenciaExterna) } },
     select: { referenciaExterna: true },
   });
-  console.log(`  já no banco: ${jaGravados.length} | a inserir: ${gastos.length - jaGravados.length}`);
-  if (meta) console.log(`\n  meta mensal na origem: ${brl(meta.valor)}`);
-
-  if (!aplicar) {
-    console.log("\n\nNada foi gravado. A carga de contratos exige a modelagem de");
-    console.log("docs/MIGRACAO-DE-HISTORICO.md, que ainda não foi implementada.");
-    return;
-  }
-
   const conhecidos = new Set(jaGravados.map((g) => g.referenciaExterna));
   let inseridos = 0;
   for (const gasto of gastos.filter((g) => !conhecidos.has(g.referenciaExterna))) {
     await prisma.gasto.create({ data: gasto });
     inseridos += 1;
   }
-  console.log(`\ngravados ${inseridos} gastos novos.`);
+  console.log(`  gastos inseridos: ${inseridos} | já estavam: ${conhecidos.size}`);
+
   if (meta) {
     const agora = new Date();
     const competencia = `${agora.getUTCFullYear()}-${String(agora.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -474,7 +593,7 @@ async function main() {
       create: { competencia, lucroAlvo: meta.valor },
       update: { lucroAlvo: meta.valor },
     });
-    console.log(`meta de ${competencia} definida em ${brl(meta.valor)}.`);
+    console.log(`  meta de ${competencia}: ${brl(meta.valor)}`);
   }
 }
 
