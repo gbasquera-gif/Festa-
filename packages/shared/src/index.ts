@@ -202,6 +202,13 @@ export {
   totalRecebido,
   linhaDeRitmo,
   indicadoresDoMes,
+  SITUACOES_DE_PAGAMENTO,
+  SITUACAO_DE_PAGAMENTO_LABEL,
+  SITUACAO_DE_PAGAMENTO_NOTA,
+  SITUACOES_EM_ABERTO,
+  situacaoDePagamento,
+  vencimentoDoSaldo,
+  resumoDaCarteira,
 } from "./financeiro";
 export type {
   Regime,
@@ -212,6 +219,8 @@ export type {
   ResultadoDoMes,
   LinhaDeRitmo,
   IndicadoresDoMes,
+  SituacaoDePagamento,
+  ResumoDaCarteira,
 } from "./financeiro";
 
 export {

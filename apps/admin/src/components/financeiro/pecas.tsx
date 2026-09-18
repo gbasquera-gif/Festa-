@@ -1,4 +1,9 @@
 import type { ReactNode } from "react";
+import {
+  SITUACAO_DE_PAGAMENTO_LABEL,
+  SITUACAO_DE_PAGAMENTO_NOTA,
+  type SituacaoDePagamento,
+} from "@festae/shared";
 
 /**
  * As peças visuais da área financeira.
@@ -81,5 +86,48 @@ export function AvisoDeDepreciacao() {
       valor residual já podem ser registrados aqui, mas nenhum cálculo os usa — depreciação
       sobre estimativa inventada seria pior que nenhuma, porque pareceria precisa.
     </p>
+  );
+}
+
+/**
+ * Etiqueta de situação de pagamento.
+ *
+ * Recebe a situação já decidida pelo servidor. Não recalcula nada: a regra de
+ * vencimento existe uma vez só, em @festae/shared, e uma segunda cópia aqui
+ * seria a que envelhece errado quando a regra comercial mudar.
+ */
+export function Situacao({ valor }: { valor: SituacaoDePagamento }) {
+  return (
+    <span
+      className={`fin-situacao ${valor.toLowerCase()}`}
+      title={SITUACAO_DE_PAGAMENTO_NOTA[valor]}
+    >
+      {SITUACAO_DE_PAGAMENTO_LABEL[valor]}
+    </span>
+  );
+}
+
+/** Um número dentro do bloco escuro: rótulo dourado, valor grande, nota discreta. */
+export function NumeroEscuro({
+  rotulo,
+  valor,
+  nota,
+  destaque,
+}: {
+  rotulo: string;
+  valor: string;
+  nota?: string;
+  destaque?: "alerta" | "bom";
+}) {
+  const cor =
+    destaque === "alerta" ? "var(--fin-coral)" : destaque === "bom" ? "#8fd9b6" : undefined;
+  return (
+    <div>
+      <p className="fin-rotulo">{rotulo}</p>
+      <p className="fin-numero mt-1" style={cor ? { color: cor } : undefined}>
+        {valor}
+      </p>
+      {nota && <p className="mt-0.5 text-xs">{nota}</p>}
+    </div>
   );
 }

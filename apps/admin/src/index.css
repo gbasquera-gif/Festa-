@@ -424,3 +424,99 @@
 .fin-etiqueta.acervo { color: var(--fin-gold-dark); background: var(--fin-gold-pale); border-color: transparent; }
 .fin-etiqueta.consumo { color: var(--fin-coral-dark); }
 .fin-etiqueta.custeio { color: var(--fin-muted); }
+
+/* Etiqueta de situação de pagamento.
+ *
+ * A cor é o único jeito de ler uma carteira de relance: vencido tem de saltar
+ * antes de a Maria Luiza ler o nome da cliente. Verde, dourado e coral são os
+ * mesmos semáforos do painel antigo — não um segundo vocabulário de cores. */
+.fin-situacao {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--fin-mono);
+  font-size: 0.63rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.fin-situacao::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.fin-situacao.quitado { color: var(--fin-good); background: rgba(46, 155, 107, 0.1); }
+.fin-situacao.vencido { color: #fff; background: var(--fin-coral); }
+.fin-situacao.parcial { color: var(--fin-gold-dark); background: var(--fin-gold-pale); }
+.fin-situacao.aguardando { color: var(--fin-muted); background: rgba(122, 114, 102, 0.1); }
+.fin-situacao.cancelado { color: var(--fin-muted); background: transparent; border: 1px dashed var(--fin-line); }
+
+/* Uma linha cancelada continua na lista — a operação precisa ver o que caiu —
+ * mas não pode competir visualmente com o que ainda vale dinheiro. */
+.fin-tabela tr.riscado td { opacity: 0.55; }
+.fin-tabela tr.riscado .fin-numero,
+.fin-tabela tr.riscado .num { text-decoration: line-through; }
+
+/* No celular a tabela vira cartão. Dez colunas em 390px viram rolagem
+ * lateral, e ninguém confere dinheiro arrastando a tela de lado. */
+.fin-linha {
+  border: 1px solid var(--fin-line);
+  border-radius: 10px;
+  background: var(--fin-paper);
+  padding: 13px 14px;
+}
+.fin-linha + .fin-linha { margin-top: 10px; }
+.fin-linha.riscado { opacity: 0.6; }
+.fin-linha dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.fin-linha dt {
+  font-family: var(--fin-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fin-muted);
+}
+.fin-linha dd {
+  font-family: var(--fin-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--fin-navy-ink);
+}
+
+/* O bloco escuro em versão painel de números: o mesmo azul-marinho da meta,
+ * dividido em colunas. É a linguagem executiva do painel antigo. */
+.fin-bloco-escuro .fin-grade {
+  display: grid;
+  gap: 18px 24px;
+  /* Uma coluna no celular estreito, e não duas.
+   *
+   * "R$ 99.999,99" tem doze caracteres em mono: a 1,5rem ocupa cerca de
+   * 173px, e a meia coluna de uma tela de 390px oferece 145px. O número não
+   * quebra linha — o separador de milhar do pt-BR é espaço não separável —
+   * então ele simplesmente invadia o número vizinho, e a carteira exibia
+   * dois valores colados, sem separação.
+   *
+   * A saída não é encolher a fonte: número grande e legível de relance é a
+   * identidade que o painel antigo tinha e que esta área herdou. Em tela
+   * estreita eles empilham e continuam grandes. */
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 420px) {
+  .fin-bloco-escuro .fin-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 768px) {
+  .fin-bloco-escuro .fin-grade { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.fin-bloco-escuro .fin-grade > * { min-width: 0; }
+.fin-bloco-escuro .fin-grade .fin-numero { font-size: 1.5rem; line-height: 1.15; }
+.fin-bloco-escuro .fin-grade p:last-child { color: rgba(255, 255, 255, 0.6); }

@@ -11,6 +11,7 @@ import {
   type EditarGastoInput,
 } from "@festae/shared";
 import { FinanceiroService } from "./financeiro.service";
+import { ehSituacao } from "./contratos";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
@@ -35,6 +36,29 @@ export class FinanceiroController {
   @Get("indicadores")
   indicadores(@Query("mes") mes: string) {
     return this.financeiro.indicadores(mes);
+  }
+
+  /**
+   * A carteira de contratos: o que foi vendido, o que entrou, o que falta.
+   *
+   * Filtra por mês da festa, por situação de pagamento e por texto livre
+   * (cliente, cidade, número do contrato). A situação não é filtrável em SQL
+   * porque não é coluna — depende da soma dos pagamentos comparada ao total e
+   * à data da festa — e a regra que decide isso vive em @festae/shared, num
+   * lugar só.
+   */
+  @Get("contratos")
+  listarContratos(
+    @Query("mes") mes?: string,
+    @Query("situacao") situacao?: string,
+    @Query("busca") busca?: string,
+  ) {
+    const filtrada = (situacao ?? "").trim().toUpperCase();
+    return this.financeiro.listarContratos({
+      mes: mes || undefined,
+      situacao: ehSituacao(filtrada) ? filtrada : undefined,
+      busca: busca || undefined,
+    });
   }
 
   /**

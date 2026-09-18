@@ -2,6 +2,14 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
+  filtrarLinhas,
+  montarLinha,
+  ordenarLinhas,
+  resumir,
+  STATUS_VIGENTES,
+  type FiltroDeContratos,
+} from "./contratos";
+import {
   gastoAcumulado,
   indicadoresDoMes,
   linhaDeRitmo,
@@ -23,8 +31,14 @@ import {
  * planilha, e as duas discordavam sem que ninguém percebesse.
  */
 
-/** Reservas que ainda valem dinheiro. Cancelada não fatura. */
-const VIGENTES = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
+/**
+ * Reservas que ainda valem dinheiro. Cancelada não fatura.
+ *
+ * A lista mora em `contratos.ts` e é importada aqui em vez de repetida: a
+ * Visão Geral e a carteira de Vendas/Contratos precisam somar exatamente o
+ * mesmo conjunto, senão a conciliação entre as duas telas deixa de valer.
+ */
+const VIGENTES = STATUS_VIGENTES;
 
 function paraNumero(valor: unknown): number {
   // Prisma devolve Decimal; Number() nele é exato até 15 dígitos, muito acima
@@ -127,6 +141,84 @@ export class FinanceiroService {
     if (mes < mesAtual) return [diasNoMes, diasNoMes];
     if (mes > mesAtual) return [0, diasNoMes];
     return [hoje.getUTCDate(), diasNoMes];
+  }
+
+  /**
+   * A carteira de contratos, do ponto de vista comercial.
+   *
+   * Lê as mesmas reservas que a operação usa — não existe entidade paralela
+   * de venda, e não vai existir: `Reservation + Order` já é o contrato, e uma
+   * segunda tabela precisaria ser mantida em sincronia a cada remarcação ou
+   * troca de item. A primeira vez que alguém esquecesse, o faturamento e a
+   * agenda passariam a contar festas diferentes — que foi exatamente o
+   * defeito do painel antigo.
+   *
+   * Traz canceladas e rejeitadas junto, marcadas: quem administra
+   * comercialmente precisa ver o que caiu. Elas não entram em total nenhum —
+   * é `vigente` que decide isso, e o resumo só soma vigentes.
+   */
+  async listarContratos(filtro: FiltroDeContratos = {}) {
+    const reservas = await prisma.reservation.findMany({
+      select: {
+        id: true,
+        contractSeq: true,
+        status: true,
+        eventDate: true,
+        requestedAt: true,
+        confirmedAt: true,
+        cancelledAt: true,
+        rescheduledFrom: true,
+        origemDoRegistro: true,
+        referenciaExterna: true,
+        order: {
+          select: {
+            total: true,
+            fulfillment: true,
+            assembly: true,
+            kit: { select: { name: true } },
+            event: {
+              select: {
+                city: true,
+                saleChannel: true,
+                guestCount: true,
+                type: true,
+                theme: { select: { name: true } },
+                user: { select: { name: true, email: true, phone: true } },
+              },
+            },
+            payments: {
+              select: {
+                id: true,
+                type: true,
+                status: true,
+                method: true,
+                amount: true,
+                paidAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { eventDate: "desc" },
+    });
+
+    // Um instante só para a carteira inteira. Chamar `new Date()` por linha
+    // faria duas reservas da mesma lista serem julgadas em momentos
+    // diferentes — irrelevante quase sempre, e visível exatamente na virada
+    // da meia-noite, que é quando a regra de vencimento muda.
+    const agora = new Date();
+    const linhas = ordenarLinhas(
+      filtrarLinhas(
+        reservas.map((reserva) => montarLinha(reserva, agora)),
+        filtro,
+      ),
+    );
+
+    return {
+      apuradoEm: agora.toISOString(),
+      resumo: resumir(linhas, agora),
+      contratos: linhas.map((linha) => linha.comercial),
+    };
   }
 
   /**

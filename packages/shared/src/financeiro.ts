@@ -292,3 +292,130 @@ export function indicadoresDoMes(
     recebidoSemData: recebidoSemData(contratos),
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Situação de pagamento de um contrato
+ * ------------------------------------------------------------------ */
+
+/**
+ * Em que pé está o dinheiro de um contrato.
+ *
+ * É uma regra só, num lugar só, de propósito. No painel antigo cada aba
+ * decidia por conta própria o que era "em aberto": uma olhava o campo de
+ * sinal, outra comparava status com texto, e a terceira não olhava data
+ * nenhuma. O mesmo contrato aparecia quitado numa tela e pendente na outra,
+ * e não havia como saber qual estava certa — porque nenhuma delas era a
+ * regra, todas eram cópias dela.
+ */
+export const SITUACOES_DE_PAGAMENTO = [
+  "QUITADO",
+  "VENCIDO",
+  "PARCIAL",
+  "AGUARDANDO",
+  "CANCELADO",
+] as const;
+export type SituacaoDePagamento = (typeof SITUACOES_DE_PAGAMENTO)[number];
+
+export const SITUACAO_DE_PAGAMENTO_LABEL: Record<SituacaoDePagamento, string> = {
+  QUITADO: "Quitado",
+  VENCIDO: "Vencido",
+  PARCIAL: "Sinal recebido",
+  AGUARDANDO: "Aguardando",
+  CANCELADO: "Cancelado",
+};
+
+/** Frase curta que explica a situação, para a tela não ter de inventar uma. */
+export const SITUACAO_DE_PAGAMENTO_NOTA: Record<SituacaoDePagamento, string> = {
+  QUITADO: "nada a receber",
+  VENCIDO: "a festa já passou e o saldo continua aberto",
+  PARCIAL: "parte recebida, saldo vence no dia da festa",
+  AGUARDANDO: "nada recebido ainda",
+  CANCELADO: "fora da apuração",
+};
+
+/**
+ * Quando o saldo de um contrato vence.
+ *
+ * É o dia da festa, e isso não é uma convenção escolhida aqui: é a regra
+ * comercial que a Festaê já pratica — o saldo é pago na retirada ou na
+ * entrega, que acontecem no dia. Por isso não existe campo de vencimento no
+ * banco, e criar um seria pedir para a operação digitar uma data que o
+ * sistema já sabe.
+ */
+export function vencimentoDoSaldo(contrato: ContratoApurado): Date {
+  return contrato.festaEm;
+}
+
+/**
+ * A situação de pagamento de um contrato num dado instante.
+ *
+ * O `agora` entra por parâmetro em vez de a função ler o relógio: uma regra
+ * que depende de `new Date()` por dentro não tem como ser testada na véspera,
+ * no dia e no dia seguinte da mesma festa — que são exatamente as três bordas
+ * onde ela decide algo.
+ *
+ * A comparação é por dia do calendário em Chapecó, nunca por instante. A
+ * festa é um dia, não um horário: comparar timestamps faria a festa de hoje
+ * virar "vencida" às 9h da manhã, quando o saldo ainda vai ser pago na
+ * entrega da tarde.
+ */
+export function situacaoDePagamento(contrato: ContratoApurado, agora: Date): SituacaoDePagamento {
+  if (contrato.cancelado) return "CANCELADO";
+
+  const saldo = saldoDoContrato(contrato);
+  if (saldo <= 0) return "QUITADO";
+
+  // Vencido é o dia seguinte ao da festa, não o dia dela. No dia da festa o
+  // saldo ainda está no prazo — é nele que a cliente paga.
+  const festaJaPassou = diaEmChapeco(contrato.festaEm) < diaEmChapeco(agora);
+  if (festaJaPassou) return "VENCIDO";
+
+  return recebidoDoContrato(contrato) > 0 ? "PARCIAL" : "AGUARDANDO";
+}
+
+/** As situações que significam dinheiro a cobrar. */
+export const SITUACOES_EM_ABERTO: readonly SituacaoDePagamento[] = [
+  "VENCIDO",
+  "PARCIAL",
+  "AGUARDANDO",
+];
+
+/** O retrato da carteira: quanto foi vendido, quanto entrou, quanto falta. */
+export type ResumoDaCarteira = {
+  contratos: number;
+  contratado: number;
+  recebido: number;
+  saldoEmAberto: number;
+  vencido: number;
+  contratosVencidos: number;
+  ticketMedio: number | null;
+  recebidoSemData: number;
+};
+
+/**
+ * Soma a carteira inteira.
+ *
+ * Recebe só contratos vigentes — cancelado não entra em total nenhum, e
+ * filtrar aqui dentro esconderia do chamador quantas linhas ele passou que
+ * não contaram. Quem chama decide o que é vigente; esta função só soma.
+ */
+export function resumoDaCarteira(
+  contratos: readonly ContratoApurado[],
+  agora: Date,
+): ResumoDaCarteira {
+  const vivos = vigentes(contratos);
+  const contratado = somar(vivos.map((c) => c.valor));
+  const vencidos = vivos.filter((c) => situacaoDePagamento(c, agora) === "VENCIDO");
+
+  return {
+    contratos: vivos.length,
+    contratado,
+    recebido: totalRecebido(vivos),
+    saldoEmAberto: totalAReceber(vivos),
+    vencido: somar(vencidos.map(saldoDoContrato)),
+    contratosVencidos: vencidos.length,
+    ticketMedio:
+      vivos.length > 0 ? fromCentsInt(Math.round(toCentsInt(contratado) / vivos.length)) : null,
+    recebidoSemData: recebidoSemData(vivos),
+  };
+}

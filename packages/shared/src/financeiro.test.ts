@@ -12,6 +12,8 @@ import {
   saldoDoContrato,
   totalAReceber,
   totalRecebido,
+  resumoDaCarteira,
+  situacaoDePagamento,
   type ContratoApurado,
   type GastoApurado,
 } from "./financeiro";
@@ -211,5 +213,134 @@ describe("linhaDeRitmo", () => {
     expect(linha.falta).toBe(0);
     expect(linha.atrasoNoRitmo).toBe(2000);
     expect(linha.percentualAtingido).toBeCloseTo(1.333, 3);
+  });
+});
+
+describe("situacaoDePagamento", () => {
+  /** Uma festa às 12h UTC do dia pedido — a âncora que o sistema grava. */
+  const festa = (dia: string) => new Date(`${dia}T12:00:00.000Z`);
+
+  const contrato = (
+    dia: string,
+    valor: number,
+    recebido: number[],
+    cancelado = false,
+  ): ContratoApurado => ({
+    fechadoEm: new Date("2026-08-01T12:00:00.000Z"),
+    festaEm: festa(dia),
+    valor,
+    cancelado,
+    recebimentos: recebido.map((v) => ({ valor: v, recebidoEm: new Date("2026-08-05T12:00:00.000Z") })),
+  });
+
+  it("quitado quando não sobra saldo, mesmo com a festa no passado", () => {
+    const pago = contrato("2026-09-10", 1000, [400, 600]);
+    expect(situacaoDePagamento(pago, new Date("2026-09-30T12:00:00Z"))).toBe("QUITADO");
+  });
+
+  it("aguardando quando nada entrou e a festa ainda vem", () => {
+    const novo = contrato("2026-10-20", 1000, []);
+    expect(situacaoDePagamento(novo, new Date("2026-09-18T12:00:00Z"))).toBe("AGUARDANDO");
+  });
+
+  it("parcial quando o sinal entrou e o saldo ainda não venceu", () => {
+    const comSinal = contrato("2026-10-20", 1000, [400]);
+    expect(situacaoDePagamento(comSinal, new Date("2026-09-18T12:00:00Z"))).toBe("PARCIAL");
+  });
+
+  /*
+   * As três bordas da regra. A festa é um dia, não um instante: o saldo é pago
+   * na retirada ou na entrega, que acontecem dentro do dia. Por isso o dia da
+   * festa ainda está no prazo, e vencido começa no dia seguinte.
+   */
+  it("na véspera ainda não venceu", () => {
+    const c = contrato("2026-09-18", 1000, [400]);
+    expect(situacaoDePagamento(c, new Date("2026-09-17T12:00:00Z"))).toBe("PARCIAL");
+  });
+
+  it("no dia da festa ainda não venceu, nem às 9 da manhã", () => {
+    const c = contrato("2026-09-18", 1000, [400]);
+    // 09:00 em Chapecó é 12:00 UTC — a entrega da tarde ainda vai acontecer.
+    expect(situacaoDePagamento(c, new Date("2026-09-18T12:00:00Z"))).toBe("PARCIAL");
+    // E às 23h de Chapecó (02:00 UTC do dia seguinte) o dia ainda é 18.
+    expect(situacaoDePagamento(c, new Date("2026-09-19T02:00:00Z"))).toBe("PARCIAL");
+  });
+
+  it("no dia seguinte à festa, saldo aberto é vencido", () => {
+    const c = contrato("2026-09-18", 1000, [400]);
+    expect(situacaoDePagamento(c, new Date("2026-09-19T12:00:00Z"))).toBe("VENCIDO");
+  });
+
+  it("vence mesmo sem nunca ter recebido nada", () => {
+    const c = contrato("2026-09-10", 1000, []);
+    expect(situacaoDePagamento(c, new Date("2026-09-18T12:00:00Z"))).toBe("VENCIDO");
+  });
+
+  it("cancelado não vence nem fica em aberto", () => {
+    const c = contrato("2026-08-01", 1000, [], true);
+    expect(situacaoDePagamento(c, new Date("2026-09-18T12:00:00Z"))).toBe("CANCELADO");
+  });
+
+  it("recebido a mais não vira saldo negativo", () => {
+    const c = contrato("2026-09-10", 1000, [1200]);
+    expect(saldoDoContrato(c)).toBe(0);
+    expect(situacaoDePagamento(c, new Date("2026-09-30T12:00:00Z"))).toBe("QUITADO");
+  });
+});
+
+describe("resumoDaCarteira", () => {
+  const agora = new Date("2026-09-18T12:00:00Z");
+  const contrato = (
+    dia: string,
+    valor: number,
+    recebido: number,
+    cancelado = false,
+  ): ContratoApurado => ({
+    fechadoEm: new Date("2026-08-01T12:00:00.000Z"),
+    festaEm: new Date(`${dia}T12:00:00.000Z`),
+    valor,
+    cancelado,
+    recebimentos: recebido > 0 ? [{ valor: recebido, recebidoEm: new Date("2026-08-05T12:00:00Z") }] : [],
+  });
+
+  const carteira = [
+    contrato("2026-09-10", 1000, 400), // vencido: 600 em aberto
+    contrato("2026-09-05", 800, 800), // quitado
+    contrato("2026-10-20", 1200, 500), // parcial: 700 em aberto
+    contrato("2026-11-02", 600, 0), // aguardando: 600 em aberto
+    contrato("2026-09-01", 9999, 0, true), // cancelado: não conta em nada
+  ];
+
+  const resumo = resumoDaCarteira(carteira, agora);
+
+  it("ignora contrato cancelado em todos os totais", () => {
+    expect(resumo.contratos).toBe(4);
+    expect(resumo.contratado).toBe(3600);
+  });
+
+  it("soma o recebido dos vigentes", () => {
+    expect(resumo.recebido).toBe(1700);
+  });
+
+  it("separa o saldo em aberto do que já venceu", () => {
+    expect(resumo.saldoEmAberto).toBe(1900);
+    expect(resumo.vencido).toBe(600);
+    expect(resumo.contratosVencidos).toBe(1);
+  });
+
+  it("o vencido é um recorte do saldo em aberto, não uma soma à parte", () => {
+    expect(resumo.vencido).toBeLessThanOrEqual(resumo.saldoEmAberto);
+  });
+
+  it("contratado menos recebido fecha com o saldo em aberto", () => {
+    expect(resumo.contratado - resumo.recebido).toBeCloseTo(resumo.saldoEmAberto, 2);
+  });
+
+  it("ticket médio é do que vale, não do que foi cancelado", () => {
+    expect(resumo.ticketMedio).toBe(900);
+  });
+
+  it("carteira vazia não divide por zero", () => {
+    expect(resumoDaCarteira([], agora).ticketMedio).toBeNull();
   });
 });

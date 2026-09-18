@@ -4,6 +4,7 @@ import { REGIME_LABEL, type Regime } from "@festae/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Barra, Indicador } from "@/components/financeiro/pecas";
 import { Gastos } from "@/components/financeiro/Gastos";
+import { Contratos } from "@/components/financeiro/Contratos";
 import { api } from "@/lib/api";
 
 /**
@@ -106,6 +107,7 @@ function BlocoDeRegime({ titulo, explicacao, dados }: { titulo: string; explicac
 
 const ABAS = [
   { chave: "visao", rotulo: "Visão Geral" },
+  { chave: "contratos", rotulo: "Vendas / Contratos" },
   { chave: "despesas", rotulo: "Despesas" },
   { chave: "aportes", rotulo: "Aportes / Acervo" },
 ] as const;
@@ -150,6 +152,7 @@ export default function Financeiro() {
       </nav>
 
       {aba === "visao" && <VisaoGeral />}
+      {aba === "contratos" && <Contratos />}
       {aba === "despesas" && (
         <Gastos
           naturezas={["CONSUMO", "CUSTEIO"]}
