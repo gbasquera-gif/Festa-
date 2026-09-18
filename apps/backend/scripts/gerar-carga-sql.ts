@@ -85,7 +85,19 @@ if (aCriar.length !== ausentes.size) {
 const linhas: string[] = [];
 const p = (s = "") => linhas.push(s);
 
+// A diretiva de encoding vem antes de qualquer byte acentuado, inclusive dos
+// comentários: o psql do Windows assume WIN1252 como encoding de cliente, e ao
+// ler um arquivo UTF-8 tenta converter WIN1252 -> UTF8. O "Á" de "Árvore em
+// MDF" é C3 81 em UTF-8; o byte 0xC3 existe no WIN1252, mas 0x81 não, e a
+// conversão morre com "byte sequence 0x81 has no equivalent in UTF8" —
+// abortando a transação inteira. Declarar UTF8 faz os bytes passarem direto,
+// sem conversão nenhuma, e nenhum acento precisa ser removido.
+p("\\encoding UTF8");
+p("SET client_encoding TO 'UTF8';");
+p("");
 p("-- CARGA HISTÓRICA — gerada por scripts/gerar-carga-sql.ts");
+p("--");
+p("-- A primeira linha declara UTF-8 e precisa continuar sendo a primeira.");
 p("--");
 p("-- Transacional: tudo entra ou nada entra.");
 p("-- Idempotente: rodar de novo não duplica — cada registro carrega uma");
@@ -102,6 +114,7 @@ for (const v of aCriar) {
   const num = v.num.trim();
   const ref = `legado:contrato:${num}`;
   const cliente = v.cliente.trim();
+  const primeiroNome = cliente.split(/\s+/)[0];
   const cidade = (v.cidade ?? "").trim() || DELIVERY_CITY;
   const modalidade = semAcento(v.modalidade ?? "");
   const entrega = modalidade.includes("entrega");
@@ -123,6 +136,23 @@ for (const v of aCriar) {
   p(`  -- segura de repetir.`);
   p(`  IF EXISTS (SELECT 1 FROM reservations WHERE "referenciaExterna" = ${txt(ref)}) THEN`);
   p(`    RAISE NOTICE '${num}: ja existe, nada a fazer';`);
+  p(`    RETURN;`);
+  p(`  END IF;`);
+  p("");
+  p(`  -- Segunda guarda, contra o que se moveu depois da conciliação: se a`);
+  p(`  -- operação cadastrou este mesmo negócio no Admin entre a fotografia e`);
+  p(`  -- agora, ele não carrega a referência externa — e sem esta checagem a`);
+  p(`  -- carga criaria uma festa duplicada no mesmo dia.`);
+  p(`  IF EXISTS (`);
+  p(`    SELECT 1 FROM reservations r`);
+  p(`      JOIN orders o ON o.id = r."orderId"`);
+  p(`      JOIN events e ON e.id = o."eventId"`);
+  p(`      JOIN users  u ON u.id = e."userId"`);
+  p(`     WHERE r."eventDate"::date = ${txt(festa)}::date`);
+  p(`       AND lower(u.name) LIKE '%' || lower(${txt(primeiroNome)}) || '%'`);
+  p(`       AND r.status NOT IN ('CANCELLED','REJECTED')`);
+  p(`  ) THEN`);
+  p(`    RAISE NOTICE '${num}: ja existe reserva para este cliente nesta data — NAO criado';`);
   p(`    RETURN;`);
   p(`  END IF;`);
   p("");
