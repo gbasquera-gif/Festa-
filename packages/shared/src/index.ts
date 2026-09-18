@@ -215,6 +215,14 @@ export type {
 } from "./financeiro";
 
 export {
+  SITUACOES_DO_RECEBIMENTO,
+  SITUACAO_DO_RECEBIMENTO_LABEL,
+  situacaoDoRecebimento,
+  estaQuitado,
+} from "./recebimento";
+export type { SituacaoDoRecebimento } from "./recebimento";
+
+export {
   FUSO_DE_CHAPECO_EM_MINUTOS,
   dataDaFestaSchema,
   diaDaFesta,

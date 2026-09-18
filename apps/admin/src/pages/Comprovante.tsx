@@ -6,6 +6,7 @@ import {
   PAYMENT_METHOD_LABEL,
   FESTAE_CONTATO,
   TERMS_VERSION,
+  estaQuitado,
   eventTypeLabel,
   montarComprovante,
   numeroDoContrato,
@@ -174,7 +175,10 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
 
 function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean }) {
   const titulo = c.temPagamento ? "Comprovante de pagamento" : "Confirmação de reserva";
-  const quitada = c.temPagamento && c.valores.saldo === 0;
+  // Mesma função que a tela de Reservas usa. Duas telas com a mesma regra
+  // escrita duas vezes é como a cliente que pagou tudo virava "sinal
+  // recebido" numa e "Pago integralmente" na outra.
+  const quitada = c.temPagamento && estaQuitado(c.valores.total, c.valores.pago);
 
   return (
     <article id="comprovante" className="folha">

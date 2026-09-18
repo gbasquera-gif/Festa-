@@ -8,6 +8,8 @@ import {
   formatarDataDaFesta,
   PERCENTUAL_DO_SINAL,
   saldoAPagar,
+  situacaoDoRecebimento,
+  SITUACAO_DO_RECEBIMENTO_LABEL,
   splitPayment,
   type ReservationStatus,
 } from "@festae/shared";
@@ -89,8 +91,6 @@ function whatsappLink(phone: string, message: string) {
  */
 function paymentSummary(row: ReservationRow) {
   const total = Number(row.order.total);
-  const depositPaid = row.order.payments.some((p) => p.type === "DEPOSIT" && p.status === "PAID");
-  const balancePaid = row.order.payments.some((p) => p.type === "BALANCE" && p.status === "PAID");
 
   // O recebido é a soma do que entrou de verdade, não a projeção da taxa de
   // hoje. Recalcular pela taxa mostraria "recebido R$ 180" para a cliente
@@ -100,28 +100,59 @@ function paymentSummary(row: ReservationRow) {
     .filter((p) => p.status === "PAID")
     .reduce((soma, p) => soma + Number(p.amount), 0);
 
-  // O sinal exibido é o que entrou quando já entrou; enquanto não entrou, é
-  // a projeção — que é exatamente o que vai ser cobrado.
+  const pending = saldoAPagar(total, received);
+
+  /**
+   * A situação vem do dinheiro, não do tipo do lançamento.
+   *
+   * Antes vinha do tipo: só um pagamento marcado DEPOSIT contava como sinal
+   * recebido, e só um BALANCE contava como quitação. Todo contrato vindo da
+   * migração do painel antigo entrou como INDETERMINADO — porque o painel
+   * guardava o valor e nunca dizia se era sinal ou saldo — então um contrato
+   * pago por inteiro aparecia como "Aguardando pagamento", e ao lado dele um
+   * "Sinal 30% aguardando o Pix" que nunca existiu: era a projeção da taxa
+   * sendo exibida como se fosse cobrança.
+   *
+   * Quitado é `pending === 0`, qualquer que seja o tipo dos lançamentos.
+   */
+  // A regra mora em @festae/shared e é a mesma que o comprovante lê. Antes de
+  // existir, esta tela decidia pelo tipo do lançamento e o comprovante pelo
+  // saldo: quem pagou tudo de uma vez num único DEPOSIT aparecia como "sinal
+  // recebido" aqui e como "Pago integralmente" lá.
+  const situacao = situacaoDoRecebimento(total, received);
+  const quitado = situacao === "QUITADO";
+  const recebeuAlgo = situacao !== "AGUARDANDO";
+
+  // A distinção sinal/saldo continua existindo onde ela é real — quando há um
+  // pagamento efetivamente marcado como sinal. O que deixou de existir é a
+  // cobrança fantasma quando não há.
+  const depositPaid = row.order.payments.some((p) => p.type === "DEPOSIT" && p.status === "PAID");
+  const balancePaid = row.order.payments.some((p) => p.type === "BALANCE" && p.status === "PAID");
+
   const depositPago = row.order.payments
     .filter((p) => p.type === "DEPOSIT" && p.status === "PAID")
     .reduce((soma, p) => soma + Number(p.amount), 0);
+
+  // O sinal só é exibido como cobrança a fazer enquanto for uma cobrança a
+  // fazer: nada recebido e saldo em aberto. Recebido algo, o que a operação
+  // precisa ler é quanto entrou e quanto falta.
+  const mostrarSinalProjetado = !recebeuAlgo && !quitado;
   const deposit = depositPaid ? depositPago : splitPayment(total).deposit;
-  const balance = saldoAPagar(total, received);
 
   return {
     total,
     deposit,
-    balance,
+    balance: pending,
     depositPaid,
     balancePaid,
     received,
-    pending: saldoAPagar(total, received),
-    label: balancePaid
-      ? "Pago integralmente"
-      : depositPaid
-        ? "Sinal recebido"
-        : "Aguardando pagamento",
-    tone: balancePaid || depositPaid ? "text-emerald-700" : "text-amber-700",
+    pending,
+    quitado,
+    recebeuAlgo,
+    mostrarSinalProjetado,
+    situacao,
+    label: SITUACAO_DO_RECEBIMENTO_LABEL[situacao],
+    tone: quitado ? "text-emerald-700" : "text-amber-700",
   };
 }
 
@@ -294,24 +325,34 @@ function Detail({ row }: { row: ReservationRow }) {
             <dt>Total</dt>
             <dd>{money(payment.total)}</dd>
           </div>
+          {/* O sinal projetado só aparece enquanto for cobrança a fazer. Com
+              dinheiro recebido, a linha passa a dizer quanto entrou — venha
+              esse dinheiro de um sinal, de um saldo ou de um lançamento
+              migrado sem tipo definido. */}
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="text-muted-foreground">
-              {payment.depositPaid ? "Sinal recebido" : `Sinal ${PERCENTUAL_DO_SINAL}`}
+              {payment.mostrarSinalProjetado ? `Sinal ${PERCENTUAL_DO_SINAL}` : "Recebido"}
             </dt>
-            <dd className={payment.depositPaid ? "text-emerald-700" : "text-amber-700"}>
-              {money(payment.deposit)}
+            <dd className={payment.recebeuAlgo ? "text-emerald-700" : "text-amber-700"}>
+              {money(payment.mostrarSinalProjetado ? payment.deposit : payment.received)}
             </dd>
-            <p className={`w-full text-xs ${payment.depositPaid ? "text-emerald-700" : "text-amber-700"}`}>
-              {payment.depositPaid ? "recebido" : "aguardando o Pix"}
+            <p className={`w-full text-xs ${payment.recebeuAlgo ? "text-emerald-700" : "text-amber-700"}`}>
+              {payment.mostrarSinalProjetado
+                ? "aguardando o Pix"
+                : payment.quitado
+                  ? "pago integralmente"
+                  : payment.depositPaid && !payment.balancePaid
+                    ? "sinal recebido"
+                    : "recebido"}
             </p>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="text-muted-foreground">Restante</dt>
-            <dd className={payment.balancePaid ? "text-emerald-700" : ""}>
+            <dd className={payment.quitado ? "text-emerald-700" : ""}>
               {money(payment.balance)}
             </dd>
             <p className="w-full text-xs text-muted-foreground">
-              {payment.balancePaid ? "recebido" : "na retirada ou entrega"}
+              {payment.quitado ? "nada a pagar" : "na retirada ou entrega"}
             </p>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2 border-t pt-1.5">

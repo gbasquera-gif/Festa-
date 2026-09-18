@@ -6,11 +6,17 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { diaDaFesta, normalizarDataDaFesta, saldoAPagar } from "@festae/shared";
+import {
+  diaDaFesta,
+  fromCentsInt,
+  normalizarDataDaFesta,
+  saldoAPagar,
+  toCentsInt,
+} from "@festae/shared";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
 import { mensagemDeConflito } from "../availability/item-commitment";
-import { pendentesAEncerrar, quitaOPedido } from "./encerrar-pendencias";
+import { pendentesAEncerrar } from "./encerrar-pendencias";
 
 @Injectable()
 export class ReservationsService {
@@ -167,71 +173,124 @@ export class ReservationsService {
       throw new BadRequestException("A data do pagamento não pode estar no futuro.");
     }
 
-    const jaPago = reserva.order.payments
-      .filter((p) => p.status === "PAID")
-      .reduce((soma, p) => soma + Number(p.amount), 0);
-
     const confirmaAReserva = dados.tipo === "DEPOSIT" && reserva.status === "PENDING";
-
+    const orderId = reserva.order.id;
     const totalDoPedido = Number(reserva.order.total);
-    const quita = quitaOPedido(jaPago, dados.valor, totalDoPedido);
-    const aEncerrar = pendentesAEncerrar(
-      reserva.order.payments,
-      { tipo: dados.tipo, valor: dados.valor },
-      totalDoPedido,
-      jaPago,
-    );
 
-    await prisma.$transaction([
-      prisma.payment.create({
+    /**
+     * Tudo daqui para baixo roda sob lock do pedido.
+     *
+     * A conferência de saldo não pode ser feita fora da transação. Duas
+     * requisições simultâneas — clique duplo, retry do navegador, duas abas —
+     * leriam o mesmo "já pago", as duas achariam que cabe, e as duas
+     * gravariam. Foi assim que um pedido de R$ 400,00 chegou a R$ 610,00 em
+     * recebimentos num teste de concorrência.
+     *
+     * O `FOR UPDATE` na linha do pedido serializa por pedido: a segunda
+     * requisição espera a primeira terminar e só então relê os pagamentos,
+     * já enxergando o que a primeira gravou. Pedidos diferentes não esperam
+     * uns pelos outros.
+     */
+    const apurado = await prisma.$transaction(async (tx) => {
+      // 1. O lock. É a linha do pedido, e não a dos pagamentos, porque o que
+      //    precisa ser serializado é a decisão sobre o saldo dele.
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+
+      // 2. Reler dentro do lock. A leitura de fora serviu para validar a
+      //    reserva; para decidir sobre dinheiro, ela já pode estar velha.
+      const pagamentos = await tx.payment.findMany({
+        where: { orderId },
+        select: { id: true, type: true, status: true, amount: true },
+      });
+
+      // 3. Saldo em centavos: comparar dinheiro em ponto flutuante deixa
+      //    passar um centavo, e um centavo a mais é sobrepagamento igual.
+      const pagoEmCentavos = pagamentos
+        .filter((p) => p.status === "PAID")
+        .reduce((soma, p) => soma + toCentsInt(Number(p.amount)), 0);
+      const totalEmCentavos = toCentsInt(totalDoPedido);
+      const saldoEmCentavos = totalEmCentavos - pagoEmCentavos;
+      const valorEmCentavos = toCentsInt(dados.valor);
+
+      // 4. Pedido quitado não recebe mais nada. A recusa diz os números, em
+      //    vez de mandar a operação ir conferir em outra tela.
+      if (saldoEmCentavos <= 0) {
+        throw new ConflictException(
+          `Este pedido já está quitado: R$ ${fromCentsInt(pagoEmCentavos).toFixed(2)} ` +
+            `recebidos de R$ ${totalDoPedido.toFixed(2)}. ` +
+            "Nenhum recebimento novo pode ser lançado.",
+        );
+      }
+
+      // 5. Pagar mais que o saldo também é sobrepagamento.
+      if (valorEmCentavos > saldoEmCentavos) {
+        throw new ConflictException(
+          `O valor excede o saldo deste pedido. Saldo disponível: ` +
+            `R$ ${fromCentsInt(saldoEmCentavos).toFixed(2)}.`,
+        );
+      }
+
+      // 6. Cabe. A partir daqui é escrita.
+      const quita = valorEmCentavos >= saldoEmCentavos;
+      const aEncerrar = pendentesAEncerrar(
+        pagamentos,
+        { tipo: dados.tipo, valor: dados.valor },
+        totalDoPedido,
+        fromCentsInt(pagoEmCentavos),
+      );
+
+      await tx.payment.create({
         data: {
-          orderId: reserva.order.id,
+          orderId,
           type: dados.tipo,
           amount: dados.valor,
           method: dados.forma as never,
           status: "PAID",
           paidAt: recebidoEm,
         },
-      }),
-      ...(aEncerrar.length > 0
-        ? [
-            prisma.payment.updateMany({
-              // `status: "PENDING"` no filtro não é redundante: a lista foi
-              // montada de uma leitura anterior, e entre ela e esta escrita
-              // outro registro pode ter pago a mesma cobrança. A condição
-              // torna impossível esta linha reescrever um PAID.
-              where: { id: { in: aEncerrar }, status: "PENDING" },
-              data: { status: "FAILED" },
-            }),
-          ]
-        : []),
-      ...(confirmaAReserva
-        ? [
-            prisma.reservation.update({
-              where: { id },
-              data: { status: "CONFIRMED", confirmedAt: new Date() },
-            }),
-            prisma.order.update({ where: { id: reserva.order.id }, data: { status: "CONFIRMED" } }),
-          ]
-        : []),
+      });
+
+      // 7. Quitar encerra o que restou pendente — a regra do 8a77a08.
+      if (aEncerrar.length > 0) {
+        await tx.payment.updateMany({
+          // `status: "PENDING"` no filtro não é redundante nem sob lock: é a
+          // garantia estrutural de que nenhum caminho deste método reescreve
+          // um recebimento já registrado.
+          where: { id: { in: aEncerrar }, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+      }
+
+      if (confirmaAReserva) {
+        await tx.reservation.update({
+          where: { id },
+          data: { status: "CONFIRMED", confirmedAt: new Date() },
+        });
+        await tx.order.update({ where: { id: orderId }, data: { status: "CONFIRMED" } });
+      }
+
       // O funil só sabe que a loja vende quando o dinheiro entra. Pagamento
       // recebido por fora conta igual — senão o relatório subestima a
       // empresa justamente nas vendas fechadas na conversa.
-      prisma.analyticsEvent.create({
+      await tx.analyticsEvent.create({
         data: {
           type: "PAGAMENTO_REALIZADO",
           metadata: {
-            orderId: reserva.order.id,
+            orderId,
             tipo: dados.tipo,
             valor: String(dados.valor),
             registradoPor: usuarioId,
             manual: true,
           },
         },
-      }),
-    ]);
+      });
 
-    const pagoAgora = jaPago + dados.valor;
+      return {
+        pago: fromCentsInt(pagoEmCentavos + valorEmCentavos),
+        encerradas: aEncerrar.length,
+        quita,
+      };
+    });
 
     this.logger.log(
       `Pagamento de R$ ${dados.valor.toFixed(2)} (${dados.tipo}) registrado por ${usuarioId} ` +
@@ -241,11 +300,11 @@ export class ReservationsService {
     return {
       registrado: true,
       total: totalDoPedido,
-      pago: pagoAgora,
-      saldo: saldoAPagar(totalDoPedido, pagoAgora),
+      pago: apurado.pago,
+      saldo: saldoAPagar(totalDoPedido, apurado.pago),
       reservaConfirmada: confirmaAReserva,
-      pixPendentesEncerrados: aEncerrar.length,
-      pedidoQuitado: quita,
+      pixPendentesEncerrados: apurado.encerradas,
+      pedidoQuitado: apurado.quita,
     };
   }
 
