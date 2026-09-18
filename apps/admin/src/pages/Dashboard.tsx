@@ -302,18 +302,20 @@ export default function Dashboard() {
           )}
         </section>
 
-        {/* Identidade Festaê. A marca fala pela arte; nada de texto sobreposto. */}
-        <section
-          className="min-w-0 self-start overflow-hidden lg:col-span-1"
-          style={{ border: "1px solid #ece5dc", borderRadius: 12 }}
-        >
+        {/* Identidade Festaê. A marca fala pela arte; nada de texto sobreposto.
+          *
+          * A moldura vive na imagem, e não num contêiner em volta: contêiner
+          * com borda e raio próprios vira uma caixa vazia desenhada na tela
+          * enquanto a arte não chega — foi exatamente o que apareceu no
+          * celular. Sem imagem, não há nada para ver. */}
+        <section className="min-w-0 self-start lg:col-span-1">
           <img
             src="/banner-proposito.webp"
             alt="Festaê — Pegue, Monte, Comemore. Sua festa linda, sem complicação."
             width={1672}
             height={941}
-            decoding="async"
-            className="block h-auto w-full max-w-full"
+            className="block h-auto w-full max-w-full object-contain"
+            style={{ border: "1px solid #ece5dc", borderRadius: 12, aspectRatio: "1672 / 941" }}
           />
         </section>
       </div>
@@ -375,18 +377,19 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Fechamento de marca. A arte já traz os textos; nada duplicado em HTML. */}
-      <div className="min-w-0 overflow-hidden" style={{ border: "1px solid #ece5dc", borderRadius: 12 }}>
-        <img
-          src="/banner-escolhas.webp"
-          alt="Festaê — decoração de festas em Chapecó"
-          width={2000}
-          height={744}
-          loading="lazy"
-          decoding="async"
-          className="block h-auto w-full max-w-full"
-        />
-      </div>
+      {/* Fechamento de marca. A arte já traz os textos; nada duplicado em HTML.
+        *
+        * Sem `loading="lazy"`: são duas imagens da própria marca, não um feed
+        * infinito. Adiar a segunda economizava alguns KB e custava uma faixa
+        * vazia no celular de quem rola rápido. */}
+      <img
+        src="/banner-escolhas.webp"
+        alt="Festaê — decoração de festas em Chapecó"
+        width={2000}
+        height={744}
+        className="block h-auto w-full max-w-full object-contain"
+        style={{ border: "1px solid #ece5dc", borderRadius: 12, aspectRatio: "2000 / 744" }}
+      />
     </div>
   );
 }
