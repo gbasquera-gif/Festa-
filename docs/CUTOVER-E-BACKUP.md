@@ -75,9 +75,21 @@ fonte não migrada seja a menor possível.
 1. **Inventário das duas fontes** — `inventario-producao.sql` no Postgres, aba
    Backup no painel. Guardar os dois arquivos.
 2. **Backup verificado** do Postgres (§2.3). Sem isto, parar aqui.
-3. **Congelar o painel antigo.** Ligar a proteção por senha do Netlify
-   (Site configuration → Access & security). Quem não tem a senha não escreve
-   mais. É o passo que fecha a porta aberta e ao mesmo tempo congela a fonte.
+3. **Congelar o painel antigo — despublicando o deploy.**
+
+   Eu havia recomendado proteção por senha. **Não serve neste caso:** a conta
+   está no plano `nf_team_dev` do Netlify, e proteção por senha é recurso de
+   plano pago. Conferido pela API: o site reporta `requiresPassword: false`,
+   sem opção de ligar.
+
+   O caminho que funciona em qualquer plano é **despublicar o deploy** na área
+   de Deploys do site. O endereço passa a responder 404 — inclusive a função
+   que grava — e nada é apagado: o histórico de deploys continua lá, e o store
+   `festae` do Netlify Blobs também. Republicar é um clique, se precisar de
+   contingência.
+
+   Despublicar fecha as duas portas de uma vez: a escrita sem autenticação e
+   os dados no HTML público.
 4. **Fotografia final** do painel — exportar de novo, já congelado. É esta
    exportação que a carga usa, não a do passo 1.
 5. **Dry-run contra produção**, com a exportação final. Ler as divergências.
@@ -125,7 +137,8 @@ mesmo no pior caso.
 | risco | gravidade | tratamento |
 |---|---|---|
 | lançamento novo no painel durante a migração | **alto** | congelar antes da fotografia final (§4.3) |
-| painel antigo sem autenticação, aceitando `apagar` | **alto** | a senha do Netlify fecha isso no passo 3 |
+| painel antigo sem autenticação, aceitando `apagar` | **alto** | despublicar o deploy fecha isso — §4.3 |
+| `.netlify.app` continua aceitando escrita depois da troca de DNS | **alto** | mudar o DNS não desliga o site; só despublicar desliga |
 | dados financeiros no HTML público | **alto** | sai do ar junto com o painel |
 | backup não testado | **alto** | §2.3 é obrigatório |
 | divergência de pagamento entre as bases | médio | relatada, nunca sobrescrita; revisão manual |
@@ -133,3 +146,25 @@ mesmo no pior caso.
 | recebimento sem data | médio | fica fora do caixa mensal até saneamento |
 | carga interrompida no meio | baixo | transacional por contrato: ou entra inteiro, ou não entra |
 | rodar a carga duas vezes | baixo | idempotente, verificado em três execuções |
+
+## 7. Apontar o domínio para o Admin
+
+O bundle do Admin chama a API por URL absoluta, embutida em tempo de build
+(`VITE_API_URL`, com padrão `https://festa-production.up.railway.app/api/v1`),
+e o backend sobe com `cors: true`. Ou seja: **servir o Admin em outro domínio
+não exige reconfigurar nada** — nem variável de ambiente, nem lista de origens.
+
+O que exige configuração é só o domínio:
+
+1. No Railway, serviço `alert-compassion` → Settings → Public Networking →
+   **+ Custom Domain** → `painel.festaechapeco.com.br`.
+2. O Railway devolve **dois** registros: um `CNAME` e um `TXT`. Os dois são
+   obrigatórios — só com o CNAME o domínio responde 404, porque é o TXT que
+   comprova a posse antes de o Railway rotear o tráfego.
+3. Criar os dois no provedor de DNS, exatamente como mostrados.
+4. Esperar o visto verde no painel do Railway. O certificado Let's Encrypt sai
+   sozinho, em geral dentro de uma hora.
+
+Antes disso, o mesmo nome precisa deixar de estar reivindicado no Netlify —
+hoje ele é o `primarySiteUrl` do site do painel antigo — senão os dois
+serviços disputam o mesmo domínio.
