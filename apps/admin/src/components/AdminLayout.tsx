@@ -96,12 +96,29 @@ function estaAtivo(location: string, href: string): boolean {
 function Marca({ recolhida }: { recolhida?: boolean }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <img
-        src="/logo-festae.png"
-        alt="Festaê"
-        className={recolhida ? "h-7 w-9 object-contain" : "h-8 w-auto max-w-[140px] object-contain object-left"}
-        style={recolhida ? { objectFit: "cover", objectPosition: "left center" } : undefined}
-      />
+      {/* Recolhida, mostra só a caixinha da marca — a parte que se reconhece
+          em 68px. Expandida, a assinatura inteira, sem recorte e sem esticar. */}
+      {recolhida ? (
+        <span
+          className="block h-9 w-9 shrink-0"
+          role="img"
+          aria-label="Festaê"
+          style={{
+            backgroundImage: "url(/marca-festae.webp)",
+            backgroundSize: "auto 150%",
+            backgroundPosition: "left center",
+            backgroundRepeat: "no-repeat",
+          }}
+        />
+      ) : (
+        <img
+          src="/marca-festae.webp"
+          alt="Festaê"
+          width={1983}
+          height={793}
+          className="h-auto w-[150px] max-w-full"
+        />
+      )}
       {!recolhida && (
         <span className="text-[0.68rem] font-medium leading-tight" style={{ color: "#9a9086" }}>
           Painel de Gestão
@@ -169,7 +186,7 @@ function Rodape({ recolhida }: { recolhida?: boolean }) {
     <div className="mt-auto border-t pt-3" style={{ borderColor: "var(--color-line, #e8dfd5)" }}>
       <div className={`flex items-center gap-2 px-1 ${recolhida ? "justify-center" : ""}`}>
         <span
-          className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full text-[0.7rem] font-medium"
           style={{ background: "rgba(27,46,75,0.08)", color: "var(--color-navy)" }}
           title={recolhida ? `${user?.name} · ${user?.role}` : undefined}
         >
@@ -311,7 +328,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <span className="truncate font-semibold" style={{ color: "var(--color-navy)" }}>
             {tituloDaRota(location)}
           </span>
-          <img src="/logo-festae.png" alt="Festaê" className="ml-auto h-7 w-auto object-contain pr-1" />
+          <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} className="ml-auto h-auto w-[104px] pr-1" />
         </header>
 
         {/* min-w-0 no pai é o que permite o conteúdo encolher: sem ele, uma

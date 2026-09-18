@@ -42,7 +42,7 @@ export function ModuloComAbas({
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--color-navy)" }}>
+          <h1 className="text-[1.65rem] font-semibold" style={{ color: "var(--color-navy)" }}>
             {titulo}
           </h1>
           <p className="mt-0.5 max-w-2xl text-sm text-muted-foreground">{descricao}</p>
@@ -91,7 +91,7 @@ export function ResumoDoModulo({
             <>
               <p className="painel-periodo">{c.rotulo}</p>
               <p
-                className="mt-1 text-2xl font-semibold"
+                className="mt-1 text-2xl font-medium"
                 style={{ color: "var(--color-navy)", fontVariantNumeric: "tabular-nums" }}
               >
                 {c.valor}

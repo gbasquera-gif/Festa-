@@ -59,7 +59,7 @@ export default function Financeiro() {
     <div className="financeiro space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--fin-navy-ink)" }}>
+          <h1 className="text-[1.65rem] font-semibold" style={{ color: "var(--fin-navy-ink)" }}>
             Financeiro
           </h1>
           <p className="text-sm" style={{ color: "var(--fin-muted)" }}>

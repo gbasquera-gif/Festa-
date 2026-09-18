@@ -650,3 +650,124 @@
   text-transform: uppercase;
   color: #9a9086;
 }
+
+/* ----------------------------------------------------------------------
+ * Refinamento tipográfico
+ *
+ * A interface estava pesada: títulos em 700/800, rótulos em 600, menu em
+ * 500/600 — quando quase tudo é negrito, nada se destaca. O contraste passa
+ * a vir de tamanho, cor e espaço, e o peso volta a ser exceção.
+ *
+ * As regras entram por último e com seletor de elemento, e não com
+ * `!important`: quem precisar de um peso específico continua conseguindo
+ * pedi-lo numa classe utilitária.
+ * -------------------------------------------------------------------- */
+
+@layer base {
+  h1 { font-weight: 600; letter-spacing: -0.015em; }
+  h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+  h4, h5, h6 { font-weight: 500; }
+  /* Corpo de texto em 400: era o peso que o Inter foi desenhado para ter. */
+  p, li, td, dd, label, span { font-weight: inherit; }
+}
+
+/* O menu era o lugar mais pesado da tela. 400 no normal, 500 no ativo: a
+ * diferença de peso some e quem marca o lugar é o traço coral. */
+.painel-item { font-weight: 400; letter-spacing: -0.005em; }
+.painel-item[aria-current="page"] { font-weight: 500; }
+
+/* Rótulo de grupo e de período: peso 400 e mais espaço entre letras. Em
+ * caixa alta e corpo pequeno, o espaçamento é que dá legibilidade, não o
+ * negrito. */
+.painel-nav-grupo { font-weight: 400; letter-spacing: 0.14em; }
+.painel-periodo { font-weight: 400; letter-spacing: 0.1em; }
+
+.painel-aba { font-weight: 500; }
+.painel-aba[aria-current="page"] { font-weight: 500; }
+
+.painel-segmentado button { font-weight: 500; }
+
+/* Cartões: borda mais fina que um pixel onde a tela permite, e sombra que
+ * quase não existe — o que separa um cartão do fundo é o próprio fundo
+ * off-white, não a sombra. */
+.painel-cartao {
+  border-color: #ece5dc;
+  box-shadow: 0 1px 1px rgba(27, 46, 75, 0.025);
+}
+
+/* Os rótulos financeiros herdados da Sprint 2 também aliviam. */
+.fin-rotulo { font-weight: 400; letter-spacing: 0.12em; }
+.fin-numero { font-weight: 500; }
+.fin-bloco-escuro .fin-numero { font-weight: 500; }
+.fin-tabela th { font-weight: 400; letter-spacing: 0.11em; }
+
+/* ----------------------------------------------------------------------
+ * Botões
+ *
+ * Eram altos, com raio grande e texto em 600 — aparência de botão de
+ * formulário administrativo. Ficam mais baixos, com raio moderado, texto em
+ * 500 e borda de um pixel; a diferença entre primário e secundário passa a
+ * ser o preenchimento, não o tamanho.
+ * -------------------------------------------------------------------- */
+
+button, [role="button"] { letter-spacing: -0.005em; }
+
+/* Alvo de toque continua em 44px no celular: dedo não acerta 32px. No
+ * computador o botão pode ser mais baixo, porque o ponteiro é preciso. */
+@media (min-width: 1024px) {
+  .painel-compacto { min-height: 34px; }
+}
+
+/* Foco visível em tudo que recebe teclado, com o coral da marca. */
+:where(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid var(--color-coral);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* No computador o botão pode ser mais baixo: o ponteiro é preciso. No celular
+ * os 44px continuam, porque dedo não acerta 36px. Uma regra só, em vez de
+ * mexer no `min-h-11` de dezenas de componentes. */
+@media (min-width: 1024px) {
+  button.min-h-11,
+  a.min-h-11,
+  label.min-h-11 { min-height: 2.25rem; }
+  .h-11 { height: 2.25rem; }
+}
+
+/* Segmented control: uma peça só, com trilha própria, e não cinco botões
+ * soltos. O selecionado ganha fundo coral suave e uma borda de um pixel que
+ * o levanta da trilha sem sombra. */
+.painel-segmentado {
+  padding: 2px;
+  gap: 0;
+  background: #f7f2eb;
+  border-color: #ece5dc;
+}
+.painel-segmentado button {
+  /* 36px no celular, 30px no computador: o segmentado é o filtro mais usado
+   * da Visão Geral e continua sendo alvo de dedo. */
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #7a7266;
+}
+.painel-segmentado button:hover { color: var(--color-navy); background: rgba(255, 255, 255, 0.6); }
+.painel-segmentado button[aria-pressed="true"] {
+  background: #fff;
+  border-color: #e6dcd0;
+  color: #c4472a;
+}
+
+/* Cartão interativo: o que reage ao ponteiro é só o que leva a algum lugar.
+ * Cartão de leitura (Próximas festas, Resumo financeiro) fica parado — hover
+ * em bloco que não é clicável é promessa falsa. */
+a.painel-cartao {
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+a.painel-cartao:hover { border-color: #e0d3c2; }
+
+@media (min-width: 1024px) {
+  .painel-segmentado button { min-height: 30px; }
+}

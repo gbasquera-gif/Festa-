@@ -5,7 +5,7 @@ import { CalendarDays, ListChecks, Wallet, Coins, ArrowRight } from "lucide-reac
 import { formatarDataDaFesta } from "@festae/shared";
 import { api } from "@/lib/api";
 import { brl, nomeDoMes, pct } from "@/components/financeiro/formato";
-import type { Panorama } from "@/components/financeiro/panorama";
+import type { Panorama, Variacao } from "@/components/financeiro/panorama";
 
 /**
  * A Visão Geral — o cockpit da operação.
@@ -137,13 +137,19 @@ export default function Dashboard() {
 
   const fin = panorama.data;
   const rotuloPeriodo = porAno ? String(ano) : nomeDoMes(mes);
+  /**
+   * A comparação que o backend apura é mês contra mês anterior. No acumulado
+   * do ano ela não descreve o número exibido, então some — em vez de virar um
+   * percentual calculado aqui, que seria uma segunda regra financeira.
+   */
+  const comparavel = !porAno && fin !== undefined && fin.comparacao.temBase;
 
   return (
     <div className="space-y-5">
       {/* Cabeçalho e filtro temporal. */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--color-navy)" }}>
+          <h1 className="text-[1.65rem] font-semibold" style={{ color: "var(--color-navy)" }}>
             Visão Geral
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -221,9 +227,9 @@ export default function Dashboard() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Próximas festas. */}
-        <section className="painel-cartao p-4 lg:col-span-1">
+        <section className="painel-cartao min-w-0 p-4 lg:col-span-1">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="font-semibold" style={{ color: "var(--color-navy)" }}>Próximas festas</h2>
+            <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>Próximas festas</h2>
             <Link href="/reservas" className="text-xs font-medium" style={{ color: "var(--color-coral)" }}>
               Ver todas →
             </Link>
@@ -236,7 +242,7 @@ export default function Dashboard() {
               {proximas.map((r) => (
                 <li key={r.id} className="flex items-start gap-3">
                   <span className="shrink-0 text-center" style={{ minWidth: 34 }}>
-                    <span className="block text-base font-semibold leading-none" style={{ color: "var(--color-navy)" }}>
+                    <span className="block text-base font-medium leading-none" style={{ color: "var(--color-navy)" }}>
                       {formatarDataDaFesta(r.eventDate).slice(0, 2)}
                     </span>
                     <span className="painel-periodo">
@@ -244,7 +250,7 @@ export default function Dashboard() {
                     </span>
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium" style={{ color: "var(--color-navy)" }}>
+                    <span className="block truncate text-sm" style={{ color: "var(--color-navy)" }}>
                       {r.order.event.user.name}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
@@ -261,9 +267,9 @@ export default function Dashboard() {
         </section>
 
         {/* Ações em destaque — os mesmos dados de Próximas ações, sem regra nova. */}
-        <section className="painel-cartao p-4 lg:col-span-1">
+        <section className="painel-cartao min-w-0 p-4 lg:col-span-1">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="font-semibold" style={{ color: "var(--color-navy)" }}>Ações em destaque</h2>
+            <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>Ações em destaque</h2>
             <Link href="/operacao" className="text-xs font-medium" style={{ color: "var(--color-coral)" }}>
               Ver todas →
             </Link>
@@ -296,21 +302,19 @@ export default function Dashboard() {
           )}
         </section>
 
-        {/* Identidade Festaê, em escala contida. */}
+        {/* Identidade Festaê. A marca fala pela arte; nada de texto sobreposto. */}
         <section
-          className="flex flex-col justify-between rounded-xl p-5 lg:col-span-1"
-          style={{ background: "var(--fin-navy, #1b2e4b)", color: "#eaf0f8" }}
+          className="min-w-0 self-start overflow-hidden lg:col-span-1"
+          style={{ border: "1px solid #ece5dc", borderRadius: 12 }}
         >
-          <p className="painel-periodo" style={{ color: "var(--fin-gold, #c69654)" }}>
-            Transformando momentos em grandes histórias
-          </p>
-          <p className="mt-3 text-xl font-semibold leading-snug">
-            Cada festa<br />tem um propósito.
-          </p>
-          <p className="mt-2 text-sm text-white/70">
-            Organização, criatividade e dados para o negócio crescer.
-          </p>
-          <span className="mt-4 h-0.5 w-12 rounded" style={{ background: "var(--fin-gold, #c69654)" }} />
+          <img
+            src="/banner-proposito.webp"
+            alt="Festaê — Pegue, Monte, Comemore. Sua festa linda, sem complicação."
+            width={1672}
+            height={941}
+            decoding="async"
+            className="block h-auto w-full max-w-full"
+          />
         </section>
       </div>
 
@@ -318,7 +322,7 @@ export default function Dashboard() {
       {fin && (
         <section className="painel-cartao p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-semibold" style={{ color: "var(--color-navy)" }}>
+            <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
               Resumo financeiro <span className="font-normal text-muted-foreground">— {rotuloPeriodo}</span>
             </h2>
             <Link href="/financeiro" className="flex items-center gap-1 text-xs font-medium"
@@ -332,14 +336,28 @@ export default function Dashboard() {
             </p>
           )}
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["Faturamento", porAno ? fin.ytd.faturamento : fin.operacional.faturamento],
-              ["Despesas", porAno ? fin.ytd.despesas : fin.operacional.despesas],
-              ["Resultado", porAno ? fin.ytd.resultado : fin.operacional.resultado],
-            ].map(([rotulo, valor]) => (
-              <div key={rotulo as string}>
+            {([
+              [
+                "Faturamento",
+                porAno ? fin.ytd.faturamento : fin.operacional.faturamento,
+                comparavel ? fin.comparacao.faturamento : null,
+              ],
+              // Despesa não tem comparação no panorama — e sua polaridade é
+              // inversa. Preencher o layout com um percentual inventado aqui
+              // criaria uma segunda regra financeira no navegador.
+              ["Despesas", porAno ? fin.ytd.despesas : fin.operacional.despesas, null],
+              [
+                "Resultado",
+                porAno ? fin.ytd.resultado : fin.operacional.resultado,
+                comparavel ? fin.comparacao.resultado : null,
+              ],
+            ] as const).map(([rotulo, valor, comparacao]) => (
+              <div key={rotulo}>
                 <p className="painel-periodo">{rotulo}</p>
-                <p className="fin-numero mt-1 text-xl">{brl(valor as number)}</p>
+                <p className="fin-numero mt-1 flex flex-wrap items-baseline gap-x-2 text-xl">
+                  {brl(valor)}
+                  {comparacao && <VariacaoDoMes v={comparacao} melhorQuandoSobe />}
+                </p>
               </div>
             ))}
             <div>
@@ -352,10 +370,54 @@ export default function Dashboard() {
           <p className="mt-3 text-xs text-muted-foreground">
             Resultado operacional: faturamento menos consumo e custeio. Acervo é investimento e não
             entra aqui.
+            {comparavel && ` A variação compara com ${nomeDoMes(fin.comparacao.mesAnterior)}.`}
           </p>
         </section>
       )}
+
+      {/* Fechamento de marca. A arte já traz os textos; nada duplicado em HTML. */}
+      <div className="min-w-0 overflow-hidden" style={{ border: "1px solid #ece5dc", borderRadius: 12 }}>
+        <img
+          src="/banner-escolhas.webp"
+          alt="Festaê — decoração de festas em Chapecó"
+          width={2000}
+          height={744}
+          loading="lazy"
+          decoding="async"
+          className="block h-auto w-full max-w-full"
+        />
+      </div>
     </div>
+  );
+}
+
+/**
+ * A variação contra o mês anterior, em cor semântica.
+ *
+ * `melhorQuandoSobe` é obrigatório de propósito: cor semântica sem polaridade
+ * declarada é como se pinta despesa que cresceu de verde. Hoje só faturamento
+ * e resultado têm comparação no panorama, e nos dois subir é bom — quem
+ * adicionar um terceiro indicador é obrigado a decidir.
+ */
+function VariacaoDoMes({ v, melhorQuandoSobe }: { v: Variacao; melhorQuandoSobe: boolean }) {
+  if (!v.temBase || v.percentual === null) return null;
+  const subiu = v.absoluta > 0;
+  const parado = v.absoluta === 0;
+  const favoravel = melhorQuandoSobe ? subiu : !subiu;
+  return (
+    <span
+      className="text-xs font-normal"
+      style={{
+        color: parado
+          ? "var(--fin-muted, #7a7266)"
+          : favoravel
+            ? "var(--fin-good, #2e9b6b)"
+            : "var(--fin-bad, #c0614a)",
+      }}
+      title={`${brl(Math.abs(v.absoluta))} ${subiu ? "acima" : "abaixo"} de ${brl(v.anterior)}`}
+    >
+      {parado ? "—" : subiu ? "▲" : "▼"} {pct(Math.abs(v.percentual))}
+    </span>
   );
 }
 
@@ -375,7 +437,7 @@ function CartaoTopo({
       <span className="min-w-0">
         <span className="painel-periodo block">{rotulo}</span>
         <span
-          className="block truncate text-xl font-semibold"
+          className="block truncate text-xl font-medium"
           style={{ color: "var(--color-navy)", fontVariantNumeric: "tabular-nums" }}
         >
           {valor}
