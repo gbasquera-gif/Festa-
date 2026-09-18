@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
+import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
   gastoAcumulado,
   indicadoresDoMes,
@@ -128,21 +129,17 @@ export class FinanceiroService {
     return [hoje.getUTCDate(), diasNoMes];
   }
 
-  listarGastos(mes?: string) {
-    const filtro = mes
-      ? {
-          OR: [
-            { pagoEm: { gte: new Date(`${mes}-01T00:00:00Z`), lt: this.mesSeguinte(mes) } },
-            { pagoEm: null, venceEm: { gte: new Date(`${mes}-01T00:00:00Z`), lt: this.mesSeguinte(mes) } },
-          ],
-        }
-      : {};
-    return prisma.gasto.findMany({ where: filtro, orderBy: [{ pagoEm: "desc" }, { criadoEm: "desc" }] });
-  }
-
-  private mesSeguinte(mes: string): Date {
-    const [ano, numeroDoMes] = mes.split("-").map(Number);
-    return new Date(Date.UTC(numeroDoMes === 12 ? ano + 1 : ano, numeroDoMes === 12 ? 0 : numeroDoMes, 1));
+  /**
+   * Lista gastos, opcionalmente filtrando por mês e por natureza.
+   *
+   * A regra do período mora em `periodo.ts`, como função pura: a borda do mês
+   * é onde erro de fuso se esconde, e ela precisa de teste que rode sem banco.
+   */
+  listarGastos(filtro: FiltroDeGastos = {}) {
+    return prisma.gasto.findMany({
+      where: filtroDeGastos(filtro),
+      orderBy: [{ pagoEm: "desc" }, { venceEm: "desc" }, { criadoEm: "desc" }],
+    });
   }
 
   criarGasto(dados: CriarGastoInput) {

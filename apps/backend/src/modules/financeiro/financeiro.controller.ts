@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
+  NATUREZAS_DO_GASTO,
+  type NaturezaDoGasto,
   criarGastoSchema,
   definirMetaSchema,
   editarGastoSchema,
@@ -35,9 +37,21 @@ export class FinanceiroController {
     return this.financeiro.indicadores(mes);
   }
 
+  /**
+   * `natureza` aceita valores separados por vírgula: a aba Despesas pede
+   * `CONSUMO,CUSTEIO` e a de Aportes pede `ACERVO`. São a mesma tabela vista
+   * por dois filtros, e não duas entidades.
+   */
   @Get("gastos")
-  listarGastos(@Query("mes") mes?: string) {
-    return this.financeiro.listarGastos(mes);
+  listarGastos(@Query("mes") mes?: string, @Query("natureza") natureza?: string) {
+    const naturezas = (natureza ?? "")
+      .split(",")
+      .map((n) => n.trim().toUpperCase())
+      .filter((n): n is NaturezaDoGasto => (NATUREZAS_DO_GASTO as readonly string[]).includes(n));
+    return this.financeiro.listarGastos({
+      mes: mes || undefined,
+      natureza: naturezas.length > 0 ? naturezas : undefined,
+    });
   }
 
   @Post("gastos")

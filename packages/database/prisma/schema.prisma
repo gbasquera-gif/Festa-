@@ -566,6 +566,24 @@ model Gasto {
   formaDePagamento String?
   observacao       String?
 
+  /// De quem foi comprado. Texto livre de propósito: a operação compra de
+  /// marketplace, de loja física e de vendedor de Instagram, e um cadastro de
+  /// fornecedor obrigatório faria a pessoa inventar um nome só para conseguir
+  /// salvar o lançamento.
+  fornecedor String?
+
+  /// Quantos meses este item de acervo deve durar, e quanto se espera que
+  /// valha no fim.
+  ///
+  /// Nenhum cálculo os usa hoje — o resultado gerencial **não considera
+  /// depreciação**, e a tela diz isso. Existem para que o dado comece a ser
+  /// coletado agora: depreciação calculada sobre estimativa inventada seria
+  /// pior que depreciação nenhuma, porque pareceria precisa.
+  ///
+  /// Só fazem sentido com `natureza = ACERVO`. Consumo e custeio não duram.
+  vidaUtilMeses Int?
+  valorResidual Decimal? @db.Decimal(10, 2)
+
   /// Chave estável do registro de origem, quando veio do painel antigo.
   ///
   /// Existe para a carga poder rodar duas vezes sem duplicar nada: a

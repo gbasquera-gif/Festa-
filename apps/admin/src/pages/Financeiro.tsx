@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { REGIME_LABEL, type Regime } from "@festae/shared";
 import { Card, CardContent } from "@/components/ui/card";
+import { Barra, Indicador } from "@/components/financeiro/pecas";
+import { Gastos } from "@/components/financeiro/Gastos";
 import { api } from "@/lib/api";
 
 /**
@@ -70,34 +72,6 @@ function nomeDoMes(mes: string): string {
     .toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-/** Um número grande com o rótulo em cima e o regime declarado embaixo. */
-function Indicador({
-  rotulo,
-  valor,
-  regime,
-  nota,
-  destaque,
-}: {
-  rotulo: string;
-  valor: string;
-  regime?: Regime;
-  nota?: string;
-  destaque?: boolean;
-}) {
-  return (
-    <Card className={destaque ? "border-primary/40 bg-primary/5" : undefined}>
-      <CardContent className="p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{rotulo}</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">{valor}</p>
-        {regime && (
-          <p className="mt-1 text-xs text-muted-foreground">por {REGIME_LABEL[regime]}</p>
-        )}
-        {nota && <p className="mt-1 text-xs text-muted-foreground">{nota}</p>}
-      </CardContent>
-    </Card>
-  );
-}
-
 /** Um regime inteiro: receita, despesa e o que sobrou. */
 function BlocoDeRegime({ titulo, explicacao, dados }: { titulo: string; explicacao: string; dados: Resultado }) {
   return (
@@ -130,7 +104,71 @@ function BlocoDeRegime({ titulo, explicacao, dados }: { titulo: string; explicac
   );
 }
 
+const ABAS = [
+  { chave: "visao", rotulo: "Visão Geral" },
+  { chave: "despesas", rotulo: "Despesas" },
+  { chave: "aportes", rotulo: "Aportes / Acervo" },
+] as const;
+
+type Aba = (typeof ABAS)[number]["chave"];
+
 export default function Financeiro() {
+  const [aba, setAba] = useState<Aba>("visao");
+
+  return (
+    <div className="financeiro space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold" style={{ color: "var(--fin-navy-ink)" }}>
+          Financeiro
+        </h1>
+        <p className="text-sm" style={{ color: "var(--fin-muted)" }}>
+          Tudo é apurado das reservas e dos pagamentos. Nada é digitado duas vezes.
+        </p>
+      </div>
+
+      <nav
+        className="flex flex-wrap gap-1 border-b"
+        style={{ borderColor: "var(--fin-line)" }}
+        aria-label="Seções do financeiro"
+      >
+        {ABAS.map(({ chave, rotulo }) => (
+          <button
+            key={chave}
+            type="button"
+            onClick={() => setAba(chave)}
+            aria-current={aba === chave ? "page" : undefined}
+            className="min-h-11 px-4 text-sm font-semibold"
+            style={{
+              color: aba === chave ? "var(--fin-navy-ink)" : "var(--fin-muted)",
+              borderBottom: `2px solid ${aba === chave ? "var(--fin-coral)" : "transparent"}`,
+              marginBottom: "-1px",
+            }}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </nav>
+
+      {aba === "visao" && <VisaoGeral />}
+      {aba === "despesas" && (
+        <Gastos
+          naturezas={["CONSUMO", "CUSTEIO"]}
+          titulo="Despesas"
+          explicacao="O que some na festa e o que mantém a empresa de pé. Entra no resultado do mês em que foi pago."
+        />
+      )}
+      {aba === "aportes" && (
+        <Gastos
+          naturezas={["ACERVO"]}
+          titulo="Aportes e acervo"
+          explicacao="O que vira patrimônio alugável. É capital que fica, não despesa do mês — por isso não derruba o lucro."
+        />
+      )}
+    </div>
+  );
+}
+
+function VisaoGeral() {
   const meses = mesesDisponiveis();
   const [mes, setMes] = useState(meses[0]);
 
@@ -142,12 +180,9 @@ export default function Financeiro() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Saúde financeira</h1>
-          <p className="text-sm text-muted-foreground">
-            Tudo abaixo é apurado das reservas e dos pagamentos. Nada é digitado duas vezes.
-          </p>
-        </div>
+        <h2 className="text-lg font-semibold" style={{ color: "var(--fin-navy-ink)" }}>
+          Saúde financeira
+        </h2>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Mês</span>
           <select
@@ -170,20 +205,17 @@ export default function Financeiro() {
       {data && (
         <>
           {data.ritmo && (
-            <Card className="border-primary/40 bg-primary/5">
-              <CardContent className="p-5">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Meta de lucro do mês · por competência
-                </p>
+            <div className="fin-bloco-escuro">
+              <div className="p-0">
+                <p className="fin-rotulo">Meta de lucro do mês · por competência</p>
                 <p
-                  className={`mt-2 text-3xl font-semibold tabular-nums ${
-                    data.ritmo.atrasoNoRitmo < 0 ? "text-destructive" : ""
-                  }`}
+                  className="fin-numero mt-2 text-[2.1rem] leading-none"
+                  style={{ color: data.ritmo.atrasoNoRitmo < 0 ? "var(--fin-gold)" : "#fff" }}
                 >
                   {data.ritmo.atrasoNoRitmo < 0 ? "−" : "+"}
                   {brl(Math.abs(data.ritmo.atrasoNoRitmo))}
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-2 text-sm text-white/75">
                   {data.ritmo.atrasoNoRitmo < 0 ? "atrás do ritmo." : "à frente do ritmo."}{" "}
                   {data.ritmo.falta > 0
                     ? `Faltam ${brl(data.ritmo.falta)} para a meta de ${brl(data.ritmo.meta)}`
@@ -192,20 +224,18 @@ export default function Financeiro() {
                     ? ` — ${brl(data.ritmo.porDia)} por dia no que resta do mês.`
                     : "."}
                 </p>
-                <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{
-                      width: `${Math.min(100, Math.max(0, (data.ritmo.percentualAtingido ?? 0) * 100))}%`,
-                    }}
+                <div className="mt-4">
+                  <Barra
+                    preenchido={data.ritmo.percentualAtingido ?? 0}
+                    marca={data.ritmo.percentualDoMes}
                   />
                 </div>
-                <p className="mt-1 flex justify-between text-xs text-muted-foreground">
+                <p className="mt-2 flex justify-between text-xs text-white/60">
                   <span>{pct(data.ritmo.percentualAtingido)} da meta</span>
                   <span>o mês está {pct(data.ritmo.percentualDoMes)} completo</span>
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -222,7 +252,7 @@ export default function Financeiro() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Indicador rotulo="Festas no mês" valor={String(data.festasNoMes)} regime="COMPETENCIA" />
+            <Indicador rotulo="Festas no mês" valor={String(data.festasNoMes)} nota="por competência" />
             <Indicador
               rotulo="Contratos fechados"
               valor={String(data.contratosFechados)}
@@ -231,7 +261,7 @@ export default function Financeiro() {
             <Indicador
               rotulo="Ticket médio"
               valor={data.ticketMedio === null ? "—" : brl(data.ticketMedio)}
-              regime="COMPETENCIA"
+              nota="por competência"
             />
             <Indicador rotulo="A receber" valor={brl(data.aReceber)} nota="saldo aberto de todos os contratos" />
           </div>
@@ -243,14 +273,14 @@ export default function Financeiro() {
                 rotulo="Acervo"
                 valor={brl(data.acervoAcumulado)}
                 nota="o que virou patrimônio alugável"
-                destaque
+                tom="acervo"
               />
               <Indicador
                 rotulo="Tudo que saiu"
                 valor={brl(data.gastoAcumulado)}
                 nota="acervo, consumo e custeio somados"
               />
-              <Indicador rotulo="Recebido" valor={brl(data.recebidoAcumulado)} regime="CAIXA" />
+              <Indicador rotulo="Recebido" valor={brl(data.recebidoAcumulado)} nota="por caixa" />
               <Indicador rotulo="Acervo comprado no mês" valor={brl(data.acervoNoMes)} nota="capital, não despesa" />
             </div>
           </div>

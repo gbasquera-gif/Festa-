@@ -8,7 +8,7 @@ import { NATUREZAS_DO_GASTO } from "../financeiro";
  * escolha era implícita — dependia da aba em que a pessoa estava — e era
  * exatamente isso que fazia balão virar patrimônio. Aqui a pergunta é feita.
  */
-export const criarGastoSchema = z.object({
+const camposDoGasto = z.object({
   descricao: z.string().min(2, "Diga o que foi comprado.").max(200),
   natureza: z.enum(NATUREZAS_DO_GASTO, {
     message: "Escolha se isso vira acervo, some na festa ou é custeio.",
@@ -24,10 +24,57 @@ export const criarGastoSchema = z.object({
 
   categoria: z.string().max(80).optional().nullable(),
   formaDePagamento: z.string().max(80).optional().nullable(),
+  fornecedor: z.string().max(120).optional().nullable(),
   observacao: z.string().max(500).optional().nullable(),
+
+  /**
+   * Preparação para depreciação futura.
+   *
+   * Nenhum cálculo os usa hoje, e a tela diz que o resultado não considera
+   * depreciação. Existem para o dado começar a ser coletado: depreciação
+   * sobre estimativa inventada seria pior que nenhuma, porque pareceria
+   * precisa.
+   */
+  vidaUtilMeses: z.coerce.number().int().min(1).max(600).optional().nullable(),
+  valorResidual: z.coerce.number().min(0).optional().nullable(),
 });
 
-export const editarGastoSchema = criarGastoSchema.partial();
+export const criarGastoSchema = camposDoGasto
+  .refine(
+    (gasto) =>
+      gasto.natureza === "ACERVO" ||
+      (gasto.vidaUtilMeses == null && gasto.valorResidual == null),
+    {
+      message: "Vida útil e valor residual só valem para acervo — consumo e custeio não duram.",
+      path: ["vidaUtilMeses"],
+    },
+  )
+  .refine(
+    (gasto) => gasto.valorResidual == null || gasto.valorResidual <= gasto.valor,
+    {
+      message: "O valor residual não pode ser maior que o valor de compra.",
+      path: ["valorResidual"],
+    },
+  );
+
+/**
+ * Edição aceita campo a campo.
+ *
+ * Deriva do objeto base, e não do schema com as validações cruzadas: um
+ * `.refine` transforma o schema em outra coisa, que não sabe fazer
+ * `.partial()`. As duas regras cruzadas são reaplicadas aqui sobre o que
+ * vier, ignorando o que não vier.
+ */
+export const editarGastoSchema = camposDoGasto.partial().refine(
+  (gasto) =>
+    gasto.natureza === undefined ||
+    gasto.natureza === "ACERVO" ||
+    (gasto.vidaUtilMeses == null && gasto.valorResidual == null),
+  {
+    message: "Vida útil e valor residual só valem para acervo.",
+    path: ["vidaUtilMeses"],
+  },
+);
 
 /** A meta de lucro de um mês. */
 export const definirMetaSchema = z.object({

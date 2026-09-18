@@ -1,0 +1,49 @@
+/**
+ * Formatação de dinheiro e datas da área financeira.
+ *
+ * Fica num arquivo só porque um valor formatado de dois jeitos diferentes em
+ * duas telas é a maneira mais barata de fazer o usuário desconfiar do
+ * sistema inteiro.
+ */
+
+export const brl = (valor: number) =>
+  valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Sem o "R$", para tabelas onde a coluna inteira já é dinheiro. */
+export const numero = (valor: number) =>
+  valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export const pct = (valor: number | null, casas = 1) =>
+  valor === null ? "—" : `${(valor * 100).toFixed(casas)}%`;
+
+/**
+ * Data vinda do backend como ISO, exibida como dia/mês/ano.
+ *
+ * Lê em UTC de propósito: o backend grava o dia ancorado ao meio-dia UTC, e
+ * converter para o fuso do navegador traria de volta o erro do dia a menos
+ * que a operação relatou no app.
+ */
+export const dia = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—";
+
+/** "2026-09" -> "setembro de 2026" */
+export function nomeDoMes(mes: string): string {
+  const [ano, numeroDoMes] = mes.split("-").map(Number);
+  return new Date(Date.UTC(ano, numeroDoMes - 1, 1)).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Os últimos N meses, do mais recente para trás, como "AAAA-MM". */
+export function mesesRecentes(quantidade = 18): string[] {
+  const hoje = new Date();
+  return Array.from({ length: quantidade }, (_, i) => {
+    const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+/** O mês corrente, como "AAAA-MM". */
+export const mesCorrente = () => mesesRecentes(1)[0];
