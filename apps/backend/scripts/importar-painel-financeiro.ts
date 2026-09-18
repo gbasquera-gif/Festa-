@@ -272,6 +272,9 @@ type Representacao = {
   /** Divergência financeira entre o Admin e o painel histórico. */
   referenciaExternaDaReserva?: string | null;
   divergencias: string[];
+  /** Diferenças de cadastro, não de dinheiro. O Admin prevalece: a carga
+   *  reporta e não corrige. */
+  divergenciasCadastrais: string[];
   duplicidadeParcial: string[];
   excecoes: Excecao[];
   recebido: number;
@@ -288,8 +291,10 @@ async function conciliar(vendas: VendaLegado[], declaracoes: Declaracoes): Promi
       order: {
         select: {
           total: true,
+          fulfillment: true,
+          assembly: true,
           payments: { where: { status: "PAID" }, select: { amount: true } },
-          event: { select: { user: { select: { name: true } } } },
+          event: { select: { city: true, type: true, user: { select: { name: true } } } },
         },
       },
     },
@@ -328,6 +333,7 @@ async function conciliar(vendas: VendaLegado[], declaracoes: Declaracoes): Promi
       );
 
     const divergencias: string[] = [];
+    const divergenciasCadastrais: string[] = [];
     let situacao: Situacao = "ausente";
     if (correspondente) {
       const cancelada = ["CANCELLED", "REJECTED"].includes(correspondente.status);
@@ -338,6 +344,32 @@ async function conciliar(vendas: VendaLegado[], declaracoes: Declaracoes): Promi
         divergencias.push(`contratado: Admin ${brl(totalAdmin)} × painel ${brl(venda.valor)}`);
       if (Math.abs(recebidoAdmin - recebido) >= 0.01)
         divergencias.push(`recebido: Admin ${brl(recebidoAdmin)} × painel ${brl(recebido)}`);
+
+      // Divergência de cadastro é outra categoria: não muda dinheiro nenhum, e
+      // o Admin é a fonte boa — ele foi preenchido pela operação, com a festa
+      // na frente. O painel antigo tem um campo de texto livre.
+      const modalidadeLegado = semAcento(venda.modalidade ?? "");
+      const entregaLegado = modalidadeLegado.includes("entrega");
+      const montagemLegado = modalidadeLegado.includes("montagem");
+      const entregaAdmin = correspondente.order.fulfillment === "DELIVERY";
+      if (entregaLegado !== entregaAdmin)
+        divergenciasCadastrais.push(
+          `modalidade: Admin ${correspondente.order.fulfillment} × painel "${(venda.modalidade ?? "").trim()}"`,
+        );
+      if (montagemLegado !== correspondente.order.assembly)
+        divergenciasCadastrais.push(
+          `montagem: Admin ${correspondente.order.assembly ? "sim" : "não"} × painel ${montagemLegado ? "sim" : "não"}`,
+        );
+      if (normalizarNome(correspondente.order.event.city) !== normalizarNome(venda.cidade ?? ""))
+        divergenciasCadastrais.push(
+          `cidade: Admin ${correspondente.order.event.city} × painel ${(venda.cidade ?? "").trim()}`,
+        );
+      const tipoLegado = tipoDeEvento(venda);
+      if (tipoLegado !== correspondente.order.event.type)
+        divergenciasCadastrais.push(
+          `tipo de evento: Admin ${correspondente.order.event.type} × painel ` +
+            (venda.evento?.trim() ? `"${venda.evento.trim()}" (mapeia para ${tipoLegado})` : "em branco"),
+        );
     }
 
     return {
@@ -347,6 +379,7 @@ async function conciliar(vendas: VendaLegado[], declaracoes: Declaracoes): Promi
       statusDaReserva: correspondente?.status,
       referenciaExternaDaReserva: correspondente?.referenciaExterna,
       divergencias,
+      divergenciasCadastrais,
       duplicidadeParcial,
       excecoes: quebrasDeRegra(venda, declaracoes),
       recebido,
@@ -509,6 +542,21 @@ async function main() {
   if (comDivergencia.length > 0) {
     console.log("\n  A carga não reescreve pagamento de reserva existente. Fica para saneamento");
     console.log("  manual, e os totais de controle abaixo vão acusar a diferença.");
+  }
+
+  linha("5.1 DIVERGÊNCIAS DE CADASTRO — o Admin prevalece");
+  const comCadastral = conciliacao.filter((r) => r.divergenciasCadastrais.length > 0);
+  if (comCadastral.length === 0) {
+    console.log("  nenhuma.");
+  } else {
+    console.log("  Não mexem em dinheiro. O Admin é a fonte boa destes campos: foi preenchido");
+    console.log("  pela operação, com a festa na frente, enquanto o painel antigo guarda texto");
+    console.log("  livre. A carga REPORTA e NÃO CORRIGE — modalidade, tipo de evento, cidade,");
+    console.log("  data, status e pagamento de reserva existente ficam exatamente como estão.\n");
+    for (const r of comCadastral) {
+      console.log(`  ${r.venda.num} (${r.venda.cliente.trim()}):`);
+      for (const d of r.divergenciasCadastrais) console.log(`      ${d}`);
+    }
   }
 
   linha("6. O QUE A CARGA VAI CRIAR E ALTERAR");
