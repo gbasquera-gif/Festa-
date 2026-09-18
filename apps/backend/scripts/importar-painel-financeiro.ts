@@ -376,6 +376,75 @@ function contratosApurados(vendas: VendaLegado[]): ContratoApurado[] {
   }));
 }
 
+/** O estado do banco antes de qualquer gravação.
+ *
+ * Existe para o controle de conservação: sem saber o que havia antes, não há
+ * como provar que nada sumiu depois. */
+async function fotografarBanco() {
+  const [reservas, clientes, pedidos, pagamentos, gastos, eventos] = await Promise.all([
+    prisma.reservation.count(),
+    prisma.user.count({ where: { role: "CLIENT" } }),
+    prisma.order.count(),
+    prisma.payment.count(),
+    prisma.gasto.count(),
+    prisma.event.count(),
+  ]);
+  const vivas = await prisma.reservation.findMany({
+    where: { status: { notIn: ["CANCELLED", "REJECTED"] } },
+    select: {
+      order: {
+        select: { total: true, payments: { where: { status: "PAID" }, select: { amount: true } } },
+      },
+    },
+  });
+  const faturamento = vivas.reduce((soma, r) => soma + Number(r.order.total), 0);
+  const recebido = vivas.reduce(
+    (soma, r) => soma + r.order.payments.reduce((s, p) => s + Number(p.amount), 0),
+    0,
+  );
+  return { reservas, clientes, pedidos, pagamentos, gastos, eventos, faturamento, recebido };
+}
+
+/**
+ * Reservas do Admin sem contrapartida na fonte financeira.
+ *
+ * O princípio é união, não substituição: uma venda registrada no Admin e nunca
+ * lançada no painel financeiro é dado legítimo e continua existindo. Ela
+ * aparece aqui para ser vista, não para ser tocada — a carga nunca a altera.
+ *
+ * Também é meio caminho para a conciliação inversa: se um negócio existe só de
+ * um lado, alguém esqueceu de lançar em algum lugar.
+ */
+async function somenteNoAdmin(idsCorrespondentes: Set<string>) {
+  const reservas = await prisma.reservation.findMany({
+    select: {
+      id: true,
+      status: true,
+      eventDate: true,
+      requestedAt: true,
+      order: {
+        select: {
+          total: true,
+          event: { select: { saleChannel: true, user: { select: { name: true } } } },
+          payments: { where: { status: "PAID" }, select: { amount: true } },
+        },
+      },
+    },
+    orderBy: { eventDate: "asc" },
+  });
+  return reservas
+    .filter((r) => !idsCorrespondentes.has(r.id))
+    .map((r) => ({
+      id: r.id,
+      cliente: r.order.event.user.name,
+      festa: r.eventDate.toISOString().slice(0, 10),
+      valor: Number(r.order.total),
+      recebido: r.order.payments.reduce((s, p) => s + Number(p.amount), 0),
+      status: r.status,
+      origem: r.order.event.saleChannel,
+    }));
+}
+
 async function main() {
   const [caminho, ...flags] = process.argv.slice(2);
   if (!caminho) {
@@ -518,22 +587,66 @@ async function main() {
   console.log(`\n  ACUMULADO${"".padEnd(15)}${"painel antigo".padStart(14)}${"sistema novo".padStart(16)}`);
   console.log(`    ${"capital investido".padEnd(22)}${brl(gastos.reduce((s, g) => s + g.valor, 0)).padStart(14)}${brl(acervo).padStart(16)}`);
 
-  linha("TOTAIS DE CONTROLE");
-  const ALVOS = { contratado: 2500, recebido: 941, saldo: 1559 };
-  const conferir = (rotulo: string, apurado: number, alvo: number) => {
-    const ok = Math.abs(apurado - alvo) < 0.01;
-    console.log(`  ${ok ? "OK     " : "FALHOU "} ${rotulo.padEnd(22)} ${brl(apurado).padStart(13)}  alvo ${brl(alvo)}`);
-    return ok;
-  };
-  const fecham =
-    [
-      conferir("faturamento contratado", contratado, ALVOS.contratado),
-      conferir("recebido histórico", recebido, ALVOS.recebido),
-      conferir("saldo a receber", saldo, ALVOS.saldo),
-    ].every(Boolean) && comDivergencia.length === 0;
-  if (!fecham) {
-    console.log("\n  Algum controle não fechou, ou há divergência financeira com o Admin.");
-    console.log("  Investigar antes de concluir a carga.");
+  linha("SOMENTE NO ADMIN (preservado, nunca tocado pela carga)");
+  const correspondentes = new Set(conciliacao.map((r) => r.reservaId).filter((id): id is string => !!id));
+  const soAdmin = await somenteNoAdmin(correspondentes);
+  if (soAdmin.length === 0) {
+    console.log("  nenhuma — toda reserva do banco tem contrapartida na fonte financeira.");
+  } else {
+    console.log(`  ${soAdmin.length} reserva(s) existem no Admin e não na fonte financeira.`);
+    console.log("  São dado legítimo: a carga não as altera, não as apaga e não as duplica.");
+    console.log("  Se alguma delas deveria estar no financeiro, é lançamento que faltou lá.\n");
+    for (const r of soAdmin.slice(0, 40)) {
+      console.log(
+        `    ${r.festa}  ${r.cliente.slice(0, 26).padEnd(26)} ${brl(r.valor).padStart(11)}  ` +
+          `recebido ${brl(r.recebido).padStart(11)}  ${r.status.padEnd(10)} ${r.origem}`,
+      );
+    }
+    if (soAdmin.length > 40) console.log(`    ... e mais ${soAdmin.length - 40}.`);
+    const somaSoAdmin = soAdmin
+      .filter((r) => !["CANCELLED", "REJECTED"].includes(r.status))
+      .reduce((s, r) => s + r.valor, 0);
+    console.log(`\n  faturamento que existe só no Admin: ${brl(somaSoAdmin)}`);
+  }
+
+  linha("CONTROLES DE CONSERVAÇÃO");
+  console.log("  Não há alvo fixo. Os números saem das duas fontes, e o controle é de UNIÃO:");
+  console.log("  o banco depois tem de conter tudo que havia antes MAIS o que só existia na");
+  console.log("  fonte financeira. Nada pode encolher.\n");
+
+  const antes = await fotografarBanco();
+  const aMigrar = ausentes.reduce(
+    (acc, r) => ({
+      contratos: acc.contratos + 1,
+      contratado: acc.contratado + r.venda.valor,
+      recebido: acc.recebido + r.recebido,
+      pagamentos: acc.pagamentos + recebimentosDaVenda(r.venda).length,
+    }),
+    { contratos: 0, contratado: 0, recebido: 0, pagamentos: 0 },
+  );
+  const gastosNovos = gastos.length - (await prisma.gasto.count({
+    where: { referenciaExterna: { in: gastos.map((g) => g.referenciaExterna) } },
+  }));
+
+  const ok = (cond: boolean) => (cond ? "OK     " : "FALHOU ");
+  console.log(`  FONTE FINANCEIRA      ${conciliacao.length} contratos  contratado ${brl(contratado)}  recebido ${brl(recebido)}  saldo ${brl(saldo)}`);
+  console.log(`    ${ok(Math.abs(contratado - recebido - saldo) < 0.01)}coerência interna: contratado − recebido = saldo`);
+  console.log(`\n  BANCO ANTES           ${antes.reservas} reservas  ${antes.clientes} clientes  ${antes.pagamentos} pagamentos  ${antes.gastos} gastos`);
+  console.log(`                        faturamento ${brl(antes.faturamento)}  recebido ${brl(antes.recebido)}`);
+  console.log(`\n  A MIGRAR              ${aMigrar.contratos} contratos ausentes  ${aMigrar.pagamentos} pagamentos  ${gastosNovos} gastos`);
+  console.log(`                        contratado ${brl(aMigrar.contratado)}  recebido ${brl(aMigrar.recebido)}`);
+  console.log(`\n  ESPERADO DEPOIS       reservas ${antes.reservas} + ${aMigrar.contratos} = ${antes.reservas + aMigrar.contratos}`);
+  console.log(`                        pagamentos ${antes.pagamentos} + ${aMigrar.pagamentos} = ${antes.pagamentos + aMigrar.pagamentos}`);
+  console.log(`                        gastos ${antes.gastos} + ${gastosNovos} = ${antes.gastos + gastosNovos}`);
+  console.log(`                        faturamento ${brl(antes.faturamento)} + ${brl(aMigrar.contratado)} = ${brl(antes.faturamento + aMigrar.contratado)}`);
+  console.log(`                        recebido ${brl(antes.recebido)} + ${brl(aMigrar.recebido)} = ${brl(antes.recebido + aMigrar.recebido)}`);
+  console.log(`\n  NENHUMA reserva, pedido, pagamento, cliente ou gasto que já existe é apagado`);
+  console.log(`  ou reescrito. Só há criação e, nas reservas correspondentes, acréscimo de`);
+  console.log(`  exceção comercial.`);
+
+  if (comDivergencia.length > 0) {
+    console.log(`\n  ATENÇÃO: ${comDivergencia.length} contrato(s) com divergência financeira entre as bases.`);
+    console.log("  A carga não resolve isso — preserva as duas evidências e deixa para revisão.");
   }
 
   if (!aplicar) {
