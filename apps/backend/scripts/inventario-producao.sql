@@ -1,22 +1,31 @@
 -- INVENTÁRIO DO ADMIN — fotografia do estado atual
 --
--- SOMENTE LEITURA. Um único SELECT. Nenhum INSERT, UPDATE, DELETE, ALTER,
--- CREATE, DROP, tabela temporária ou SET de sessão.
+-- SOMENTE LEITURA. Um único comando SELECT. Não contém INSERT, UPDATE,
+-- DELETE, ALTER, CREATE, DROP, TRUNCATE, GRANT, COPY, SET, migration, tabela
+-- temporária nem função com efeito colateral. Executar não altera nada.
 --
 -- Roda no schema de produção como ele está hoje. As tabelas da Sprint 1
 -- (gastos, metas_mensais, excecoes_comerciais) ainda não existem lá; a
--- consulta detecta isso com to_regclass e informa em vez de quebrar.
+-- consulta detecta isso com to_regclass e informa em vez de quebrar. Depois
+-- das migrations ela continua rodando igual.
 --
--- Onde rodar:
---     railway link            (projeto fabulous-ambition)
---     railway status          (conferir Environment: production)
+-- COMO USAR (Windows, arquivo salvo no Desktop):
+--
+--     railway link          -- escolher o projeto fabulous-ambition
+--     railway status        -- conferir Environment: production
 --     railway connect Postgres
---   e dentro do psql:
---     \o 'C:/Users/SEU_USUARIO/Desktop/inventario-admin.txt'
---     \i apps/backend/scripts/inventario-producao.sql
---     \o
 --
--- Devolve uma tabela de três colunas: secao, indicador, valor.
+--   e dentro do psql que abrir:
+--
+--     \o 'C:/Users/gbasq/Desktop/inventario-admin.txt'
+--     \i 'C:/Users/gbasq/Desktop/inventario-producao.sql'
+--     \o
+--     \q
+--
+--   Barras normais (/) mesmo no Windows, entre aspas simples.
+--   \o, \i e \q são comandos do cliente psql: não tocam no banco.
+--
+-- Devolve uma tabela de quatro colunas: ord, secao, indicador, valor.
 
 WITH
 vivas AS (
