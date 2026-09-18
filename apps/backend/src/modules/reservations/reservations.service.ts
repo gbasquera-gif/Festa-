@@ -10,6 +10,7 @@ import { diaDaFesta, normalizarDataDaFesta, saldoAPagar } from "@festae/shared";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
 import { mensagemDeConflito } from "../availability/item-commitment";
+import { pendentesAEncerrar, quitaOPedido } from "./encerrar-pendencias";
 
 @Injectable()
 export class ReservationsService {
@@ -125,9 +126,21 @@ export class ReservationsService {
    *    acontece quando o Pix da loja é aprovado — quem pagou o sinal tem a
    *    data, e a origem do dinheiro não muda isso.
    *
-   * 2. Um Pix ainda pendente do mesmo tipo é encerrado. A cliente pagou por
-   *    outro caminho; deixar o QR antigo "aguardando" faria o painel cobrar
-   *    de novo alguém que já pagou.
+   * 2. Pendências são encerradas, e a regra tem dois níveis:
+   *
+   *    - as do MESMO TIPO, sempre. A cliente pagou o sinal por outro
+   *      caminho; deixar o QR antigo "aguardando" faria o painel cobrar de
+   *      novo alguém que já pagou.
+   *
+   *    - TODAS as restantes, quando este pagamento quita o pedido. Sem isto,
+   *      um sinal pendente sobrevivia a um pagamento registrado como saldo,
+   *      porque os tipos não batiam — e o pedido ficava quitado com uma
+   *      cobrança órfã pendurada. Um pedido pago não tem o que cobrar, seja
+   *      qual for o tipo do lançamento que o pagou.
+   *
+   * Nada aqui toca um pagamento PAID. Dinheiro que entrou é registro
+   * histórico: o filtro `status: "PENDING"` na atualização é a garantia de
+   * que nenhum caminho deste método reescreve um recebimento.
    */
   async registrarPagamento(
     id: string,
@@ -159,8 +172,14 @@ export class ReservationsService {
       .reduce((soma, p) => soma + Number(p.amount), 0);
 
     const confirmaAReserva = dados.tipo === "DEPOSIT" && reserva.status === "PENDING";
-    const pendentesDoMesmoTipo = reserva.order.payments.filter(
-      (p) => p.type === dados.tipo && p.status === "PENDING",
+
+    const totalDoPedido = Number(reserva.order.total);
+    const quita = quitaOPedido(jaPago, dados.valor, totalDoPedido);
+    const aEncerrar = pendentesAEncerrar(
+      reserva.order.payments,
+      { tipo: dados.tipo, valor: dados.valor },
+      totalDoPedido,
+      jaPago,
     );
 
     await prisma.$transaction([
@@ -174,10 +193,14 @@ export class ReservationsService {
           paidAt: recebidoEm,
         },
       }),
-      ...(pendentesDoMesmoTipo.length > 0
+      ...(aEncerrar.length > 0
         ? [
             prisma.payment.updateMany({
-              where: { id: { in: pendentesDoMesmoTipo.map((p) => p.id) } },
+              // `status: "PENDING"` no filtro não é redundante: a lista foi
+              // montada de uma leitura anterior, e entre ela e esta escrita
+              // outro registro pode ter pago a mesma cobrança. A condição
+              // torna impossível esta linha reescrever um PAID.
+              where: { id: { in: aEncerrar }, status: "PENDING" },
               data: { status: "FAILED" },
             }),
           ]
@@ -208,7 +231,6 @@ export class ReservationsService {
       }),
     ]);
 
-    const total = Number(reserva.order.total);
     const pagoAgora = jaPago + dados.valor;
 
     this.logger.log(
@@ -218,11 +240,12 @@ export class ReservationsService {
 
     return {
       registrado: true,
-      total,
+      total: totalDoPedido,
       pago: pagoAgora,
-      saldo: saldoAPagar(total, pagoAgora),
+      saldo: saldoAPagar(totalDoPedido, pagoAgora),
       reservaConfirmada: confirmaAReserva,
-      pixPendentesEncerrados: pendentesDoMesmoTipo.length,
+      pixPendentesEncerrados: aEncerrar.length,
+      pedidoQuitado: quita,
     };
   }
 
