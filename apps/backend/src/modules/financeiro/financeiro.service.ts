@@ -10,8 +10,15 @@ import {
   type FiltroDeContratos,
 } from "./contratos";
 import {
+  acumuladoNoAno,
   gastoAcumulado,
   indicadoresDoMes,
+  mesAnterior,
+  mesEmChapeco,
+  resultadoOperacionalDoMes,
+  serieDoAno,
+  totalAReceber,
+  variacao,
   linhaDeRitmo,
   totalRecebido,
   type ContratoApurado,
@@ -124,6 +131,99 @@ export class FinanceiroService {
         alvo,
         ...this.posicaoNoMes(mes),
       ),
+    };
+  }
+
+  /**
+   * Tudo que a Visão Geral e a Evolução mostram, numa consulta só.
+   *
+   * Agrega no servidor de propósito: as fórmulas já existem em
+   * @festae/shared e são as mesmas que a carteira de contratos usa. Mandar
+   * as linhas cruas para o navegador recalcular seria a terceira cópia da
+   * regra de competência, e a terceira cópia é a que envelhece errado.
+   *
+   * Uma leitura de contratos e uma de gastos servem ao mês, ao acumulado do
+   * ano e aos doze pontos do gráfico.
+   */
+  async panorama(ano: number, mes: string) {
+    const [contratos, gastos, meta] = await Promise.all([
+      this.contratos(),
+      this.gastos(),
+      prisma.metaMensal.findUnique({ where: { competencia: mes } }),
+    ]);
+
+    const operacional = resultadoOperacionalDoMes(contratos, gastos, mes);
+    const indicadores = indicadoresDoMes(contratos, gastos, mes);
+    const anterior = mesAnterior(mes);
+    const doAnterior = resultadoOperacionalDoMes(contratos, gastos, anterior);
+    const alvo = meta ? paraNumero(meta.lucroAlvo) : null;
+
+    return {
+      mes,
+      ano,
+
+      // Faturou -> gastou -> sobrou -> margem. A leitura principal.
+      operacional: {
+        faturamento: operacional.receita,
+        despesas: operacional.despesa,
+        resultado: operacional.resultado,
+        margem: operacional.margem,
+      },
+
+      ytd: acumuladoNoAno(contratos, gastos, ano, mes),
+
+      aReceber: totalAReceber(contratos),
+      recebidoSemData: indicadores.recebidoSemData,
+      acervoAcumulado: indicadores.acervoAcumulado,
+      ticketMedio: indicadores.ticketMedio,
+      festasNoMes: indicadores.festasNoMes,
+
+      /**
+       * Meta do mês. Nula quando não existe — a tela diz que não há meta em
+       * vez de inventar uma, que é o que faria a barra de progresso mentir.
+       */
+      meta:
+        alvo === null
+          ? null
+          : {
+              valor: alvo,
+              realizado: operacional.resultado,
+              percentual: alvo > 0 ? operacional.resultado / alvo : null,
+              gap: Math.max(0, Number((alvo - operacional.resultado).toFixed(2))),
+              ...this.ritmoDoMes(operacional.resultado, alvo, mes),
+            },
+
+      comparacao: {
+        mesAnterior: anterior,
+        temBase: doAnterior.receita > 0 || doAnterior.despesa > 0,
+        faturamento: variacao(operacional.receita, doAnterior.receita),
+        resultado: variacao(operacional.resultado, doAnterior.resultado),
+      },
+
+      /**
+       * Os doze pontos, com `futuro` marcando o que ainda não aconteceu.
+       *
+       * Festa contratada para outubro pertence a outubro por competência, e
+       * o número é real — mas é contratado, não realizado. A tela distingue
+       * os dois em vez de somá-los na mesma linha cheia: apresentar receita
+       * de festa que ainda não foi montada como já realizada é a mesma
+       * confusão de regimes que o painel antigo fazia.
+       */
+      serie: serieDoAno(contratos, gastos, ano).map((m) => ({
+        ...m,
+        futuro: m.mes > mesEmChapeco(new Date()),
+      })),
+    };
+  }
+
+  /** A linha de ritmo do mês, reaproveitando a mesma função da Sprint 1. */
+  private ritmoDoMes(realizado: number, alvo: number, mes: string) {
+    const [dia, dias] = this.posicaoNoMes(mes);
+    const ritmo = linhaDeRitmo(realizado, alvo, dia, dias);
+    return {
+      atrasoNoRitmo: ritmo.atrasoNoRitmo,
+      porDia: ritmo.porDia,
+      percentualDoMes: ritmo.percentualDoMes,
     };
   }
 

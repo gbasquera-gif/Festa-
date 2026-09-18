@@ -419,3 +419,182 @@ export function resumoDaCarteira(
     recebidoSemData: recebidoSemData(vivos),
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Visão executiva: resultado operacional, acumulado do ano e evolução
+ * ------------------------------------------------------------------ */
+
+/**
+ * O resultado operacional de um mês.
+ *
+ * É faturamento por competência menos consumo e custeio — nada além disso.
+ * Acervo fica de fora porque é investimento: continua existindo depois da
+ * festa e pode ser alugado de novo. Somá-lo aqui faria todo mês de compra
+ * parecer prejuízo.
+ *
+ * Não se chama lucro líquido, e a diferença não é de nome: não há impostos,
+ * pró-labore nem depreciação nesta conta. Chamar de lucro líquido seria
+ * prometer uma precisão que o dado não tem.
+ */
+export function resultadoOperacionalDoMes(
+  contratos: readonly ContratoApurado[],
+  gastos: readonly GastoApurado[],
+  mes: string,
+): ResultadoDoMes {
+  return montarResultado(
+    "COMPETENCIA",
+    receitaPorCompetencia(contratos, mes),
+    despesaDoMes(gastos, mes),
+  );
+}
+
+/** "2026-03" -> "2026-02". Janeiro volta para dezembro do ano anterior. */
+export function mesAnterior(mes: string): string {
+  const [ano, numero] = mes.split("-").map(Number);
+  return numero === 1
+    ? `${ano - 1}-12`
+    : `${ano}-${String(numero - 1).padStart(2, "0")}`;
+}
+
+/** Os doze meses de um ano, como "AAAA-MM". */
+export function mesesDoAno(ano: number): string[] {
+  return Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, "0")}`);
+}
+
+/** Um mês na linha do tempo do ano. */
+export type MesDaSerie = {
+  mes: string;
+  numero: number;
+  faturamento: number;
+  despesas: number;
+  resultado: number;
+  margem: number | null;
+  /** Faturamento somado de janeiro até este mês. */
+  acumuladoFaturamento: number;
+  /** Resultado operacional somado de janeiro até este mês. */
+  acumuladoResultado: number;
+  /**
+   * Se houve movimento real no mês.
+   *
+   * Mês futuro e mês sem nada ficam com `false`, e a tela precisa disso:
+   * desenhar zero num mês que ainda não aconteceu é inventar um dado, e o
+   * gráfico passaria a mostrar uma queda que nunca existiu.
+   */
+  temDados: boolean;
+};
+
+/**
+ * A trajetória do ano, mês a mês.
+ *
+ * Devolve sempre os doze meses, porque o eixo do gráfico é o ano inteiro. O
+ * que distingue mês vazio de mês futuro é `temDados` — quem desenha decide
+ * onde a linha para.
+ */
+export function serieDoAno(
+  contratos: readonly ContratoApurado[],
+  gastos: readonly GastoApurado[],
+  ano: number,
+): MesDaSerie[] {
+  let acumuladoFat = 0;
+  let acumuladoRes = 0;
+
+  return mesesDoAno(ano).map((mes, i) => {
+    const faturamento = receitaPorCompetencia(contratos, mes);
+    const despesas = despesaDoMes(gastos, mes);
+    const resultado = fromCentsInt(toCentsInt(faturamento) - toCentsInt(despesas));
+
+    acumuladoFat = fromCentsInt(toCentsInt(acumuladoFat) + toCentsInt(faturamento));
+    acumuladoRes = fromCentsInt(toCentsInt(acumuladoRes) + toCentsInt(resultado));
+
+    // Acervo entra na contagem de movimento, mesmo sem entrar no resultado:
+    // um mês em que só se comprou acervo aconteceu, e a tela não deve tratá-lo
+    // como mês futuro.
+    const houveAcervo = acervoDoMes(gastos, mes) > 0;
+
+    return {
+      mes,
+      numero: i + 1,
+      faturamento,
+      despesas,
+      resultado,
+      margem: faturamento > 0 ? resultado / faturamento : null,
+      acumuladoFaturamento: acumuladoFat,
+      acumuladoResultado: acumuladoRes,
+      temDados: faturamento > 0 || despesas > 0 || houveAcervo,
+    };
+  });
+}
+
+/** O acumulado do ano até um mês, inclusive. */
+export type AcumuladoDoAno = {
+  ano: number;
+  ateMes: string;
+  faturamento: number;
+  despesas: number;
+  resultado: number;
+  margem: number | null;
+  acervo: number;
+  mesesComDados: number;
+};
+
+/**
+ * De 1º de janeiro até o mês escolhido, inclusive.
+ *
+ * `ateMes` fora do ano é tratado pelas bordas: um mês anterior a janeiro
+ * devolve tudo zerado, e um posterior a dezembro devolve o ano inteiro. Sem
+ * isso, trocar o filtro de ano com um mês alto selecionado devolveria número
+ * de um período que não existe.
+ */
+export function acumuladoNoAno(
+  contratos: readonly ContratoApurado[],
+  gastos: readonly GastoApurado[],
+  ano: number,
+  ateMes: string,
+): AcumuladoDoAno {
+  const serie = serieDoAno(contratos, gastos, ano);
+  const limite = Math.min(12, Math.max(0, Number(ateMes.split("-")[1] ?? 0)));
+  const ateAqui = serie.slice(0, limite);
+
+  const faturamento = somar(ateAqui.map((m) => m.faturamento));
+  const despesas = somar(ateAqui.map((m) => m.despesas));
+  const resultado = fromCentsInt(toCentsInt(faturamento) - toCentsInt(despesas));
+
+  return {
+    ano,
+    ateMes,
+    faturamento,
+    despesas,
+    resultado,
+    margem: faturamento > 0 ? resultado / faturamento : null,
+    acervo: somar(ateAqui.map((m) => acervoDoMes(gastos, m.mes))),
+    mesesComDados: ateAqui.filter((m) => m.temDados).length,
+  };
+}
+
+/** Quanto um número mudou em relação ao anterior. */
+export type Variacao = {
+  atual: number;
+  anterior: number;
+  absoluta: number;
+  /**
+   * Nulo quando não há base de comparação.
+   *
+   * Sair de zero para qualquer coisa é crescimento infinito, e "+∞%" não
+   * informa nada. A tela mostra "—" e o valor absoluto, que é o que dá para
+   * afirmar com honestidade.
+   */
+  percentual: number | null;
+  temBase: boolean;
+};
+
+export function variacao(atual: number, anterior: number): Variacao {
+  const absoluta = fromCentsInt(toCentsInt(atual) - toCentsInt(anterior));
+  const temBase = toCentsInt(anterior) !== 0;
+  return {
+    atual,
+    anterior,
+    absoluta,
+    percentual: temBase ? absoluta / Math.abs(anterior) : null,
+    temBase,
+  };
+}

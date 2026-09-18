@@ -209,6 +209,12 @@ export {
   situacaoDePagamento,
   vencimentoDoSaldo,
   resumoDaCarteira,
+  resultadoOperacionalDoMes,
+  mesAnterior,
+  mesesDoAno,
+  serieDoAno,
+  acumuladoNoAno,
+  variacao,
 } from "./financeiro";
 export type {
   Regime,
@@ -221,6 +227,9 @@ export type {
   IndicadoresDoMes,
   SituacaoDePagamento,
   ResumoDaCarteira,
+  MesDaSerie,
+  AcumuladoDoAno,
+  Variacao,
 } from "./financeiro";
 
 export {

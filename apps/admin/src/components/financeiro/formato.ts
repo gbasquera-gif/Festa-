@@ -13,8 +13,19 @@ export const brl = (valor: number) =>
 export const numero = (valor: number) =>
   valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/**
+ * Percentual em pt-BR.
+ *
+ * `toFixed` devolve ponto decimal, e "82.7%" no meio de uma tela onde todo
+ * dinheiro usa vírgula faz o número parecer de outro sistema.
+ */
 export const pct = (valor: number | null, casas = 1) =>
-  valor === null ? "—" : `${(valor * 100).toFixed(casas)}%`;
+  valor === null
+    ? "—"
+    : `${(valor * 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: casas,
+        maximumFractionDigits: casas,
+      })}%`;
 
 /**
  * Data vinda do backend como ISO, exibida como dia/mês/ano.

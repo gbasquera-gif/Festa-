@@ -14,6 +14,11 @@ import {
   totalRecebido,
   resumoDaCarteira,
   situacaoDePagamento,
+  resultadoOperacionalDoMes,
+  serieDoAno,
+  acumuladoNoAno,
+  variacao,
+  mesAnterior,
   type ContratoApurado,
   type GastoApurado,
 } from "./financeiro";
@@ -342,5 +347,163 @@ describe("resumoDaCarteira", () => {
 
   it("carteira vazia não divide por zero", () => {
     expect(resumoDaCarteira([], agora).ticketMedio).toBeNull();
+  });
+});
+
+describe("Sprint 4 — visão executiva", () => {
+  const contrato = (festa: string, valor: number, cancelado = false): ContratoApurado => ({
+    fechadoEm: new Date("2026-01-05T12:00:00Z"),
+    festaEm: new Date(`${festa}T12:00:00Z`),
+    valor,
+    cancelado,
+    recebimentos: [],
+  });
+  const gasto = (
+    pagoEm: string | null,
+    valor: number,
+    natureza: "CONSUMO" | "CUSTEIO" | "ACERVO",
+  ): GastoApurado => ({ valor, natureza, pagoEm: pagoEm ? new Date(`${pagoEm}T12:00:00Z`) : null });
+
+  const contratos = [
+    contrato("2026-02-10", 1000),
+    contrato("2026-03-15", 2000),
+    contrato("2026-03-20", 500),
+    contrato("2026-04-02", 9999, true), // cancelado: não entra em nada
+  ];
+  const gastos = [
+    gasto("2026-02-05", 300, "CONSUMO"),
+    gasto("2026-03-01", 200, "CUSTEIO"),
+    gasto("2026-03-10", 800, "ACERVO"), // investimento, fora do resultado
+    gasto(null, 500, "CONSUMO"),        // sem data de pagamento: fora do mês
+  ];
+
+  describe("resultadoOperacionalDoMes", () => {
+    it("é faturamento menos consumo e custeio", () => {
+      const m = resultadoOperacionalDoMes(contratos, gastos, "2026-03");
+      expect(m.receita).toBe(2500);
+      expect(m.despesa).toBe(200);
+      expect(m.resultado).toBe(2300);
+    });
+
+    it("acervo não entra como despesa operacional", () => {
+      // Março teve R$ 800 de acervo; a despesa continua sendo só os R$ 200.
+      expect(resultadoOperacionalDoMes(contratos, gastos, "2026-03").despesa).toBe(200);
+    });
+
+    it("mês só com acervo não vira prejuízo", () => {
+      const so = [gasto("2026-07-10", 1500, "ACERVO")];
+      const m = resultadoOperacionalDoMes([], so, "2026-07");
+      expect(m.despesa).toBe(0);
+      expect(m.resultado).toBe(0);
+    });
+
+    it("mês sem faturamento devolve margem nula, não Infinity", () => {
+      const m = resultadoOperacionalDoMes([], gastos, "2026-02");
+      expect(m.receita).toBe(0);
+      expect(m.margem).toBeNull();
+    });
+
+    it("mês sem despesas tem margem de 100%", () => {
+      const m = resultadoOperacionalDoMes([contrato("2026-09-01", 400)], [], "2026-09");
+      expect(m.resultado).toBe(400);
+      expect(m.margem).toBe(1);
+    });
+
+    it("reserva cancelada não entra no faturamento", () => {
+      expect(resultadoOperacionalDoMes(contratos, gastos, "2026-04").receita).toBe(0);
+    });
+  });
+
+  describe("serieDoAno", () => {
+    const serie = serieDoAno(contratos, gastos, 2026);
+
+    it("devolve os doze meses, para o eixo do gráfico ser o ano inteiro", () => {
+      expect(serie).toHaveLength(12);
+      expect(serie[0].mes).toBe("2026-01");
+      expect(serie[11].mes).toBe("2026-12");
+    });
+
+    it("distingue mês sem movimento de mês com movimento", () => {
+      expect(serie[0].temDados).toBe(false);  // janeiro: nada
+      expect(serie[1].temDados).toBe(true);   // fevereiro: festa e consumo
+      expect(serie[11].temDados).toBe(false); // dezembro: futuro
+    });
+
+    it("mês só com acervo conta como mês que aconteceu", () => {
+      const s = serieDoAno([], [gasto("2026-07-10", 1500, "ACERVO")], 2026);
+      expect(s[6].temDados).toBe(true);
+      expect(s[6].resultado).toBe(0);
+    });
+
+    it("acumula faturamento e resultado ao longo do ano", () => {
+      expect(serie[1].acumuladoFaturamento).toBe(1000);
+      expect(serie[2].acumuladoFaturamento).toBe(3500);
+      expect(serie[11].acumuladoFaturamento).toBe(3500);
+      expect(serie[2].acumuladoResultado).toBe(3000); // 3500 - 300 - 200
+    });
+
+    it("o acumulado não anda em mês vazio", () => {
+      expect(serie[3].acumuladoFaturamento).toBe(serie[2].acumuladoFaturamento);
+    });
+  });
+
+  describe("acumuladoNoAno", () => {
+    it("soma de janeiro até o mês escolhido, inclusive", () => {
+      const ytd = acumuladoNoAno(contratos, gastos, 2026, "2026-03");
+      expect(ytd.faturamento).toBe(3500);
+      expect(ytd.despesas).toBe(500);
+      expect(ytd.resultado).toBe(3000);
+      expect(ytd.acervo).toBe(800);
+      expect(ytd.mesesComDados).toBe(2);
+    });
+
+    it("em janeiro traz só janeiro", () => {
+      expect(acumuladoNoAno(contratos, gastos, 2026, "2026-01").faturamento).toBe(0);
+      expect(acumuladoNoAno([contrato("2026-01-09", 700)], [], 2026, "2026-01").faturamento).toBe(700);
+    });
+
+    it("ano sem movimento devolve zero e margem nula", () => {
+      const ytd = acumuladoNoAno(contratos, gastos, 2027, "2027-12");
+      expect(ytd.faturamento).toBe(0);
+      expect(ytd.margem).toBeNull();
+    });
+  });
+
+  describe("variacao", () => {
+    it("compara com o mês anterior", () => {
+      const v = variacao(1500, 1000);
+      expect(v.absoluta).toBe(500);
+      expect(v.percentual).toBeCloseTo(0.5, 6);
+      expect(v.temBase).toBe(true);
+    });
+
+    it("queda vem negativa", () => {
+      expect(variacao(800, 1000).percentual).toBeCloseTo(-0.2, 6);
+    });
+
+    it("mês anterior zero não vira percentual infinito", () => {
+      const v = variacao(900, 0);
+      expect(v.percentual).toBeNull();
+      expect(v.temBase).toBe(false);
+      expect(v.absoluta).toBe(900);
+    });
+
+    it("dois meses zerados não quebram", () => {
+      expect(variacao(0, 0).percentual).toBeNull();
+      expect(variacao(0, 0).absoluta).toBe(0);
+    });
+
+    it("base negativa usa o módulo, para o sinal descrever a direção", () => {
+      // De -200 para +100: melhorou 300, sobre uma base de 200.
+      expect(variacao(100, -200).percentual).toBeCloseTo(1.5, 6);
+    });
+  });
+
+  describe("mesAnterior", () => {
+    it("janeiro volta para dezembro do ano anterior", () => {
+      expect(mesAnterior("2026-01")).toBe("2025-12");
+      expect(mesAnterior("2026-03")).toBe("2026-02");
+      expect(mesAnterior("2026-10")).toBe("2026-09");
+    });
   });
 });

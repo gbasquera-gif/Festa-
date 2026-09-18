@@ -39,6 +39,20 @@ export class FinanceiroController {
   }
 
   /**
+   * Visão Geral e Evolução: o mês, o acumulado do ano e os doze pontos.
+   *
+   * `ano` e `mes` vêm do filtro global. Sem mês válido, cai no mês corrente —
+   * nenhum ano ou mês é fixo no código, então 2027 e 2028 funcionam sozinhos.
+   */
+  @Get("panorama")
+  panorama(@Query("mes") mes?: string, @Query("ano") ano?: string) {
+    const corrente = new Date().toISOString().slice(0, 7);
+    const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes ?? "") ? (mes as string) : corrente;
+    const anoValido = /^\d{4}$/.test(ano ?? "") ? Number(ano) : Number(mesValido.slice(0, 4));
+    return this.financeiro.panorama(anoValido, mesValido);
+  }
+
+  /**
    * A carteira de contratos: o que foi vendido, o que entrou, o que falta.
    *
    * Filtra por mês da festa, por situação de pagamento e por texto livre
