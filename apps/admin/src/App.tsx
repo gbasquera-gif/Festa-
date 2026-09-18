@@ -5,13 +5,11 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import AdminLayout from "@/components/AdminLayout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
-import Themes from "@/pages/Themes";
-import Products from "@/pages/Products";
-import Kits from "@/pages/Kits";
 import Reservations from "@/pages/Reservations";
 import Events from "@/pages/Events";
 import Users from "@/pages/Users";
-import Funil from "@/pages/Funil";
+import Acervo from "@/pages/Acervo";
+import Comercial from "@/pages/Comercial";
 import Disponibilidade from "@/pages/Disponibilidade";
 import ProximasAcoes from "@/pages/ProximasAcoes";
 import NovaReservaManual from "@/pages/NovaReservaManual";
@@ -49,31 +47,32 @@ function Router() {
           <Financeiro />
         </Protected>
       </Route>
-      <Route path="/funil">
+      {/* Comercial abriga o Funil. A rota antiga continua valendo: quem tem
+          "/funil" salvo cai na aba certa em vez de num 404. */}
+      <Route path="/comercial/:aba?">
         <Protected>
-          <Funil />
+          <Comercial />
         </Protected>
       </Route>
+      <Route path="/funil">{() => <Redirect to="/comercial/funil" />}</Route>
+
       <Route path="/disponibilidade">
         <Protected>
           <Disponibilidade />
         </Protected>
       </Route>
-      <Route path="/temas">
+
+      {/* Acervo reúne Temas, Produtos e Kits. As três rotas antigas
+          redirecionam para a aba correspondente. */}
+      <Route path="/acervo/:aba?">
         <Protected>
-          <Themes />
+          <Acervo />
         </Protected>
       </Route>
-      <Route path="/produtos">
-        <Protected>
-          <Products />
-        </Protected>
-      </Route>
-      <Route path="/kits">
-        <Protected>
-          <Kits />
-        </Protected>
-      </Route>
+      <Route path="/temas">{() => <Redirect to="/acervo/temas" />}</Route>
+      <Route path="/produtos">{() => <Redirect to="/acervo/produtos" />}</Route>
+      <Route path="/kits">{() => <Redirect to="/acervo/kits" />}</Route>
+
       <Route path="/operacao">
         <Protected>
           <ProximasAcoes />

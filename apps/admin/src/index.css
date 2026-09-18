@@ -40,7 +40,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
@@ -121,7 +121,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Nunito", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -328,7 +329,7 @@
   --fin-bad: #c0614a;
 
   --fin-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --fin-sans: "IBM Plex Sans", "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --fin-sans: "IBM Plex Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
 
   font-family: var(--fin-sans);
   color: var(--fin-navy-ink);
@@ -520,3 +521,132 @@
 .fin-bloco-escuro .fin-grade > * { min-width: 0; }
 .fin-bloco-escuro .fin-grade .fin-numero { font-size: 1.5rem; line-height: 1.15; }
 .fin-bloco-escuro .fin-grade p:last-child { color: rgba(255, 255, 255, 0.6); }
+
+/* ----------------------------------------------------------------------
+ * Painel de Gestão — estrutura da navegação
+ *
+ * A barra lateral era uma pilha de botões grandes, todos com o mesmo peso:
+ * onze destinos disputando atenção, sem dizer que Reservas e Financeiro são
+ * coisas de naturezas diferentes. Os grupos resolvem isso com rótulo e
+ * espaço, não com mais cor.
+ * -------------------------------------------------------------------- */
+
+.painel-nav-grupo {
+  font-family: var(--fin-mono, "IBM Plex Mono", monospace);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9a9086;
+  font-weight: 500;
+  padding: 0 12px;
+  margin: 20px 0 6px;
+}
+
+.painel-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4a5a70;
+  position: relative;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.painel-item:hover { background: rgba(224, 90, 58, 0.06); color: var(--color-navy); }
+.painel-item[aria-current="page"] {
+  background: rgba(224, 90, 58, 0.09);
+  color: var(--color-navy);
+  font-weight: 600;
+}
+/* O traço coral é o que diz "você está aqui" sem pintar o item inteiro. */
+.painel-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-coral);
+}
+.painel-item svg { flex-shrink: 0; opacity: 0.75; }
+.painel-item[aria-current="page"] svg { opacity: 1; color: var(--color-coral); }
+
+/* Recolhida: só ícones, centralizados, e o rótulo do grupo vira um traço. */
+.painel-recolhida .painel-item { justify-content: center; padding: 0; gap: 0; }
+.painel-recolhida .painel-item span { display: none; }
+.painel-recolhida .painel-nav-grupo {
+  padding: 0;
+  margin: 14px 10px 8px;
+  height: 1px;
+  overflow: hidden;
+  color: transparent;
+  background: var(--color-line, #e8dfd5);
+}
+
+/* Abas internas de módulo (Acervo, Comercial). Mesma gramática das abas do
+ * Financeiro, para o painel não falar duas línguas. */
+.painel-abas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-line, #e8dfd5);
+}
+.painel-aba {
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #7a7266;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+.painel-aba:hover { color: var(--color-navy); }
+.painel-aba[aria-current="page"] { color: var(--color-navy); border-bottom-color: var(--color-coral); }
+
+/* Cartão de conteúdo: borda fina, sombra quase ausente, raio consistente. */
+.painel-cartao {
+  background: #fff;
+  border: 1px solid var(--color-line, #e8dfd5);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(27, 46, 75, 0.04);
+}
+
+/* Segmentado do filtro temporal. */
+.painel-segmentado {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid var(--color-line, #e8dfd5);
+  border-radius: 10px;
+}
+.painel-segmentado button {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #7a7266;
+  transition: background-color 140ms ease, color 140ms ease;
+  white-space: nowrap;
+}
+.painel-segmentado button:hover { color: var(--color-navy); }
+.painel-segmentado button[aria-pressed="true"] {
+  background: rgba(224, 90, 58, 0.1);
+  color: #c4472a;
+}
+
+/* Rótulo de período por componente: cada bloco diz de que janela ele fala,
+ * porque o filtro do topo não governa os widgets operacionais. */
+.painel-periodo {
+  font-family: var(--fin-mono, "IBM Plex Mono", monospace);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a9086;
+}
