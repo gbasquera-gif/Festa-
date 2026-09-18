@@ -146,3 +146,6 @@ apps/site/ios/App/App.xcodeproj/xcuserdata/
 apps/site/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 apps/site/ios/.build/
 *.xcuserstate
+
+# A carga gerada contém nome de cliente e valores. O repositório é público.
+carga-historica*.sql
