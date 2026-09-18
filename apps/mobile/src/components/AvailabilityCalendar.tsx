@@ -9,9 +9,8 @@ import { colors } from "@/theme";
 interface DayAvailability {
   date: string;
   reserved: number;
-  remaining: number;
   available: boolean;
-  /** Itens em falta, quando o dia caiu por material e não por agenda cheia. */
+  /** Itens em falta. É o único motivo de um dia cair — não há limite de festas. */
   itensIndisponiveis?: { productId: string; nome: string; esgotado: boolean }[];
 }
 
@@ -275,8 +274,8 @@ export function AvailabilityCalendar({
               </>
             ) : (
               <Text className="text-base leading-6 text-navy/80">
-                A agenda deste dia já está completa. A Festaê atende poucas festas por dia para
-                entregar tudo montado com capricho — escolha um dia em verde.
+                Não foi possível confirmar este dia agora. Tente de novo em instantes ou fale com
+                a Festaê pelo WhatsApp.
               </Text>
             )}
 

@@ -124,7 +124,6 @@ export {
 export type { PricingInput, PricingResult } from "./pricing";
 
 export {
-  DEFAULT_MAX_RESERVATIONS_PER_DAY,
   PIX_EXPIRATION_MINUTES,
   RESERVATION_HOLD_MINUTES,
   RESERVATION_EXPIRED_MESSAGE,

@@ -13,7 +13,6 @@ import {
   type ManualReservationInput,
 } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
-import { getMaxReservationsPerDay } from "../../common/operations-config";
 
 /** Estados que seguram data e material. Recusada e cancelada devolvem tudo. */
 const RESERVAS_ATIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
@@ -47,11 +46,10 @@ export class ManualReservationService {
    *
    * O ponto todo desta função é não ser um atalho. Ela monta exatamente os
    * mesmos registros que a loja monta — cliente, festa, pedido, itens,
-   * pagamento e reserva — e passa pelas mesmas duas barreiras: cabe mais uma
-   * festa neste dia? o material está livre? Uma reserva de WhatsApp que
-   * pulasse essas conferências seria pior que não existir: o calendário
-   * continuaria oferecendo a data, e a operação confiaria num painel que
-   * mente.
+   * pagamento e reserva — e passa pela mesma barreira: o material está livre
+   * nesta data? Uma reserva de WhatsApp que pulasse essa conferência seria
+   * pior que não existir: o calendário continuaria oferecendo a peça, e a
+   * operação confiaria num painel que mente.
    *
    * Grava tudo numa transação só. Metade de uma reserva — festa criada,
    * reserva não — é o tipo de registro que ninguém encontra e que some da
@@ -62,16 +60,8 @@ export class ManualReservationService {
     // segunda regra de fuso à espera de divergir da primeira.
     const dataDaFesta = input.evento.data;
 
-    // 1. A agenda ainda comporta esta festa?
-    if (!(await this.availability.isDateAvailable(dataDaFesta))) {
-      const limite = getMaxReservationsPerDay();
-      throw new ConflictException(
-        `Esta data já tem ${limite} festa(s) — o limite operacional do dia. ` +
-          "Cancele ou remarque uma das reservas antes de registrar esta.",
-      );
-    }
-
-    // 2. O material desta festa está livre nesta data?
+    // A data em si não recusa mais nada: não existe teto de festas por dia.
+    // A única barreira é o material — ver abaixo.
     const kit = input.produtos.kitId
       ? await prisma.kit.findUnique({
           where: { id: input.produtos.kitId },
@@ -238,16 +228,8 @@ export class ManualReservationService {
 
     const mudouDeDia = diaDaFesta(reserva.eventDate) !== diaDaFesta(dataDaFesta);
 
-    // 1. A agenda comporta esta festa na data escolhida?
-    if (!(await this.availability.isDateAvailable(dataDaFesta, id))) {
-      const limite = getMaxReservationsPerDay();
-      throw new ConflictException(
-        `Esta data já tem ${limite} festa(s) — o limite operacional do dia. ` +
-          "Cancele ou remarque uma das reservas antes de mover esta.",
-      );
-    }
-
-    // 2. O material do pedido novo está livre nesta data?
+    // O material do pedido novo está livre nesta data? É a única conferência
+    // de data que existe — o limite de festas por dia não existe mais.
     const kit = input.produtos.kitId
       ? await prisma.kit.findUnique({
           where: { id: input.produtos.kitId },

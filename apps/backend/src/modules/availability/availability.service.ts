@@ -1,7 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import { RESERVATION_HOLD_MINUTES } from "@festae/shared";
-import { getMaxReservationsPerDay } from "../../common/operations-config";
 import {
   conflitosDoPedido,
   somarCompromisso,
@@ -18,8 +17,22 @@ const COUNTED_STATUSES = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLET
 
 export interface DayAvailability {
   date: string;
+  /**
+   * Quantas festas já existem no dia. Informativo — não limita nada.
+   *
+   * A Festaê não tem mais teto de festas por data: uma mesma data comporta
+   * festa completa, balões, itens avulsos e retirada, que são trabalhos de
+   * tamanhos muito diferentes. Contar tudo como "uma festa" e parar no
+   * segundo recusava venda que a operação dava conta de entregar.
+   */
   reserved: number;
-  remaining: number;
+  /**
+   * Se o dia aceita esta seleção. Depende só de material.
+   *
+   * Um dia só fica indisponível quando alguma peça pedida já está
+   * comprometida com outra festa naquela data — que é uma restrição física,
+   * não um limite de agenda.
+   */
   available: boolean;
   /**
    * Presente só quando o dia caiu por falta de material, não por agenda cheia.
@@ -35,13 +48,13 @@ export class AvailabilityService {
   private readonly logger = new Logger(AvailabilityService.name);
 
   /**
-   * Devolve à agenda as reservas que ninguém pagou.
+   * Devolve ao estoque as reservas que ninguém pagou.
    *
-   * Com capacidade de poucas festas por dia, uma reserva sem sinal é o
-   * recurso mais escasso da empresa parado: duas delas fecham uma data
-   * inteira sem um centavo ter entrado. A janela é maior que a validade do
-   * Pix de propósito — quando ela vence, o QR já morreu e não há risco de o
-   * pagamento chegar para uma vaga que já foi de outra pessoa.
+   * Não é limite de agenda — é material: uma reserva sem sinal segura as
+   * peças que ela pediu, e enquanto segurar, outra festa no mesmo dia não
+   * pode usá-las. A janela é maior que a validade do Pix de propósito —
+   * quando ela vence, o QR já morreu e não há risco de o pagamento chegar
+   * para um item que já foi comprometido com outra pessoa.
    *
    * Roda junto das consultas de disponibilidade em vez de num agendador:
    * a limpeza só importa na hora de decidir se um dia está livre, e um
@@ -79,15 +92,15 @@ export class AvailabilityService {
   /**
    * Disponibilidade do mês, opcionalmente para uma seleção específica.
    *
-   * Sem seleção, responde só pela agenda (quantas festas cabem no dia). Com
-   * kit e itens, um dia também fica indisponível quando o material daquela
+   * Sem seleção, todo dia está disponível: não existe mais teto de festas por
+   * data. Com kit e itens, um dia fica indisponível quando o material daquela
    * escolha já está comprometido — que é a pergunta que a cliente realmente
-   * faz ao olhar o calendário depois de escolher o kit.
+   * faz ao olhar o calendário depois de escolher o kit, e a única restrição
+   * que sobrou.
    */
   async getMonth(month: string, selecao?: PedidoComprometido): Promise<DayAvailability[]> {
     await this.releaseUnpaidHolds();
 
-    const capacity = getMaxReservationsPerDay();
     const [year, monthNumber] = month.split("-").map(Number);
     const start = new Date(Date.UTC(year, monthNumber - 1, 1));
     const end = new Date(Date.UTC(year, monthNumber, 1));
@@ -140,10 +153,9 @@ export class AvailabilityService {
       const date = new Date(Date.UTC(year, monthNumber - 1, day));
       const key = date.toISOString().slice(0, 10);
       const reserved = countByDay.get(key) ?? 0;
-      const cabeNaAgenda = reserved < capacity;
 
       const conflitos =
-        temSelecao && cabeNaAgenda
+        temSelecao
           ? conflitosDoPedido(
               selecao!,
               somarCompromisso(pedidosPorDia.get(key) ?? []),
@@ -154,8 +166,7 @@ export class AvailabilityService {
       days.push({
         date: key,
         reserved,
-        remaining: Math.max(0, capacity - reserved),
-        available: cabeNaAgenda && conflitos.length === 0,
+        available: conflitos.length === 0,
         // Nomes dos itens em falta: é o que permite a loja dizer "o painel
         // deste tema já está reservado neste dia" em vez de um vermelho mudo.
         ...(conflitos.length > 0
@@ -170,38 +181,6 @@ export class AvailabilityService {
       });
     }
     return days;
-  }
-
-  /**
-   * Ainda cabe uma festa nesta data?
-   *
-   * Consultado no momento de reservar, e não só ao desenhar o calendário:
-   * entre abrir o app e confirmar, outra pessoa pode ter fechado a última
-   * vaga do dia. Sem esta checagem, a Festaê receberia o sinal de uma data
-   * que não tem como cumprir — e teria que devolver o dinheiro e o cliente.
-   *
-   * `ignorarReservaId` existe para remarcar: uma reserva não pode disputar
-   * vaga consigo mesma. Sem isso, mudar uma festa do dia 25 para o dia 25
-   * (ou remarcar num dia que já está no limite por causa dela própria) seria
-   * recusado por um conflito que não existe.
-   */
-  async isDateAvailable(date: Date, ignorarReservaId?: string): Promise<boolean> {
-    await this.releaseUnpaidHolds();
-
-    const start = new Date(date);
-    start.setUTCHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 1);
-
-    const reserved = await prisma.reservation.count({
-      where: {
-        eventDate: { gte: start, lt: end },
-        status: { in: [...COUNTED_STATUSES] },
-        ...(ignorarReservaId ? { id: { not: ignorarReservaId } } : {}),
-      },
-    });
-
-    return reserved < getMaxReservationsPerDay();
   }
 
   /** Início e fim do dia da data, em UTC. */
@@ -261,7 +240,8 @@ export class AvailabilityService {
    *
    * Conferido no servidor mesmo quando a loja já mostrou o dia como livre:
    * entre escolher a data e confirmar, outra pessoa pode ter levado a última
-   * mesa. É a mesma razão de `isDateAvailable` existir além do calendário.
+   * mesa. Esta é a única barreira de data que sobrou, e por isso ela não
+   * pode ser pulada em caminho nenhum de criação ou remarcação.
    */
   async conflitosDeItens(
     date: Date,

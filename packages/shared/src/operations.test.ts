@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_MAX_RESERVATIONS_PER_DAY,
-  PIX_EXPIRATION_MINUTES,
-  RESERVATION_HOLD_MINUTES,
-} from "./operations";
+import * as operacoes from "./operations";
+import { PIX_EXPIRATION_MINUTES, RESERVATION_HOLD_MINUTES } from "./operations";
 
 describe("parâmetros operacionais", () => {
-  it("a capacidade de lançamento é de 2 festas por dia", () => {
-    // Decisão oficial do negócio. Mudar este número é mudar a operação —
-    // o teste existe para que isso seja uma escolha, nunca um descuido.
-    expect(DEFAULT_MAX_RESERVATIONS_PER_DAY).toBe(2);
+  it("não existe limite de reservas por dia", () => {
+    // A trava existiu e foi removida: uma data comporta festa completa,
+    // balões, itens avulsos e retirada ao mesmo tempo. Este teste existe para
+    // que ela não volte por descuido — o que limita uma data é material.
+    expect("DEFAULT_MAX_RESERVATIONS_PER_DAY" in operacoes).toBe(false);
   });
 
   it("o Pix vence dentro do mínimo aceito pelo Mercado Pago", () => {

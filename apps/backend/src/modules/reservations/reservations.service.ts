@@ -9,7 +9,6 @@ import { prisma } from "@festae/database";
 import { diaDaFesta, normalizarDataDaFesta, saldoAPagar } from "@festae/shared";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
-import { getMaxReservationsPerDay } from "../../common/operations-config";
 import { mensagemDeConflito } from "../availability/item-commitment";
 
 @Injectable()
@@ -38,15 +37,9 @@ export class ReservationsService {
     if (event.order.reservation) {
       throw new ConflictException("Este evento já possui uma reserva solicitada.");
     }
-    if (!(await this.availability.isDateAvailable(event.date))) {
-      throw new ConflictException(
-        "Esta data acabou de ficar indisponível. Escolha outra data ou fale com a Festaê pelo WhatsApp.",
-      );
-    }
-
-    // A agenda ter vaga não quer dizer que o material esteja livre: com duas
-    // festas por dia, as duas podem ter escolhido o mesmo painel. Sem esta
-    // conferência a Festaê recebe dois sinais por um item que ela tem um só.
+    // Sem limite de festas por dia: a data só recusa por material. Duas
+    // festas no mesmo dia podem ter escolhido o mesmo painel, e sem esta
+    // conferência a Festaê receberia dois sinais por um item que ela tem um só.
     const conflitos = await this.availability.conflitosDeItens(event.date, {
       itensDoKit: event.order.kit?.products ?? [],
       itensAvulsos: event.order.items,
@@ -401,14 +394,6 @@ export class ReservationsService {
     const mesmoDia = diaDaFesta(reserva.eventDate) === diaDaFesta(novaData);
     if (mesmoDia) {
       throw new BadRequestException("A festa já está marcada para esta data.");
-    }
-
-    if (!(await this.availability.isDateAvailable(novaData, id))) {
-      const limite = getMaxReservationsPerDay();
-      throw new ConflictException(
-        `O dia ${novaDataISO.split("-").reverse().join("/")} já tem ${limite} festa(s) — ` +
-          "o limite operacional do dia. Escolha outra data.",
-      );
     }
 
     const conflitos = await this.availability.conflitosDeItens(
