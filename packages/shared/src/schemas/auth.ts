@@ -43,6 +43,20 @@ export const updateUserSchema = z
   .object({
     name: z.string().min(2).max(120).optional(),
     email: z.string().email().optional(),
+    /**
+     * Telefone entra porque cliente de balcão não tem e-mail: foi cadastrado
+     * por nome e telefone, e o telefone é o único jeito de falar com ele.
+     * Sem isto, corrigir um número digitado errado exigia mexer no banco.
+     *
+     * String vazia vira nulo — o formulário manda "" quando o campo é
+     * apagado, e gravar "" faria a lista exibir um telefone em branco como
+     * se fosse um número.
+     */
+    phone: z
+      .string()
+      .max(30)
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v.trim() === "" ? null : v.trim())),
     role: z.enum(ROLES).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {

@@ -11,7 +11,7 @@ import {
 import { api } from "@/lib/api";
 import { FormularioDeGasto, type Gasto } from "./FormularioDeGasto";
 import { Indicador, Natureza, Rotulo } from "./pecas";
-import { brl, dia, mesesRecentes, nomeDoMes, numero } from "./formato";
+import { brl, dia, nomeDoMes, numero } from "./formato";
 
 /**
  * Despesas e Aportes são esta mesma tela, com filtro diferente.
@@ -22,16 +22,17 @@ import { brl, dia, mesesRecentes, nomeDoMes, numero } from "./formato";
  * é um campo que o cálculo lê.
  */
 export function Gastos({
+  mes,
   naturezas,
   titulo,
   explicacao,
 }: {
+  /** Filtro global da tela. `null` = todos os meses. */
+  mes: string | null;
   naturezas: readonly NaturezaDoGasto[];
   titulo: string;
   explicacao: string;
 }) {
-  const meses = mesesRecentes();
-  const [mes, setMes] = useState<string>("");
   const [emEdicao, setEmEdicao] = useState<Gasto | null>(null);
   const [formAberto, setFormAberto] = useState(false);
   const [aExcluir, setAExcluir] = useState<Gasto | null>(null);
@@ -73,22 +74,6 @@ export function Gastos({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-sm">
-            <span className="fin-rotulo">Mês</span>
-            <select
-              value={mes}
-              onChange={(e) => setMes(e.target.value)}
-              className="h-11 rounded-md border bg-background px-3 text-sm"
-              aria-label="Filtrar por mês"
-            >
-              <option value="">Todos</option>
-              {meses.map((m) => (
-                <option key={m} value={m}>
-                  {nomeDoMes(m)}
-                </option>
-              ))}
-            </select>
-          </label>
           <Button
             className="min-h-11"
             onClick={() => {

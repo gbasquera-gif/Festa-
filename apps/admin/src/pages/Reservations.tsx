@@ -493,7 +493,7 @@ export default function Reservations() {
         <Button asChild className="h-11 w-full sm:h-9 sm:w-auto">
           <Link href="/reservas/nova">
             <Plus className="mr-1 size-4" />
-            Nova reserva manual
+            Nova venda
           </Link>
         </Button>
       </div>

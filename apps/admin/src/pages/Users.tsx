@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +36,7 @@ import { useAuth } from "@/lib/auth";
 interface UserRow {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   role: "CLIENT" | "ADMIN" | "OPS";
   createdAt: string;
@@ -106,14 +116,18 @@ const ROLE_OPTIONS: { value: UserRow["role"]; label: string; hint: string }[] = 
 function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
+  const [email, setEmail] = useState(user.email ?? "");
+  const [phone, setPhone] = useState(user.phone ?? "");
   const [role, setRole] = useState<UserRow["role"]>(user.role);
 
   const mutation = useMutation({
     mutationFn: () =>
       api(`/users/${user.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ name, email, role }),
+        // E-mail em branco não é enviado: o schema exige endereço válido, e
+        // cliente de balcão não tem nenhum. Mandar "" faria a edição do
+        // telefone dele falhar na validação.
+        body: JSON.stringify({ name, ...(email.trim() ? { email: email.trim() } : {}), phone, role }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -124,7 +138,11 @@ function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void 
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar a conta."),
   });
 
-  const unchanged = name === user.name && email === user.email && role === user.role;
+  const unchanged =
+    name === user.name &&
+    email === (user.email ?? "") &&
+    phone === (user.phone ?? "") &&
+    role === user.role;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -152,8 +170,19 @@ function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void 
               onChange={(event) => setEmail(event.target.value)}
             />
             <p className="text-sm text-muted-foreground">
-              É com este endereço que a pessoa entra — avise antes de trocar.
+              É com este endereço que a pessoa entra — avise antes de trocar. Cliente de balcão
+              pode ficar sem e-mail.
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="editar-telefone">Telefone</Label>
+            <Input
+              id="editar-telefone"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              placeholder="(49) 90000-0000"
+            />
           </div>
 
           <div className="space-y-2">
@@ -186,10 +215,65 @@ function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void 
   );
 }
 
+/**
+ * Exclui um cadastro que não tem nada preso nele.
+ *
+ * O botão existe para duplicata e nome digitado errado. Cliente com festa
+ * registrada volta recusado pelo servidor, e a recusa é exibida inteira:
+ * quem está na tela precisa saber qual vínculo impediu, senão tenta de novo.
+ */
+function DeleteUserDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [recusa, setRecusa] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => api(`/users/${user.id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success(`${user.name} foi excluído.`);
+      onClose();
+    },
+    onError: (error) =>
+      setRecusa(error instanceof Error ? error.message : "Não foi possível excluir esta conta."),
+  });
+
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Excluir {user.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {recusa ??
+              "Só é possível excluir um cadastro sem festas, tarefas ou cancelamentos ligados a ele. Se houver qualquer histórico, o servidor recusa e explica o motivo. Isto não tem desfazer."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="min-h-11">
+            {recusa ? "Fechar" : "Cancelar"}
+          </AlertDialogCancel>
+          {!recusa && (
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={(e) => {
+                e.preventDefault();
+                mutation.mutate();
+              }}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export default function Users() {
   const { user: currentUser } = useAuth();
   const [resetting, setResetting] = useState<UserRow | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
+  const [excluindo, setExcluindo] = useState<UserRow | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/users") });
 
@@ -226,7 +310,7 @@ export default function Users() {
           {data?.map((user) => (
             <TableRow key={user.id}>
               <TableCell data-label="Nome" className="font-medium">{user.name}</TableCell>
-              <TableCell data-label="E-mail" className="text-muted-foreground">{user.email}</TableCell>
+              <TableCell data-label="E-mail" className="text-muted-foreground">{user.email ?? "—"}</TableCell>
               <TableCell data-label="Telefone">{user.phone ?? "—"}</TableCell>
               <TableCell data-label="Perfil">
                 {user.deletedAt ? (
@@ -251,6 +335,9 @@ export default function Users() {
                       <Button variant="outline" size="sm" onClick={() => setResetting(user)}>
                         Nova senha
                       </Button>
+                      <Button variant="outline" size="sm" onClick={() => setExcluindo(user)}>
+                        Excluir
+                      </Button>
                     </div>
                   )}
                 </TableCell>
@@ -263,6 +350,7 @@ export default function Users() {
 
       {editing && <EditUserDialog user={editing} onClose={() => setEditing(null)} />}
       {resetting && <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}
+      {excluindo && <DeleteUserDialog user={excluindo} onClose={() => setExcluindo(null)} />}
     </div>
   );
 }

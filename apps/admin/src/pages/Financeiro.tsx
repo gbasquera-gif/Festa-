@@ -16,7 +16,9 @@ import { nomeDoMes } from "@/components/financeiro/formato";
  * O filtro de ano e mês é global e mora aqui, e não dentro de cada aba: duas
  * abas com períodos próprios fariam a Visão Geral falar de setembro enquanto
  * a Evolução destacava outubro, e quem lê teria de conferir o cabeçalho antes
- * de cada número.
+ * de cada número. Pela mesma razão a carteira e os lançamentos leem este
+ * filtro em vez de ter o seu: dois seletores de mês na mesma tela são duas
+ * respostas possíveis para "de quando é isto".
  */
 
 const ABAS = [
@@ -46,14 +48,42 @@ function anosDisponiveis(): number[] {
   return anos;
 }
 
+/**
+ * As abas que aceitam "todos os meses".
+ *
+ * Visão Geral e Evolução não aceitam, e não é limitação técnica: as duas
+ * apuram um mês e comparam com o anterior. "Todos os meses" ali seria um
+ * resultado operacional sem competência, que é justamente a conta que o
+ * painel antigo fazia — somar contrato de setembro com despesa de março.
+ *
+ * Carteira e lançamentos são listas: ver tudo é uma pergunta legítima.
+ */
+const ACEITAM_TODOS: readonly Aba[] = ["contratos", "despesas", "aportes"];
+const TODOS = "todos";
+
 export default function Financeiro() {
   const [aba, setAba] = useState<Aba>("visao");
   const hoje = new Date();
+  const mesCorrente = String(hoje.getUTCMonth() + 1).padStart(2, "0");
   const [ano, setAno] = useState(hoje.getUTCFullYear());
-  const [mesNumero, setMesNumero] = useState(String(hoje.getUTCMonth() + 1).padStart(2, "0"));
+  const [mesNumero, setMesNumero] = useState<string>(mesCorrente);
   const mes = `${ano}-${mesNumero}`;
 
-  const usaPeriodo = aba === "visao" || aba === "evolucao";
+  const aceitaTodos = ACEITAM_TODOS.includes(aba);
+  /** O que as abas de lista recebem: `null` é "todos os meses". */
+  const mesFiltrado = mesNumero === TODOS ? null : mes;
+
+  /**
+   * Trocar de aba pode invalidar o mês escolhido.
+   *
+   * Sair de Despesas com "todos os meses" para a Visão Geral precisa cair em
+   * algum mês concreto. Cai no corrente, e não no último escolhido, porque é
+   * o que a tela mostraria se tivesse acabado de abrir.
+   */
+  function trocarAba(nova: Aba) {
+    if (!ACEITAM_TODOS.includes(nova) && mesNumero === TODOS) setMesNumero(mesCorrente);
+    setAba(nova);
+  }
 
   return (
     <div className="financeiro space-y-6">
@@ -67,8 +97,7 @@ export default function Financeiro() {
           </p>
         </div>
 
-        {usaPeriodo && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
             <span className="fin-rotulo">Período</span>
             <select
               value={ano}
@@ -86,6 +115,7 @@ export default function Financeiro() {
               aria-label="Mês"
               className="h-11 rounded-md border bg-background px-3 text-sm"
             >
+              {aceitaTodos && <option value={TODOS}>Todos os meses</option>}
               {MESES.map((m) => (
                 <option key={m} value={m}>
                   {nomeDoMes(`${ano}-${m}`).replace(` de ${ano}`, "")}
@@ -93,7 +123,6 @@ export default function Financeiro() {
               ))}
             </select>
           </div>
-        )}
       </div>
 
       <nav
@@ -105,7 +134,7 @@ export default function Financeiro() {
           <button
             key={chave}
             type="button"
-            onClick={() => setAba(chave)}
+            onClick={() => trocarAba(chave)}
             aria-current={aba === chave ? "page" : undefined}
             className="min-h-11 px-4 text-sm font-semibold"
             style={{
@@ -121,9 +150,10 @@ export default function Financeiro() {
 
       {aba === "visao" && <VisaoGeral ano={ano} mes={mes} />}
       {aba === "evolucao" && <Evolucao ano={ano} mes={mes} />}
-      {aba === "contratos" && <Contratos />}
+      {aba === "contratos" && <Contratos mes={mesFiltrado} />}
       {aba === "despesas" && (
         <Gastos
+          mes={mesFiltrado}
           naturezas={["CONSUMO", "CUSTEIO"]}
           titulo="Despesas"
           explicacao="O que some na festa e o que mantém a empresa de pé. Entra no resultado do mês em que foi pago."
@@ -131,6 +161,7 @@ export default function Financeiro() {
       )}
       {aba === "aportes" && (
         <Gastos
+          mes={mesFiltrado}
           naturezas={["ACERVO"]}
           titulo="Aportes e acervo"
           explicacao="O que vira patrimônio alugável. É capital que fica, não despesa do mês — por isso não derruba o lucro."

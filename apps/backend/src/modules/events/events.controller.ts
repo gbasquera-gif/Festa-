@@ -44,7 +44,7 @@ export class EventsController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateEventSchema)) body: UpdateEventInput,
   ) {
-    return this.eventsService.update(id, user.userId, body);
+    return this.eventsService.update(id, user, body);
   }
 
   @Delete(":id")

@@ -70,5 +70,16 @@ export const createEventSchema = z.object({
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
-export const updateEventSchema = createEventSchema.partial();
+/**
+ * A edição aceita `guestCount: null`, e a criação não.
+ *
+ * Criar sem número é simplesmente não mandar o campo. Editar é diferente:
+ * apagar o número tem de significar "voltou a ser a combinar", e um campo
+ * omitido significa "não mexi nisto". Sem o nulo explícito, os dois casos
+ * chegariam iguais ao servidor e o número antigo ficaria gravado para
+ * sempre — quem limpasse o campo veria o valor velho reaparecer na lista.
+ */
+export const updateEventSchema = createEventSchema.partial().extend({
+  guestCount: z.coerce.number().int().min(1).max(2000).nullable().optional(),
+});
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;

@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { NumeroEscuro, Rotulo, Situacao } from "./pecas";
-import { brl, dia, mesesRecentes, nomeDoMes, numero } from "./formato";
+import { brl, dia, nomeDoMes, numero } from "./formato";
 
 /**
  * A carteira de contratos.
@@ -81,9 +81,15 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: "Cancelada",
 };
 
-export function Contratos() {
-  const meses = mesesRecentes();
-  const [mes, setMes] = useState("");
+/**
+ * `mes` vem do filtro global da tela (`null` = todos os meses).
+ *
+ * A competência da venda é o mês da FESTA, não o da criação do contrato, e
+ * quem aplica essa regra é o backend — a mesma função que a Visão Geral usa.
+ * Filtrar aqui no navegador criaria uma segunda definição de competência, e
+ * as duas telas passariam a somar conjuntos diferentes.
+ */
+export function Contratos({ mes }: { mes: string | null }) {
   const [situacao, setSituacao] = useState<"" | SituacaoDePagamento>("");
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<string | null>(null);
@@ -118,7 +124,7 @@ export function Contratos() {
         <Button asChild className="min-h-11">
           <Link href="/reservas/nova">
             <Plus className="mr-1 h-4 w-4" />
-            Venda administrativa
+            Nova venda
           </Link>
         </Button>
       </div>
@@ -183,22 +189,6 @@ export function Contratos() {
               className="h-11 w-full rounded-md border bg-background pl-9 pr-3 text-sm"
             />
           </span>
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="fin-rotulo">Festas de</span>
-          <select
-            value={mes}
-            onChange={(e) => setMes(e.target.value)}
-            className="h-11 rounded-md border bg-background px-3 text-sm"
-            aria-label="Filtrar pelo mês da festa"
-          >
-            <option value="">Todos os meses</option>
-            {meses.map((m) => (
-              <option key={m} value={m}>
-                {nomeDoMes(m)}
-              </option>
-            ))}
-          </select>
         </label>
         <label className="flex items-center gap-2 text-sm">
           <span className="fin-rotulo">Situação</span>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { resetPasswordSchema, updateUserSchema } from "@festae/shared";
 import type { ResetPasswordInput, UpdateUserInput } from "@festae/shared";
@@ -34,6 +34,17 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ) {
     return this.usersService.update(id, body, actor.userId);
+  }
+
+  @ApiOperation({
+    summary: "Exclui uma conta sem vínculos",
+    description:
+      "Recusa com 409 quando a conta tem festas, tarefas, cancelamentos ou exceções — excluir apagaria esse histórico em cascata.",
+  })
+  @Roles("ADMIN")
+  @Delete(":id")
+  remove(@Param("id") id: string, @CurrentUser() actor: AuthUser) {
+    return this.usersService.remove(id, actor.userId);
   }
 
   // Só ADMIN: definir a senha de outra pessoa é poder entrar na conta dela,
