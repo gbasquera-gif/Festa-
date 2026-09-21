@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { GaleriaDeImagens, ImagemUnica } from "@/components/GaleriaDeImagens";
 
 /**
  * O que a proposta conta sobre a Festaê.
@@ -20,10 +21,16 @@ import { api } from "@/lib/api";
 
 const BLOCOS = [
   {
+    chave: "capa",
+    padrao: "Capa da proposta",
+    ajuda: "A imagem grande da primeira tela. Em branco, a proposta usa a arte padrão da marca.",
+    temImagem: true,
+  },
+  {
     chave: "apresentacao",
     padrao: "Conheça a Festaê",
     ajuda: "A apresentação curta da empresa — o que a Festaê faz e para quem.",
-    temImagem: false,
+    temImagem: true,
   },
   {
     chave: "historia",
@@ -95,6 +102,14 @@ export default function ConteudoInstitucional() {
   });
 
   const [valores, setValores] = useState<Record<string, Bloco>>({});
+  /**
+   * A galeria mora numa chave só, com um endereço por linha.
+   *
+   * Poderia ser uma tabela de imagens; seriam duas entidades e uma tela de
+   * administração para guardar meia dúzia de fotos em ordem. A lista de
+   * linhas resolve ordenação, inclusão e remoção com o que já existe.
+   */
+  const [galeria, setGaleria] = useState<string[]>([]);
 
   useEffect(() => {
     if (!data) return;
@@ -107,6 +122,7 @@ export default function ConteudoInstitucional() {
       };
     }
     setValores(inicial);
+    setGaleria((data.galeria?.texto ?? "").split("\n").map((u) => u.trim()).filter(Boolean));
   }, [data]);
 
   const salvar = useMutation({
@@ -114,12 +130,15 @@ export default function ConteudoInstitucional() {
       api("/orcamentos/conteudo", {
         method: "PUT",
         body: JSON.stringify({
-          blocos: [...BLOCOS, ...PAGAMENTO].map((b) => ({
-            chave: b.chave,
-            titulo: valores[b.chave]?.titulo,
-            texto: valores[b.chave]?.texto,
-            imagemUrl: valores[b.chave]?.imagemUrl,
-          })),
+          blocos: [
+            ...[...BLOCOS, ...PAGAMENTO].map((b) => ({
+              chave: b.chave,
+              titulo: valores[b.chave]?.titulo,
+              texto: valores[b.chave]?.texto,
+              imagemUrl: valores[b.chave]?.imagemUrl,
+            })),
+            { chave: "galeria", texto: galeria.join("\n") },
+          ],
         }),
       }),
     onSuccess: () => {
@@ -172,24 +191,36 @@ export default function ConteudoInstitucional() {
 
           {b.temImagem && (
             <div className="space-y-1.5">
-              <Label htmlFor={`${b.chave}-imagem`}>Imagem (endereço)</Label>
-              <Input
-                id={`${b.chave}-imagem`}
-                value={valores[b.chave]?.imagemUrl ?? ""}
-                onChange={(e) => alterar(b.chave, "imagemUrl", e.target.value)}
-                placeholder="https://…"
+              <Label>Imagem</Label>
+              <ImagemUnica
+                url={valores[b.chave]?.imagemUrl ?? ""}
+                aoMudar={(url) => alterar(b.chave, "imagemUrl", url)}
+                pasta="institucional"
+                rotulo="imagem"
               />
-              {valores[b.chave]?.imagemUrl && (
-                <img
-                  src={valores[b.chave].imagemUrl}
-                  alt=""
-                  className="mt-2 h-28 w-auto rounded-md border object-cover"
-                />
-              )}
             </div>
           )}
         </section>
       ))}
+
+      <section className="painel-cartao space-y-3 p-4">
+        <div>
+          <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
+            Galeria da Festaê
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Fotos de festas já feitas, mostradas em toda proposta depois de “Nosso jeito de fazer”.
+            A ordem aqui é a ordem lá.
+          </p>
+        </div>
+        <GaleriaDeImagens
+          imagens={galeria}
+          aoMudar={setGaleria}
+          pasta="institucional"
+          rotuloDeCapa="primeira"
+          vazio="Nenhuma foto na galeria. Sem fotos, a seção não aparece na proposta."
+        />
+      </section>
 
       <section className="painel-cartao space-y-4 p-4">
         <div>

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiError } from "@/lib/api";
+import { GaleriaDeImagens } from "@/components/GaleriaDeImagens";
 import { brl } from "@/components/financeiro/formato";
 
 /**
@@ -31,7 +32,10 @@ import { brl } from "@/components/financeiro/formato";
 
 type Cliente = { id: string; name: string; phone: string | null; email: string | null };
 type Tema = { id: string; name: string; coverImageUrl: string | null };
-type Kit = { id: string; name: string; basePrice: string; coverImageUrl: string | null; themeId: string | null };
+type Kit = {
+  id: string; name: string; basePrice: string;
+  coverImageUrl: string | null; images: string[]; themeId: string | null;
+};
 type Produto = { id: string; name: string; unitPrice: string; imageUrl: string | null; category: string };
 
 type Linha = {
@@ -124,7 +128,14 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     const doTema = temas.data?.find((t) => t.id === themeId);
     const daslinhas = linhas.map((l) => l.imagemUrl).filter(Boolean) as string[];
     return Array.from(
-      new Set([doKit?.coverImageUrl, doTema?.coverImageUrl, ...daslinhas].filter(Boolean) as string[]),
+      new Set(
+        [
+          doKit?.coverImageUrl,
+          ...(doKit?.images ?? []),
+          doTema?.coverImageUrl,
+          ...daslinhas,
+        ].filter(Boolean) as string[],
+      ),
     );
   }, [kitId, themeId, kits.data, temas.data, linhas]);
 
@@ -441,38 +452,64 @@ export default function NovoOrcamento({ id }: { id?: string }) {
         </div>
       </section>
 
-      {/* IMAGENS */}
-      {imagensDisponiveis.length > 0 && (
-        <section className="painel-cartao space-y-3 p-4">
+      {/* IMAGENS
+        *
+        * Uma lista só, em ordem, com a primeira valendo como capa. As fotos
+        * podem vir de dois lugares — upload feito para esta cliente e
+        * catálogo —, mas para a proposta elas são a mesma coisa: o que a
+        * pessoa vai ver, nesta ordem. Duas listas separadas obrigariam a
+        * decidir qual aparece primeiro, que é justamente o que a ordem já
+        * responde. */}
+      <section className="painel-cartao space-y-4 p-4">
+        <div>
           <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
-            Imagens da proposta
+            Como imaginamos a festa
           </h2>
           <p className="text-xs text-muted-foreground">
-            Escolha o que a cliente vai ver. Nem toda foto do catálogo serve para toda festa.
+            As imagens que abrem a proposta, antes da lista de itens. Podem ser uma inspiração, uma
+            simulação ou a foto de uma festa parecida.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {imagensDisponiveis.map((url) => {
-              const escolhida = imagens.includes(url);
-              return (
-                <button
-                  key={url}
-                  type="button"
-                  onClick={() =>
-                    setImagens((atual) =>
-                      escolhida ? atual.filter((u) => u !== url) : [...atual, url],
-                    )
-                  }
-                  className="overflow-hidden rounded-md border-2"
-                  style={{ borderColor: escolhida ? "var(--color-coral)" : "transparent" }}
-                  aria-pressed={escolhida}
-                >
-                  <img src={url} alt="" className="h-20 w-28 object-cover" />
-                </button>
-              );
-            })}
+        </div>
+
+        <GaleriaDeImagens
+          imagens={imagens}
+          aoMudar={setImagens}
+          pasta="propostas"
+          vazio="Nenhuma imagem escolhida. Envie uma inspiração ou traga do catálogo abaixo."
+        />
+
+        {imagensDisponiveis.length > 0 && (
+          <div className="border-t pt-4">
+            <p className="painel-periodo">Do catálogo</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Fotos do tema, do kit e das peças escolhidas. Nenhuma entra sozinha — nem toda foto
+              do catálogo serve para toda festa.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {imagensDisponiveis.map((url) => {
+                const escolhida = imagens.includes(url);
+                return (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() =>
+                      setImagens((atual) =>
+                        escolhida ? atual.filter((u) => u !== url) : [...atual, url],
+                      )
+                    }
+                    className="overflow-hidden rounded-md border-2"
+                    style={{ borderColor: escolhida ? "var(--color-coral)" : "transparent" }}
+                    aria-pressed={escolhida}
+                    title={escolhida ? "Tirar da proposta" : "Usar nesta proposta"}
+                  >
+                    <img src={url} alt="" className="h-20 w-28 object-cover" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* VALORES */}
       <section className="painel-cartao space-y-3 p-4">

@@ -105,6 +105,10 @@ export default function Proposta({ token }: { token: string }) {
   }
 
   const bloco = (chave: string) => p.conteudo?.[chave];
+  const galeriaDaFestae = (bloco("galeria")?.texto ?? "")
+    .split("\n")
+    .map((u) => u.trim())
+    .filter(Boolean);
   const tipo = isEventType(p.festa.tipo)
     ? EVENT_TYPE_META[p.festa.tipo as keyof typeof EVENT_TYPE_META].label
     : p.festa.tipo;
@@ -123,7 +127,7 @@ export default function Proposta({ token }: { token: string }) {
         <p className="proposta-data">
           {tipo} · {formatarDataDaFesta(p.festa.em)} · {p.festa.cidade}
         </p>
-        <img src="/banner-proposito.webp" alt="" className="proposta-hero" />
+        <img src={bloco("capa")?.imagemUrl || "/banner-proposito.webp"} alt="" className="proposta-hero" />
         <p className="proposta-slogan">Sua festa linda, sem complicação.</p>
       </header>
 
@@ -133,18 +137,45 @@ export default function Proposta({ token }: { token: string }) {
         <Institucional chave="quem" bloco={bloco("quem")} padrao="Quem está por trás" retrato />
         <Institucional chave="jeito" bloco={bloco("jeito")} padrao="Nosso jeito de fazer" />
 
-        {/* SUA FESTA */}
-        <section className="proposta-secao">
-          <p className="proposta-eyebrow">Sua festa</p>
-          <h2>{p.tema ? p.tema : "A proposta para o seu dia"}</h2>
-          {p.observacoes && <p className="proposta-texto">{p.observacoes}</p>}
-
-          {p.imagens.length > 0 && (
+        {/* Festas já feitas. Sem fotos, a seção não existe. */}
+        {galeriaDaFestae.length > 0 && (
+          <section className="proposta-secao" data-bloco="galeria">
+            <p className="proposta-eyebrow">{bloco("galeria")?.titulo || "Festas que já fizemos"}</p>
             <div className="proposta-galeria">
-              {p.imagens.map((url) => (
+              {galeriaDaFestae.map((url) => (
                 <img key={url} src={url} alt="" loading="lazy" />
               ))}
             </div>
+          </section>
+        )}
+
+        {/* COMO IMAGINAMOS SUA FESTA
+          *
+          * Antes da lista de itens, e com a primeira imagem grande: é a parte
+          * que faz a cliente ver a festa dela. Uma tabela de peças não
+          * emociona ninguém; uma foto do que vai ficar pronto, sim. */}
+        {p.imagens.length > 0 && (
+          <section className="proposta-secao proposta-inspiracao">
+            <p className="proposta-eyebrow">Como imaginamos sua festa</p>
+            <h2>{p.tema ? p.tema : "Uma inspiração para o seu dia"}</h2>
+            {p.observacoes && <p className="proposta-texto">{p.observacoes}</p>}
+            <img className="proposta-inspiracao-capa" src={p.imagens[0]} alt="" />
+            {p.imagens.length > 1 && (
+              <div className="proposta-galeria">
+                {p.imagens.slice(1).map((url) => (
+                  <img key={url} src={url} alt="" loading="lazy" />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* SUA FESTA */}
+        <section className="proposta-secao">
+          <p className="proposta-eyebrow">O que está incluído</p>
+          <h2>{p.imagens.length > 0 ? "A composição" : p.tema ? p.tema : "A proposta para o seu dia"}</h2>
+          {p.observacoes && p.imagens.length === 0 && (
+            <p className="proposta-texto">{p.observacoes}</p>
           )}
 
           <ul className="proposta-itens">

@@ -17,7 +17,10 @@ import { STORAGE_SERVICE, type StorageService } from "./storage.interface";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_FOLDERS = ["themes", "kits", "products"];
+// `propostas` guarda a inspiração enviada para uma cliente específica, e
+// `institucional` as fotos fixas da proposta. Pastas separadas do catálogo
+// porque não são acervo: ninguém aluga a foto da Maria Luiza.
+const ALLOWED_FOLDERS = ["themes", "kits", "products", "propostas", "institucional"];
 
 @ApiTags("uploads")
 @ApiBearerAuth()

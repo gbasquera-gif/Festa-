@@ -1099,3 +1099,15 @@ button.painel-cartao:focus-visible .painel-abre {
 }
 .proposta-pix-chave button:hover { background: #0d1a2c; }
 .proposta-pix-instrucao { margin-top: 1rem; font-size: 0.92rem; }
+
+/* A inspiração da festa: a primeira imagem grande, o resto em grade.
+ * É o que faz a cliente ver a festa dela antes de ver a lista de peças. */
+.proposta-inspiracao-capa {
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  border: 1px solid var(--p-linha);
+  margin: 1rem 0 0;
+  display: block;
+}
+.proposta-inspiracao .proposta-galeria { margin-top: 0.6rem; }
