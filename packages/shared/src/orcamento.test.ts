@@ -4,7 +4,9 @@ import {
   calcularOrcamento,
   calcularSinal,
   exigeNovaVersao,
+  mensagemDaProposta,
   podeSerAprovada,
+  primeiroNome,
   situacaoDoOrcamento,
   totalDaLinha,
   type LinhaDoOrcamento,
@@ -116,5 +118,34 @@ describe("calcularSinal", () => {
   it("percentual fora da faixa é contido em vez de virar valor absurdo", () => {
     expect(calcularSinal(1000, 150).valor).toBe(1000);
     expect(calcularSinal(1000, -10).valor).toBe(0);
+  });
+});
+
+describe("mensagemDaProposta", () => {
+  const link = "https://painel.festaechapeco.com.br/proposta/abc123";
+
+  it("chama a cliente pelo primeiro nome e termina no link", () => {
+    const m = mensagemDaProposta("Ana Paula Ribeiro de Souza", link);
+    expect(m.startsWith("Oi, Ana! 💛")).toBe(true);
+    expect(m.endsWith(link)).toBe(true);
+    expect(m).not.toContain("[LINK]");
+    expect(m).not.toContain("Ribeiro");
+  });
+
+  it("preserva as quebras de linha da mensagem", () => {
+    const linhas = mensagemDaProposta("Ana", link).split("\n");
+    expect(linhas).toHaveLength(4);
+    expect(linhas[1]).toBe("");
+    expect(linhas[3]).toBe(link);
+  });
+
+  it("aguenta nome com espaços sobrando e nome vazio", () => {
+    expect(mensagemDaProposta("  Maria   Luiza  ", link).startsWith("Oi, Maria!")).toBe(true);
+    expect(mensagemDaProposta("   ", link).startsWith("Oi! 💛")).toBe(true);
+  });
+
+  it("primeiroNome devolve vazio quando não há nome", () => {
+    expect(primeiroNome("")).toBe("");
+    expect(primeiroNome(" Joana Silva ")).toBe("Joana");
   });
 });

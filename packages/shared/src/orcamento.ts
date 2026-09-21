@@ -245,3 +245,31 @@ export type AprovarPropostaInput = z.infer<typeof aprovarPropostaSchema>;
 export const recusarOrcamentoSchema = z.object({
   motivo: z.string().max(500).optional().or(z.literal("")),
 });
+
+/**
+ * O primeiro nome de quem vai receber a mensagem.
+ *
+ * O cadastro guarda o nome completo porque é ele que vai no contrato. Na
+ * conversa, chamar a cliente pelo nome inteiro soa a cobrança — então a
+ * mensagem usa só o primeiro. Nome vazio não vira "Oi, !": a saudação some.
+ */
+export function primeiroNome(nomeCompleto: string): string {
+  return nomeCompleto.trim().split(/\s+/)[0] ?? "";
+}
+
+/**
+ * A mensagem que a Maria Luiza cola no WhatsApp.
+ *
+ * Copiar só a URL deixava para ela escrever o recado toda vez — e o recado é
+ * parte da venda: diz o que é o link e que dá para aprovar por ali. Fica aqui,
+ * e não na tela, porque é texto de negócio e precisa de teste.
+ */
+export function mensagemDaProposta(cliente: string, link: string): string {
+  const nome = primeiroNome(cliente);
+  return [
+    `${nome ? `Oi, ${nome}!` : "Oi!"} 💛 Preparamos uma proposta para a sua festa.`,
+    "",
+    "Acesse o link abaixo para conferir. Se gostar, você pode aprovar por lá e já visualizar os dados para o sinal e reserva da data:",
+    link,
+  ].join("\n");
+}

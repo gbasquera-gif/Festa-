@@ -9,6 +9,7 @@ import {
   TIPO_DA_LINHA_LABEL,
   formatarDataDaFesta,
   isEventType,
+  mensagemDaProposta,
   type StatusDoOrcamento,
   type TipoDaLinha,
 } from "@festae/shared";
@@ -51,6 +52,22 @@ function mensagemDeConflito(e: unknown): string {
   return e instanceof Error ? e.message : "Não foi possível concluir.";
 }
 
+/**
+ * Copiar sem depender de o navegador cooperar.
+ *
+ * A API de área de transferência exige contexto seguro e permissão; quando
+ * falha, ela falha em silêncio. Aqui o silêncio vira aviso, para a Maria não
+ * colar no WhatsApp um texto que nunca foi copiado.
+ */
+async function copiar(texto: string, aviso: string) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast.success(aviso);
+  } catch {
+    toast.error("Não foi possível copiar por aqui. Selecione o texto abaixo e copie à mão.");
+  }
+}
+
 export default function OrcamentoDetalhe({ id }: { id: string }) {
   const [, navegar] = useLocation();
   const queryClient = useQueryClient();
@@ -64,6 +81,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   });
 
   const linkPublico = o ? `${window.location.origin}/proposta/${o.token}` : "";
+  const mensagem = o ? mensagemDaProposta(String(o.cliente ?? ""), linkPublico) : "";
 
   const invalidar = () => {
     queryClient.invalidateQueries({ queryKey: ["orcamento", id] });
@@ -243,16 +261,21 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
           Link da proposta
         </h2>
+        <code className="block truncate rounded bg-muted px-3 py-2 text-xs">{linkPublico}</code>
         <div className="flex flex-wrap items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded bg-muted px-3 py-2 text-xs">{linkPublico}</code>
+          <Button
+            className="min-h-11"
+            title="Copiar mensagem e link"
+            onClick={() => copiar(mensagem, "Mensagem copiada!")}
+          >
+            <Copy className="mr-1 size-4" /> Copiar mensagem e link
+          </Button>
           <Button
             variant="outline" className="min-h-11"
-            onClick={() => {
-              navigator.clipboard?.writeText(linkPublico);
-              toast.success("Link copiado. É só colar no WhatsApp.");
-            }}
+            title="Copiar somente link"
+            onClick={() => copiar(linkPublico, "Link copiado!")}
           >
-            <Copy className="mr-1 size-4" /> Copiar
+            Copiar somente link
           </Button>
           <Button variant="outline" className="min-h-11" asChild>
             <a href={linkPublico} target="_blank" rel="noreferrer">
@@ -260,6 +283,9 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             </a>
           </Button>
         </div>
+        <p className="whitespace-pre-line rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+          {mensagem}
+        </p>
         <p className="text-xs text-muted-foreground">
           {situacao === "RASCUNHO"
             ? "Enquanto for rascunho, o link responde “não encontrada” — a cliente não vê proposta pela metade."
