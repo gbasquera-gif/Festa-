@@ -207,6 +207,14 @@ export const orcamentoSchema = z.object({
     /** Dias de validade a partir de hoje. */
     validadeEmDias: z.coerce.number().int().min(1).max(180).default(15),
     /**
+     * Mostrar o preço de cada linha para a cliente.
+     *
+     * Desligado por padrão: preço item a item convida a desmontar o conjunto
+     * e comparar peça por peça com quem não monta nem entrega. O que está à
+     * venda é a festa pronta.
+     */
+    mostrarValoresIndividuais: z.coerce.boolean().default(false),
+    /**
      * Percentual do sinal desta proposta. Vazio usa o padrão do painel —
      * gravar a taxa em toda proposta faria a mudança do padrão não alcançar
      * nenhuma delas.

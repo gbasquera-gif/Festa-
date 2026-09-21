@@ -37,8 +37,15 @@ type PropostaPublica = {
   kit: string | null;
   imagens: string[];
   observacoes: string | null;
-  itens: { tipo: string; descricao: string; quantidade: number; valorUnitario: number; total: number; imagemUrl: string | null }[];
-  valores: { subtotal: number; desconto: number; entrega: number; montagem: number; total: number };
+  mostrarValores: boolean;
+  itens: {
+    tipo: string; descricao: string; quantidade: number;
+    valorUnitario: number | null; total: number | null; imagemUrl: string | null;
+  }[];
+  valores: {
+    subtotal: number | null; desconto: number; entrega: number | null;
+    montagem: number | null; total: number;
+  };
   validoAte: string;
   aprovadoEm: string | null;
   aprovadoPorNome: string | null;
@@ -105,6 +112,17 @@ export default function Proposta({ token }: { token: string }) {
   }
 
   const bloco = (chave: string) => p.conteudo?.[chave];
+  /**
+   * A arte da capa.
+   *
+   * Primeiro a imagem institucional; depois a própria inspiração da festa,
+   * que é foto de verdade da proposta; e, se não houver nenhuma, a arte da
+   * marca. A arte da marca já traz logo e frase impressos, então nela o
+   * texto NÃO vai por cima — dois títulos e dois logotipos na mesma imagem
+   * é o que transforma uma capa bonita em cartaz confuso.
+   */
+  const arteDaCapa = bloco("capa")?.imagemUrl || p.imagens[0] || null;
+
   const galeriaDaFestae = (bloco("galeria")?.texto ?? "")
     .split("\n")
     .map((u) => u.trim())
@@ -115,19 +133,29 @@ export default function Proposta({ token }: { token: string }) {
 
   return (
     <div className="proposta">
-      {/* CAPA */}
+      {/* CAPA
+        *
+        * A arte ocupa a largura inteira e o texto vive sobre ela: a capa
+        * anterior empilhava marca, título, dados e só então a imagem, e o
+        * resultado era meia tela de espaço vazio antes de a festa aparecer.
+        * Quem abre isto no celular tem de ver a festa no primeiro instante,
+        * não um cabeçalho. */}
       <header className="proposta-capa">
-        <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} className="proposta-marca" />
-        <p className="proposta-eyebrow">Proposta nº {p.numero}</p>
-        <h1>
-          Uma festa pensada para
-          <br />
-          <strong>{p.cliente.nome}</strong>
-        </h1>
-        <p className="proposta-data">
-          {tipo} · {formatarDataDaFesta(p.festa.em)} · {p.festa.cidade}
-        </p>
-        <img src={bloco("capa")?.imagemUrl || "/banner-proposito.webp"} alt="" className="proposta-hero" />
+        <div className={`proposta-capa-arte${arteDaCapa ? "" : " proposta-capa-marca"}`}>
+          <img src={arteDaCapa ?? "/banner-proposito.webp"} alt="" className="proposta-hero" />
+          <div className="proposta-capa-texto">
+            <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} className="proposta-marca" />
+            <p className="proposta-eyebrow">Proposta nº {p.numero}</p>
+            <h1>
+              Uma festa pensada para
+              <br />
+              <strong>{p.cliente.nome}</strong>
+            </h1>
+            <p className="proposta-data">
+              {tipo} · {formatarDataDaFesta(p.festa.em)} · {p.festa.cidade}
+            </p>
+          </div>
+        </div>
         <p className="proposta-slogan">Sua festa linda, sem complicação.</p>
       </header>
 
@@ -159,9 +187,15 @@ export default function Proposta({ token }: { token: string }) {
             <p className="proposta-eyebrow">Como imaginamos sua festa</p>
             <h2>{p.tema ? p.tema : "Uma inspiração para o seu dia"}</h2>
             {p.observacoes && <p className="proposta-texto">{p.observacoes}</p>}
+            {/* A principal sempre grande; o resto em colunas iguais, que é o
+              * que mantém a página elegante com uma, duas ou seis fotos. Uma
+              * miniatura solta embaixo da grande parecia sobra. */}
             <img className="proposta-inspiracao-capa" src={p.imagens[0]} alt="" />
             {p.imagens.length > 1 && (
-              <div className="proposta-galeria">
+              <div
+                className="proposta-mosaico"
+                data-quantas={Math.min(p.imagens.length - 1, 3)}
+              >
                 {p.imagens.slice(1).map((url) => (
                   <img key={url} src={url} alt="" loading="lazy" />
                 ))}
@@ -178,7 +212,7 @@ export default function Proposta({ token }: { token: string }) {
             <p className="proposta-texto">{p.observacoes}</p>
           )}
 
-          <ul className="proposta-itens">
+          <ul className={`proposta-itens${p.mostrarValores ? "" : " proposta-itens-sem-valor"}`}>
             {p.itens.map((i, n) => (
               <li key={n}>
                 <span className="proposta-item-nome">
@@ -188,55 +222,76 @@ export default function Proposta({ token }: { token: string }) {
                     {TIPO_DA_LINHA_LABEL[i.tipo as TipoDaLinha] ?? i.tipo}
                   </span>
                 </span>
-                <span className="proposta-item-valor">{brl(i.total)}</span>
+                {i.total !== null && <span className="proposta-item-valor">{brl(i.total)}</span>}
               </li>
             ))}
           </ul>
+          {!p.mostrarValores && (
+            <p className="proposta-texto proposta-itens-nota">
+              Tudo isso está incluído no investimento da sua festa.
+            </p>
+          )}
         </section>
 
-        {/* INVESTIMENTO */}
+        {/* INVESTIMENTO
+          *
+          * O fechamento da proposta: um número, grande, com as condições
+          * logo abaixo. A conta detalhada só aparece quando a proposta
+          * mostra preço por linha — senão seria decompor o conjunto no
+          * exato lugar em que ele deveria ser lido inteiro. */}
         <section className="proposta-secao proposta-investimento">
           <p className="proposta-eyebrow">Investimento</p>
-          <dl>
-            <div><dt>Composição</dt><dd>{brl(p.valores.subtotal)}</dd></div>
-            {p.valores.desconto > 0 && <div><dt>Desconto</dt><dd>− {brl(p.valores.desconto)}</dd></div>}
-            {p.valores.entrega > 0 && <div><dt>Entrega</dt><dd>{brl(p.valores.entrega)}</dd></div>}
-            {p.valores.montagem > 0 && <div><dt>Montagem</dt><dd>{brl(p.valores.montagem)}</dd></div>}
-          </dl>
           <p className="proposta-total">
-            <span>Total</span>
+            <span>Investimento total da sua festa</span>
             <strong>{brl(p.valores.total)}</strong>
           </p>
-        </section>
 
-        {/* CONDIÇÕES */}
-        <section className="proposta-secao proposta-condicoes">
-          <p className="proposta-eyebrow">Condições</p>
-          <p className="proposta-texto">
-            Esta proposta vale até <strong>{formatarDataDaFesta(p.validoAte)}</strong>.
-          </p>
-          {bloco("condicoes")?.texto && <p className="proposta-texto">{bloco("condicoes")!.texto}</p>}
+          {p.mostrarValores && (
+            <dl>
+              {p.valores.subtotal !== null && (
+                <div><dt>Composição</dt><dd>{brl(p.valores.subtotal)}</dd></div>
+              )}
+              {p.valores.desconto > 0 && <div><dt>Desconto</dt><dd>− {brl(p.valores.desconto)}</dd></div>}
+              {p.valores.entrega !== null && p.valores.entrega > 0 && (
+                <div><dt>Entrega</dt><dd>{brl(p.valores.entrega)}</dd></div>
+              )}
+              {p.valores.montagem !== null && p.valores.montagem > 0 && (
+                <div><dt>Montagem</dt><dd>{brl(p.valores.montagem)}</dd></div>
+              )}
+            </dl>
+          )}
+
+          <div className="proposta-condicoes">
+            <p className="proposta-eyebrow">Condições</p>
+            <p className="proposta-texto">
+              Sinal de {p.sinal.percentual.toLocaleString("pt-BR")}% —{" "}
+              <strong>{brl(p.sinal.valor)}</strong> — para reservar a data. O saldo de{" "}
+              {brl(p.sinal.saldo)} fica para a retirada ou a entrega.
+            </p>
+            <p className="proposta-texto">
+              Proposta válida até <strong>{formatarDataDaFesta(p.validoAte)}</strong>.
+            </p>
+            {bloco("condicoes")?.texto && <p className="proposta-texto">{bloco("condicoes")!.texto}</p>}
+          </div>
         </section>
 
         {/* APROVAÇÃO */}
         <section className="proposta-secao proposta-cta">
           {p.aprovadoEm ? (
             <>
-              <h2>{p.sinal.pago ? "Sua data está reservada 🎉" : "Proposta aprovada 🎉"}</h2>
+              <h2>{p.sinal.pago ? "Sua data está reservada 💛" : "Que alegria ter você com a gente 💛"}</h2>
               <p className="proposta-texto">
-                Aprovada por {p.aprovadoPorNome} em{" "}
-                {new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}.
                 {p.sinal.pago
-                  ? " O sinal foi confirmado pela Festaê e a data é sua."
-                  : " Falta um passo para a data ficar reservada."}
+                  ? `Sinal confirmado pela Festaê. Sua data está reservada e já começamos a preparar tudo. Aprovada por ${p.aprovadoPorNome} em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}.`
+                  : `Proposta aprovada por ${p.aprovadoPorNome} em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}. Agora falta só um passo para reservar sua data.`}
               </p>
             </>
           ) : p.podeAprovar ? (
             <>
               <h2>Vamos deixar sua festa linda?</h2>
               <p className="proposta-texto">
-                Ao aprovar, você confirma a composição e o valor desta proposta. A Festaê fala com
-                você para combinar pagamento e detalhes.
+                Ao aprovar, você confirma a composição e o valor desta proposta. Em seguida
+                mostramos o sinal que reserva a sua data — a aprovação sozinha ainda não reserva.
               </p>
               {!confirmando ? (
                 <button type="button" className="proposta-botao" onClick={() => setConfirmando(true)}>
@@ -297,10 +352,10 @@ export default function Proposta({ token }: { token: string }) {
         <section className="proposta-sinal">
           <div className="proposta-sinal-caixa">
             <p className="proposta-eyebrow">Reserve sua data</p>
-            <h2>Falta o sinal para a data ser sua</h2>
+            <h2>Agora falta só um passo para reservar sua data 💛</h2>
             <p className="proposta-texto">
-              A data fica reservada quando o sinal cai. O restante você paga na retirada ou na
-              entrega.
+              Realize o sinal abaixo e, após a confirmação do pagamento pela Festaê, sua data
+              estará reservada. O restante você paga na retirada ou na entrega.
             </p>
 
             <dl className="proposta-sinal-conta">
@@ -349,7 +404,7 @@ export default function Proposta({ token }: { token: string }) {
             )}
 
             <p className="proposta-nota">
-              O valor só é considerado recebido depois que a Festaê confirma. Esta página não
+              A data é reservada quando a Festaê confirma o recebimento do sinal. Esta página não
               processa pagamento.
             </p>
           </div>

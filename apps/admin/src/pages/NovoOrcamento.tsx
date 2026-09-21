@@ -78,6 +78,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   const [kitId, setKitId] = useState("");
   const [validade, setValidade] = useState("15");
   const [percentualDoSinal, setPercentualDoSinal] = useState("");
+  const [mostrarValores, setMostrarValores] = useState(false);
   const [imagens, setImagens] = useState<string[]>([]);
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [desconto, setDesconto] = useState("0");
@@ -102,6 +103,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     setKitId(o.kitId ?? "");
     setImagens(o.imagens ?? []);
     setPercentualDoSinal(o.percentualDoSinal === null || o.percentualDoSinal === undefined ? "" : String(o.percentualDoSinal));
+    setMostrarValores(Boolean(o.mostrarValoresIndividuais));
     setDesconto(String(o.valores.desconto));
     setEntrega(String(o.valores.entrega));
     setMontagem(String(o.valores.montagem));
@@ -213,6 +215,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           // Vazio deixa a proposta seguir o padrão do painel. Gravar a taxa
           // em toda proposta faria a mudança do padrão não alcançar nenhuma.
           percentualDoSinal: percentualDoSinal.trim() ? Number(percentualDoSinal) : undefined,
+          mostrarValoresIndividuais: mostrarValores,
         },
         itens: linhas.map((l) => ({
           tipo: l.tipo,
@@ -543,6 +546,25 @@ export default function NovoOrcamento({ id }: { id?: string }) {
             </p>
           </div>
         </div>
+
+        {/* O preço por linha é escolha comercial, não detalhe de tela: com
+            ele ligado a cliente compara peça por peça com quem não monta nem
+            entrega. Por isso nasce desligado. */}
+        <label className="flex items-start gap-3 rounded-md border p-3">
+          <input
+            type="checkbox"
+            checked={mostrarValores}
+            onChange={(e) => setMostrarValores(e.target.checked)}
+            className="mt-0.5 size-4"
+          />
+          <span className="text-sm">
+            <span style={{ color: "var(--color-navy)" }}>Mostrar o valor de cada item na proposta</span>
+            <span className="block text-xs text-muted-foreground">
+              Desligado, a cliente vê o que está incluído e o investimento total. Ligado, vê o
+              preço de cada linha. Aqui no painel os valores aparecem sempre.
+            </span>
+          </span>
+        </label>
 
         <dl className="mt-2 space-y-1 border-t pt-3 text-sm">
           <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd className="fin-numero">{brl(totais.subtotal)}</dd></div>

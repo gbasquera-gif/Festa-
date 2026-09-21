@@ -88,6 +88,7 @@ export class OrcamentosService {
         themeId: input.proposta.themeId || undefined,
         kitId: input.proposta.kitId || undefined,
         percentualDoSinal: input.proposta.percentualDoSinal ?? null,
+        mostrarValoresIndividuais: input.proposta.mostrarValoresIndividuais ?? false,
         imagens: input.proposta.imagens,
         ...totais,
         criadoPorId,
@@ -151,6 +152,7 @@ export class OrcamentosService {
           themeId: input.proposta.themeId || null,
           kitId: input.proposta.kitId || null,
           percentualDoSinal: input.proposta.percentualDoSinal ?? null,
+          mostrarValoresIndividuais: input.proposta.mostrarValoresIndividuais ?? false,
           imagens: input.proposta.imagens,
           ...totais,
           versao: precisaVersionar ? atual.versao + 1 : atual.versao,
@@ -231,19 +233,23 @@ export class OrcamentosService {
       kit: o.kit?.name ?? null,
       imagens: this.imagensDa(o),
       observacoes: o.observacoes,
+      mostrarValores: o.mostrarValoresIndividuais,
       itens: o.itens.map((i) => ({
         tipo: i.tipo,
         descricao: i.descricao,
         quantidade: i.quantidade,
-        valorUnitario: num(i.valorUnitario),
-        total: num(i.total),
+        // Sem valor quando a proposta não mostra preço por linha. Esconder
+        // no CSS deixaria o número no HTML, ao alcance de quem abre o código
+        // da página — e o ponto não é estético, é comercial.
+        valorUnitario: o.mostrarValoresIndividuais ? num(i.valorUnitario) : null,
+        total: o.mostrarValoresIndividuais ? num(i.total) : null,
         imagemUrl: i.imagemUrl,
       })),
       valores: {
-        subtotal: num(o.subtotal),
+        subtotal: o.mostrarValoresIndividuais ? num(o.subtotal) : null,
         desconto: num(o.desconto),
-        entrega: num(o.entrega),
-        montagem: num(o.montagem),
+        entrega: o.mostrarValoresIndividuais ? num(o.entrega) : null,
+        montagem: o.mostrarValoresIndividuais ? num(o.montagem) : null,
         total: num(o.total),
       },
       validoAte: o.validoAte.toISOString(),
@@ -529,6 +535,7 @@ export class OrcamentosService {
       themeId: o.themeId,
       kitId: o.kitId,
       percentualDoSinal: o.percentualDoSinal === null ? null : num(o.percentualDoSinal),
+      mostrarValoresIndividuais: o.mostrarValoresIndividuais,
       imagens: o.imagens,
       valores: {
         subtotal: num(o.subtotal),

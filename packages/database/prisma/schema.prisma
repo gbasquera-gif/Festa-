@@ -744,6 +744,15 @@ model Orcamento {
   themeId String?
   kitId   String?
 
+  /// Se a proposta mostra o preço de cada linha para a cliente.
+  ///
+  /// Desligado por padrão, e não é economia de tela: proposta com preço
+  /// item a item convida a cliente a desmontar o conjunto e comparar peça
+  /// por peça com quem não monta nem entrega. O que está sendo vendido é a
+  /// festa pronta. A composição continua listada — o que some é o preço de
+  /// cada parte, que segue inteiro no painel para quem calcula.
+  mostrarValoresIndividuais Boolean @default(false)
+
   /// Percentual do sinal desta proposta. Nulo usa o padrão configurado no
   /// painel — gravar a taxa em toda proposta faria a mudança do padrão não
   /// alcançar nenhuma das que já existem.

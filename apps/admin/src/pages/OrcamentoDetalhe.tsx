@@ -221,9 +221,16 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
 
       {/* COMPOSIÇÃO */}
       <section className="painel-cartao p-0">
-        <h2 className="px-4 pt-4 text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
-          Composição
-        </h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
+          <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
+            Composição
+          </h2>
+          <span className="painel-periodo">
+            {o.mostrarValoresIndividuais
+              ? "a cliente vê o valor de cada item"
+              : "a cliente vê só o investimento total"}
+          </span>
+        </div>
         <table className="fin-tabela mt-3">
           <thead>
             <tr><th>Item</th><th>Tipo</th><th className="num">Qtd</th><th className="num">Unitário</th><th className="num">Total</th></tr>
