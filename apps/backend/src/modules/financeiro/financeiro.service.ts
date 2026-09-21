@@ -2,6 +2,11 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
+  detalhar,
+  type EscopoDoDetalhe,
+  type TipoDeDetalhe,
+} from "./detalhamento";
+import {
   filtrarLinhas,
   montarLinha,
   ordenarLinhas,
@@ -257,8 +262,15 @@ export class FinanceiroService {
    * comercialmente precisa ver o que caiu. Elas não entram em total nenhum —
    * é `vigente` que decide isso, e o resumo só soma vigentes.
    */
-  async listarContratos(filtro: FiltroDeContratos = {}) {
-    const reservas = await prisma.reservation.findMany({
+  /**
+   * A carteira crua, do jeito que `montarLinha` espera.
+   *
+   * Extraída de `listarContratos` para o detalhamento dos indicadores ler o
+   * MESMO conjunto. Duas consultas parecidas é como um KPI passa a divergir
+   * do seu próprio detalhamento.
+   */
+  private async carteiraCrua() {
+    return prisma.reservation.findMany({
       select: {
         id: true,
         contractSeq: true,
@@ -301,6 +313,10 @@ export class FinanceiroService {
       },
       orderBy: { eventDate: "desc" },
     });
+  }
+
+  async listarContratos(filtro: FiltroDeContratos = {}) {
+    const reservas = await this.carteiraCrua();
 
     // Um instante só para a carteira inteira. Chamar `new Date()` por linha
     // faria duas reservas da mesma lista serem julgadas em momentos
@@ -327,6 +343,20 @@ export class FinanceiroService {
    * A regra do período mora em `periodo.ts`, como função pura: a borda do mês
    * é onde erro de fuso se esconde, e ela precisa de teste que rode sem banco.
    */
+  /**
+   * De que contratos um indicador é feito.
+   *
+   * Lê a mesma carteira da aba Vendas/Contratos e recalcula o total pela
+   * mesma função de @festae/shared que o panorama usa — é isso que garante
+   * que o detalhamento fecha com o número que o usuário clicou.
+   */
+  async detalharIndicador(tipo: TipoDeDetalhe, escopo: EscopoDoDetalhe, mes: string) {
+    const reservas = await this.carteiraCrua();
+    const agora = new Date();
+    const linhas = reservas.map((reserva) => montarLinha(reserva, agora));
+    return { apuradoEm: agora.toISOString(), ...detalhar(linhas, tipo, escopo, mes) };
+  }
+
   listarGastos(filtro: FiltroDeGastos = {}) {
     return prisma.gasto.findMany({
       where: filtroDeGastos(filtro),

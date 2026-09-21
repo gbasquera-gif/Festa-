@@ -1,9 +1,19 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  ABAS_DE_RESERVA,
+  ABA_DE_RESERVA_LABEL,
+  ABA_DE_RESERVA_NOTA,
+  GRUPOS_DE_PROXIMIDADE,
+  GRUPO_DE_PROXIMIDADE_LABEL,
+  ehDaAba,
+  grupoDeProximidade,
+  situacaoOperacional,
+  type AbaDeReserva,
+  type GrupoDeProximidade,
   RESERVATION_STATUSES,
   formatarDataDaFesta,
   PERCENTUAL_DO_SINAL,
@@ -27,6 +37,7 @@ interface ProductRef {
 
 interface ReservationRow {
   id: string;
+  contractSeq: number;
   eventDate: string;
   status: ReservationStatus;
   notes: string | null;
@@ -393,26 +404,35 @@ function CartaoDeReserva({
   aberto,
   onAlternar,
   onStatus,
+  marca,
+  compacto,
 }: {
   row: ReservationRow;
   aberto: boolean;
   onAlternar: () => void;
   onStatus: (status: ReservationStatus) => void;
+  /** Selo de pendência, quando houver. */
+  marca?: React.ReactNode;
+  /** Histórico: fica presente, sem disputar atenção com o que pede ação. */
+  compacto?: boolean;
 }) {
   const payment = paymentSummary(row);
   const { event } = row.order;
   const entrega = row.order.fulfillment === "DELIVERY";
 
   return (
-    <div className="rounded-lg border bg-card">
+    <div className="rounded-lg border bg-card" style={compacto ? { opacity: 0.72 } : undefined}>
       <div className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {/* Quebra em vez de truncar: nome cortado no meio ("Maria Apareci…")
                 obriga a abrir o detalhe só para saber de quem é a festa. */}
-            <p className="font-semibold break-words text-navy">{event.user.name}</p>
+            <p className="font-medium break-words text-navy">
+              {event.user.name}
+              {marca}
+            </p>
             <p className="text-sm text-muted-foreground">
-              {formatarDataDaFesta(row.eventDate)}
+              nº {row.contractSeq} · {formatarDataDaFesta(row.eventDate)}
               {event.theme?.name ? ` · ${event.theme.name}` : ""}
             </p>
           </div>
@@ -458,9 +478,46 @@ function CartaoDeReserva({
   );
 }
 
+/** O que já entrou de verdade: só PAID conta. */
+function recebidoDe(row: ReservationRow): number {
+  return row.order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((soma, p) => soma + Number(p.amount), 0);
+}
+
+/**
+ * Marca o que pede ação.
+ *
+ * Discreta de propósito: se toda linha gritar, nenhuma é vista. Só aparece
+ * onde a pendência existe, e diz qual é — dinheiro e operação são cobranças
+ * diferentes, feitas por caminhos diferentes.
+ */
+function Pendencia({ row, agora }: { row: ReservationRow; agora: Date }) {
+  const s = situacaoOperacional(
+    { status: row.status, eventDate: row.eventDate, total: Number(row.order.total), recebido: recebidoDe(row) },
+    agora,
+  );
+  if (!s.temPendencia) return null;
+  const texto = s.vencido && s.pendenciaOperacional
+    ? "vencida e sem fechar"
+    : s.vencido
+      ? "saldo vencido"
+      : "não foi fechada";
+  return (
+    <span
+      className="ml-2 inline-block rounded px-1.5 py-0.5 align-middle text-[0.6rem] font-medium uppercase tracking-wider"
+      style={{ background: "rgba(224,90,58,0.12)", color: "#c4472a" }}
+    >
+      {texto}
+    </span>
+  );
+}
+
 export default function Reservations() {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [aba, setAba] = useState<AbaDeReserva>("ATIVAS");
+  const [busca, setBusca] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["reservations"],
@@ -477,12 +534,94 @@ export default function Reservations() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Erro ao atualizar reserva."),
   });
 
+  const linhas = data ?? [];
+
+  /**
+   * Um instante só para a tela inteira.
+   *
+   * `new Date()` por linha julgaria duas reservas da mesma lista em momentos
+   * diferentes. Irrelevante quase sempre, visível exatamente na virada da
+   * meia-noite — que é quando "hoje" muda de significado.
+   */
+  const agora = useMemo(() => new Date(), [data]);
+
+  const classificar = (row: ReservationRow) => ({
+    status: row.status,
+    eventDate: row.eventDate,
+    total: Number(row.order.total),
+    recebido: recebidoDe(row),
+  });
+
+  /** Quantas em cada aba. O contador lê a mesma regra da lista, nunca outra. */
+  const contadores = useMemo(() => {
+    const mapa = {} as Record<AbaDeReserva, number>;
+    for (const a of ABAS_DE_RESERVA) {
+      mapa[a] = linhas.filter((row) => ehDaAba(classificar(row), a, agora)).length;
+    }
+    return mapa;
+  }, [linhas, agora]);
+
+  const visiveis = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    const daAba = linhas.filter((row) => ehDaAba(classificar(row), aba, agora));
+
+    const filtradas = termo
+      ? daAba.filter((row) =>
+          [
+            row.order.event.user.name,
+            row.order.event.user.phone ?? "",
+            row.order.event.user.email ?? "",
+            String(row.contractSeq),
+            row.order.event.city,
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(termo),
+        )
+      : daAba;
+
+    // Histórico lê-se do mais recente para trás; o que ainda pede ação lê-se
+    // por urgência. São perguntas diferentes, e cada uma tem a sua ordem.
+    if (aba === "CONCLUIDAS" || aba === "CANCELADAS") {
+      return [...filtradas].sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+    }
+    return [...filtradas].sort((a, b) => {
+      const sa = situacaoOperacional(classificar(a), agora);
+      const sb = situacaoOperacional(classificar(b), agora);
+      if (aba === "ATIVAS" && sa.temPendencia !== sb.temPendencia) return sa.temPendencia ? -1 : 1;
+      return sa.diasAteAFesta - sb.diasAteAFesta;
+    });
+  }, [linhas, aba, busca, agora]);
+
+  /** Em Próximas, a lista vira três blocos de leitura. */
+  const grupos = useMemo(() => {
+    if (aba !== "PROXIMAS") return null;
+    const mapa = new Map<GrupoDeProximidade, ReservationRow[]>();
+    for (const row of visiveis) {
+      const g = grupoDeProximidade(situacaoOperacional(classificar(row), agora).diasAteAFesta);
+      mapa.set(g, [...(mapa.get(g) ?? []), row]);
+    }
+    return mapa;
+  }, [visiveis, aba, agora]);
+
+  const compacto = aba === "CONCLUIDAS" || aba === "CANCELADAS";
+
+  const vazio = (
+    <p className="py-8 text-center text-sm text-muted-foreground">
+      {busca.trim()
+        ? `Nenhuma reserva encontrada para “${busca.trim()}”.`
+        : aba === "ATIVAS"
+          ? "Nada pendente. Toda reserva viva está em dia."
+          : "Nenhuma reserva nesta aba."}
+    </p>
+  );
+
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="mb-1 text-2xl font-bold text-navy">Reservas</h1>
-          <p className="text-muted-foreground">
+          <h1 className="mb-1 text-[1.65rem] font-semibold text-navy">Reservas</h1>
+          <p className="text-sm text-muted-foreground">
             Toque numa reserva para ver o cliente, o que separar e o financeiro.
           </p>
         </div>
@@ -498,124 +637,200 @@ export default function Reservations() {
         </Button>
       </div>
 
+      {/* As abas. Ativas primeiro porque é a pergunta de quem abre a tela de
+          manhã: o que precisa de mim hoje. */}
+      <nav className="painel-abas mb-1 flex flex-wrap gap-1 border-b" aria-label="Situação das reservas">
+        {ABAS_DE_RESERVA.map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => { setAba(a); setExpanded(null); }}
+            aria-current={aba === a ? "page" : undefined}
+            className="painel-aba min-h-11 px-3 text-sm"
+            style={{
+              color: aba === a ? "var(--color-navy)" : "var(--color-muted, #7a7266)",
+              borderBottom: `2px solid ${aba === a ? "var(--color-coral)" : "transparent"}`,
+              marginBottom: "-1px",
+            }}
+          >
+            {ABA_DE_RESERVA_LABEL[a]}
+            {!isLoading && (
+              <span className="ml-1.5 text-xs tabular-nums" style={{ opacity: aba === a ? 0.8 : 0.55 }}>
+                {contadores[a]}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
+      <p className="painel-periodo mb-4">{ABA_DE_RESERVA_NOTA[aba]}</p>
+
+      <label className="mb-4 flex max-w-md items-center gap-2">
+        <span className="sr-only">Buscar reserva</span>
+        <span className="relative flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Cliente, telefone, cidade ou nº do contrato"
+            className="painel-cartao h-11 w-full pl-9 pr-3 text-sm"
+          />
+        </span>
+      </label>
+
+      {isLoading && <p className="text-muted-foreground">Carregando...</p>}
+      {!isLoading && visiveis.length === 0 && vazio}
+
       {/* Celular: um cartão por reserva. Oito colunas em 390px viravam uma
           tabela de 1056px que só cabia girando o aparelho — e girar para ler
           a agenda do dia é exatamente o que a operação não pode precisar
           fazer. O computador continua com a tabela, que ali é melhor. */}
       <div className="space-y-3 lg:hidden">
-        {isLoading && <p className="text-muted-foreground">Carregando...</p>}
-        {data?.length === 0 && <p className="text-muted-foreground">Nenhuma reserva ainda.</p>}
-        {data?.map((row) => (
-          <CartaoDeReserva
-            key={row.id}
-            row={row}
-            aberto={expanded === row.id}
-            onAlternar={() => setExpanded(expanded === row.id ? null : row.id)}
-            onStatus={(status) => statusMutation.mutate({ id: row.id, status })}
-          />
-        ))}
+        {grupos
+          ? GRUPOS_DE_PROXIMIDADE.filter((g) => (grupos.get(g) ?? []).length > 0).map((g) => (
+              <div key={g} className="space-y-3">
+                <p className="painel-periodo pt-2">
+                  {GRUPO_DE_PROXIMIDADE_LABEL[g]} · {grupos.get(g)!.length}
+                </p>
+                {grupos.get(g)!.map((row) => (
+                  <CartaoDeReserva
+                    key={row.id}
+                    row={row}
+                    aberto={expanded === row.id}
+                    onAlternar={() => setExpanded(expanded === row.id ? null : row.id)}
+                    onStatus={(status) => statusMutation.mutate({ id: row.id, status })}
+                    marca={<Pendencia row={row} agora={agora} />}
+                  />
+                ))}
+              </div>
+            ))
+          : visiveis.map((row) => (
+              <CartaoDeReserva
+                key={row.id}
+                row={row}
+                aberto={expanded === row.id}
+                onAlternar={() => setExpanded(expanded === row.id ? null : row.id)}
+                onStatus={(status) => statusMutation.mutate({ id: row.id, status })}
+                marca={<Pendencia row={row} agora={agora} />}
+                compacto={compacto}
+              />
+            ))}
       </div>
 
       <div className="hidden lg:block">
+        {visiveis.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8" />
+                <TableHead>Data do evento</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Entrega</TableHead>
+                <TableHead>Montagem</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Pagamento</TableHead>
+                <TableHead>Etapa</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(grupos
+                ? GRUPOS_DE_PROXIMIDADE.flatMap((g) =>
+                    (grupos.get(g) ?? []).length > 0
+                      ? [{ grupo: g } as const, ...(grupos.get(g) ?? []).map((row) => ({ row }))]
+                      : [],
+                  )
+                : visiveis.map((row) => ({ row }))
+              ).map((item, i) => {
+                if ("grupo" in item) {
+                  return (
+                    <TableRow key={`g-${item.grupo}`} className="hover:bg-transparent">
+                      <TableCell colSpan={8} className="py-2">
+                        <span className="painel-periodo">
+                          {GRUPO_DE_PROXIMIDADE_LABEL[item.grupo]} · {grupos!.get(item.grupo)!.length}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-8" />
-            <TableHead>Data do evento</TableHead>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Entrega</TableHead>
-            <TableHead>Montagem</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead>Pagamento</TableHead>
-            <TableHead>Etapa</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading && (
-            <TableRow>
-              <TableCell colSpan={8}>Carregando...</TableCell>
-            </TableRow>
-          )}
-          {data?.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={8} className="text-muted-foreground">
-                Nenhuma reserva ainda.
-              </TableCell>
-            </TableRow>
-          )}
+                const row = item.row;
+                const payment = paymentSummary(row);
+                const isOpen = expanded === row.id;
 
-          {data?.map((row) => {
-            const payment = paymentSummary(row);
-            const isOpen = expanded === row.id;
-
-            return (
-              <Fragment key={row.id}>
-                <TableRow
-                  className="cursor-pointer"
-                  onClick={() => setExpanded(isOpen ? null : row.id)}
-                >
-                  <TableCell className="text-muted-foreground">{isOpen ? "▾" : "▸"}</TableCell>
-                  <TableCell className="font-medium">
-                    {formatarDataDaFesta(row.eventDate)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">{row.order.event.user.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {row.order.event.user.phone ?? row.order.event.user.email}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {row.order.fulfillment === "DELIVERY" ? (
-                      <Badge>Entrega</Badge>
-                    ) : (
-                      <Badge variant="secondary">Retirada</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {row.order.assembly ? (
-                      <Badge>Com montagem</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="tabular-nums">{money(row.order.total)}</TableCell>
-                  <TableCell className={`text-sm font-medium ${payment.tone}`}>
-                    {payment.label}
-                  </TableCell>
-                  <TableCell onClick={(event) => event.stopPropagation()}>
-                    <Select
-                      value={row.status}
-                      onValueChange={(status) =>
-                        statusMutation.mutate({ id: row.id, status: status as ReservationStatus })
-                      }
+                return (
+                  <Fragment key={row.id ?? i}>
+                    <TableRow
+                      className="cursor-pointer"
+                      style={compacto ? { opacity: 0.72 } : undefined}
+                      onClick={() => setExpanded(isOpen ? null : row.id)}
                     >
-                      <SelectTrigger className="w-[210px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RESERVATION_STATUSES.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {STATUS_LABEL[status]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                </TableRow>
+                      <TableCell className="text-muted-foreground">{isOpen ? "▾" : "▸"}</TableCell>
+                      <TableCell className="font-medium">
+                        {formatarDataDaFesta(row.eventDate)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">
+                          {row.order.event.user.name}
+                          <Pendencia row={row} agora={agora} />
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          nº {row.contractSeq} · {row.order.event.user.phone ?? row.order.event.user.email}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.order.fulfillment === "DELIVERY" ? (
+                          <Badge>Entrega</Badge>
+                        ) : (
+                          <Badge variant="secondary">Retirada</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.order.assembly ? (
+                          <Badge>Com montagem</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">{money(row.order.total)}</TableCell>
+                      <TableCell className={`text-sm font-medium ${payment.tone}`}>
+                        {payment.label}
+                      </TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <Select
+                          value={row.status}
+                          onValueChange={(status) =>
+                            statusMutation.mutate({ id: row.id, status: status as ReservationStatus })
+                          }
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {RESERVATION_STATUSES.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {STATUS_LABEL[status]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
 
-                {isOpen && (
-                  <TableRow>
-                    <TableCell colSpan={8} className="p-0">
-                      <Detail row={row} />
-                    </TableCell>
-                  </TableRow>
-                )}
-              </Fragment>
-            );
-          })}
-        </TableBody>
-      </Table>
+                    {isOpen && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="p-0">
+                          <Detail row={row} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">

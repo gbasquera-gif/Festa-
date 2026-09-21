@@ -12,6 +12,7 @@ import {
 } from "@festae/shared";
 import { FinanceiroService } from "./financeiro.service";
 import { ehSituacao } from "./contratos";
+import { ehTipoDeDetalhe, type EscopoDoDetalhe, type TipoDeDetalhe } from "./detalhamento";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
@@ -73,6 +74,28 @@ export class FinanceiroController {
       situacao: ehSituacao(filtrada) ? filtrada : undefined,
       busca: busca || undefined,
     });
+  }
+
+  /**
+   * De que contratos um indicador é feito.
+   *
+   * `tipo` diz qual número explicar; `escopo` e `mes` repetem o recorte que a
+   * tela estava mostrando, para o detalhamento falar do mesmo período que o
+   * KPI clicado. A receber ignora período de propósito: é saldo de hoje.
+   */
+  @Get("detalhe")
+  detalhar(
+    @Query("tipo") tipo?: string,
+    @Query("escopo") escopo?: string,
+    @Query("mes") mes?: string,
+  ) {
+    const corrente = new Date().toISOString().slice(0, 7);
+    const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes ?? "") ? (mes as string) : corrente;
+    const tipoValido = ehTipoDeDetalhe((tipo ?? "").toUpperCase())
+      ? ((tipo as string).toUpperCase() as TipoDeDetalhe)
+      : "A_RECEBER";
+    const escopoValido: EscopoDoDetalhe = (escopo ?? "").toUpperCase() === "ANO" ? "ANO" : "MES";
+    return this.financeiro.detalharIndicador(tipoValido, escopoValido, mesValido);
   }
 
   /**

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Barra, Indicador, NumeroEscuro, Rotulo } from "./pecas";
 import { brl, nomeDoMes, pct } from "./formato";
+import { DetalheDoIndicador, type TipoDeDetalhe } from "./DetalheDoIndicador";
 import type { Panorama } from "./panorama";
 
 /**
@@ -17,6 +19,7 @@ import type { Panorama } from "./panorama";
  * pró-labore nem depreciação nesta conta.
  */
 export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
+  const [detalhe, setDetalhe] = useState<{ tipo: TipoDeDetalhe; escopo: "MES" | "ANO" } | null>(null);
   const { data, isLoading, error } = useQuery<Panorama>({
     queryKey: ["financeiro", "panorama", ano, mes],
     queryFn: () => api(`/financeiro/panorama?ano=${ano}&mes=${mes}`),
@@ -35,7 +38,8 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
         <p className="fin-rotulo">Resultado operacional · {nomeDoMes(mes)} · por competência</p>
         <div className="fin-grade mt-4">
           <NumeroEscuro rotulo="Faturamento bruto" valor={brl(op.faturamento)}
-            nota={`${data.festasNoMes} festa${data.festasNoMes === 1 ? "" : "s"} no mês`} />
+            nota={`${data.festasNoMes} festa${data.festasNoMes === 1 ? "" : "s"} no mês`}
+            aoAbrir={() => setDetalhe({ tipo: "FATURAMENTO", escopo: "MES" })} />
           <NumeroEscuro rotulo="Despesas" valor={brl(op.despesas)} nota="consumo e custeio" />
           <NumeroEscuro rotulo="Resultado operacional" valor={brl(op.resultado)}
             nota="faturamento − despesas"
@@ -87,12 +91,14 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
         <Rotulo>Acumulado do ano · janeiro a {nomeDoMes(mes)}</Rotulo>
         <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Indicador rotulo="Faturamento no ano" valor={brl(ytd.faturamento)}
-            nota={`${ytd.mesesComDados} ${ytd.mesesComDados === 1 ? "mês" : "meses"} com movimento`} />
+            nota={`${ytd.mesesComDados} ${ytd.mesesComDados === 1 ? "mês" : "meses"} com movimento`}
+            aoAbrir={() => setDetalhe({ tipo: "FATURAMENTO", escopo: "ANO" })} />
           <Indicador rotulo="Resultado no ano" valor={brl(ytd.resultado)}
             nota={ytd.margem === null ? "sem faturamento" : `margem de ${pct(ytd.margem)}`}
             tom={ytd.resultado < 0 ? "alerta" : "normal"} />
           <Indicador rotulo="A receber" valor={brl(data.aReceber)}
-            nota="saldo aberto de todos os contratos vigentes" />
+            nota="saldo aberto de todos os contratos vigentes"
+            aoAbrir={() => setDetalhe({ tipo: "A_RECEBER", escopo: "MES" })} />
           <Indicador rotulo="Acervo acumulado" valor={brl(data.acervoAcumulado)}
             nota="investimento, fora do resultado" tom="acervo" />
         </div>
@@ -133,6 +139,15 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           {brl(data.recebidoSemData)} foram recebidos sem data conhecida, herança do painel antigo.
           Contam no recebido e abatem o saldo, mas não entram no caixa de mês nenhum.
         </p>
+      )}
+
+      {detalhe && (
+        <DetalheDoIndicador
+          tipo={detalhe.tipo}
+          escopo={detalhe.escopo}
+          mes={mes}
+          aoFechar={() => setDetalhe(null)}
+        />
       )}
     </div>
   );

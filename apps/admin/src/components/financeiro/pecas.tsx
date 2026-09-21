@@ -25,11 +25,14 @@ export function Indicador({
   valor,
   nota,
   tom = "normal",
+  aoAbrir,
 }: {
   rotulo: string;
   valor: string;
   nota?: ReactNode;
   tom?: "normal" | "acervo" | "alerta";
+  /** Quando existe, o número abre o detalhamento de onde ele veio. */
+  aoAbrir?: () => void;
 }) {
   const fundo =
     tom === "acervo"
@@ -40,7 +43,18 @@ export function Indicador({
   return (
     <div className="fin-cartao" style={fundo}>
       <Rotulo>{rotulo}</Rotulo>
-      <p className="fin-numero mt-1 text-[1.45rem] leading-tight">{valor}</p>
+      {aoAbrir ? (
+        <button
+          type="button"
+          onClick={aoAbrir}
+          className="fin-numero fin-explicavel mt-1 block text-[1.45rem] leading-tight"
+          title={`Ver de onde vem: ${rotulo}`}
+        >
+          {valor}
+        </button>
+      ) : (
+        <p className="fin-numero mt-1 text-[1.45rem] leading-tight">{valor}</p>
+      )}
       {nota && (
         <p className="mt-1 text-xs" style={{ color: "var(--fin-muted)" }}>
           {nota}
@@ -113,20 +127,35 @@ export function NumeroEscuro({
   valor,
   nota,
   destaque,
+  aoAbrir,
 }: {
   rotulo: string;
   valor: string;
   nota?: string;
   destaque?: "alerta" | "bom";
+  /** Quando existe, o número abre o detalhamento de onde ele veio. */
+  aoAbrir?: () => void;
 }) {
   const cor =
     destaque === "alerta" ? "var(--fin-coral)" : destaque === "bom" ? "#8fd9b6" : undefined;
   return (
     <div>
       <p className="fin-rotulo">{rotulo}</p>
+      {aoAbrir ? (
+        <button
+          type="button"
+          onClick={aoAbrir}
+          className="fin-numero fin-explicavel mt-1 block"
+          style={cor ? { color: cor } : { color: "inherit" }}
+          title={`Ver de onde vem: ${rotulo}`}
+        >
+          {valor}
+        </button>
+      ) : (
       <p className="fin-numero mt-1" style={cor ? { color: cor } : undefined}>
         {valor}
       </p>
+      )}
       {nota && <p className="mt-0.5 text-xs">{nota}</p>}
     </div>
   );

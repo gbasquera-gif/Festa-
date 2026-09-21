@@ -771,3 +771,35 @@ a.painel-cartao:hover { border-color: #e0d3c2; }
 @media (min-width: 1024px) {
   .painel-segmentado button { min-height: 30px; }
 }
+
+/* ----------------------------------------------------------------------
+ * Indicador que se explica
+ *
+ * O cartão clicável precisa parecer clicável sem virar botão: a seta fica
+ * quase invisível parada e ganha corpo no ponteiro. Poluir o topo com quatro
+ * botões coloridos resolveria a descoberta e destruiria a leitura, que é o
+ * que a Visão Geral existe para fazer.
+ * -------------------------------------------------------------------- */
+.painel-abre {
+  color: #cdbfae;
+  transition: color 140ms ease, transform 140ms ease;
+}
+button.painel-cartao:hover .painel-abre,
+button.painel-cartao:focus-visible .painel-abre {
+  color: var(--color-coral);
+  transform: translateX(2px);
+}
+
+/* O número clicável dentro de um bloco de texto: sublinhado pontilhado, que
+ * diz "tem mais aqui" sem virar link azul. */
+.fin-explicavel {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+  text-decoration-color: #d8c9b6;
+}
+.fin-explicavel:hover { text-decoration-color: var(--color-coral); }

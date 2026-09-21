@@ -267,3 +267,22 @@ export type {
   EditarReservaInput,
   RegistrarPagamentoInput,
 } from "./schemas/manual-reservation";
+
+export {
+  ABAS_DE_RESERVA,
+  ABA_DE_RESERVA_LABEL,
+  ABA_DE_RESERVA_NOTA,
+  GRUPOS_DE_PROXIMIDADE,
+  GRUPO_DE_PROXIMIDADE_LABEL,
+  diasEntre,
+  ehDaAba,
+  grupoDeProximidade,
+  ordenarParaOperacao,
+  situacaoOperacional,
+} from "./reservas";
+export type {
+  AbaDeReserva,
+  GrupoDeProximidade,
+  ReservaClassificavel,
+  SituacaoOperacional,
+} from "./reservas";

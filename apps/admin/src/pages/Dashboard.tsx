@@ -1,11 +1,17 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, ListChecks, Wallet, Coins, ArrowRight } from "lucide-react";
+import { CalendarDays, ListChecks, Wallet, Coins, ArrowRight, ChevronRight } from "lucide-react";
 import { formatarDataDaFesta } from "@festae/shared";
 import { api } from "@/lib/api";
 import { brl, nomeDoMes, pct } from "@/components/financeiro/formato";
 import type { Panorama, Variacao } from "@/components/financeiro/panorama";
+import {
+  DetalheDoIndicador,
+  DetalhePainel,
+  type Detalhamento,
+  type TipoDeDetalhe,
+} from "@/components/financeiro/DetalheDoIndicador";
 
 /**
  * A Visão Geral — o cockpit da operação.
@@ -23,9 +29,15 @@ type ReservaResumo = {
   eventDate: string;
   status: string;
   order: {
+    total: string;
     fulfillment: "PICKUP" | "DELIVERY";
     assembly: boolean;
-    event: { user: { name: string }; theme: { name: string } | null; type: string };
+    event: {
+      city: string;
+      user: { name: string };
+      theme: { name: string } | null;
+      type: string;
+    };
   };
 };
 
@@ -135,6 +147,52 @@ export default function Dashboard() {
     return [...a.hoje, ...a.tresDias, ...a.seteDias].slice(0, 5);
   }, [acoes.data]);
 
+  /**
+   * Qual indicador está aberto para explicação.
+   *
+   * Nulo é o normal: a tela é um resumo, e o detalhamento só existe quando
+   * alguém pergunta de onde veio o número.
+   */
+  const [detalhe, setDetalhe] = useState<TipoDeDetalhe | null>(null);
+
+  /**
+   * As festas do período, no formato do detalhamento.
+   *
+   * Montadas a partir de `noPeriodo` — a MESMA lista que produziu o número no
+   * card. Buscar de novo no servidor daria uma resposta parecida e não
+   * necessariamente igual: as janelas "hoje", "7 dias" e "30 dias" são da
+   * tela, não da apuração financeira, e nenhuma delas existe no backend.
+   */
+  const detalheDeFestas = useMemo<Detalhamento>(() => {
+    const linhas = [...noPeriodo]
+      .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+      .map((r) => ({
+        reservaId: r.id,
+        numero: 0,
+        cliente: r.order.event.user.name,
+        festaEm: r.eventDate,
+        tipoDeFesta: r.order.event.type,
+        cidade: r.order.event.city,
+        entrega: r.order.fulfillment === "DELIVERY",
+        status: r.status,
+        situacao: "",
+        valor: Number(r.order.total),
+        recebido: 0,
+        saldo: 0,
+      }));
+    return {
+      apuradoEm: new Date().toISOString(),
+      tipo: "FESTAS",
+      escopo: null,
+      periodo: null,
+      linhas,
+      totais: { contratado: 0, recebido: 0, saldo: 0, festas: linhas.length },
+      // A contagem É o comprimento da lista exibida: não há duas contas para
+      // divergirem.
+      confere: linhas.length === noPeriodo.length,
+    };
+  }, [noPeriodo]);
+
   const fin = panorama.data;
   const rotuloPeriodo = porAno ? String(ano) : nomeDoMes(mes);
   /**
@@ -196,7 +254,7 @@ export default function Dashboard() {
           rotulo="Festas no período"
           valor={reservas.isLoading ? "…" : String(noPeriodo.length)}
           nota={cfg.dias === null ? rotuloPeriodo : cfg.dias === 0 ? "hoje" : `próximos ${cfg.dias} dias`}
-          href="/reservas"
+          aoAbrir={() => setDetalhe("FESTAS")}
         />
         <CartaoTopo
           icone={<ListChecks className="size-5" />}
@@ -214,6 +272,7 @@ export default function Dashboard() {
           rotulo={porAno ? "Faturamento no ano" : "Faturamento do mês"}
           valor={fin ? brl(porAno ? fin.ytd.faturamento : fin.operacional.faturamento) : "—"}
           nota={porAno ? `${ano} · competência` : "por competência"}
+          aoAbrir={fin ? () => setDetalhe("FATURAMENTO") : undefined}
           href="/financeiro"
         />
         <CartaoTopo
@@ -221,6 +280,7 @@ export default function Dashboard() {
           rotulo="A receber"
           valor={fin ? brl(fin.aReceber) : "—"}
           nota="saldo aberto dos contratos vigentes"
+          aoAbrir={fin ? () => setDetalhe("A_RECEBER") : undefined}
           href="/financeiro"
         />
       </div>
@@ -377,6 +437,25 @@ export default function Dashboard() {
         </section>
       )}
 
+      {detalhe === "FESTAS" && (
+        <DetalhePainel
+          tipo="FESTAS"
+          periodo={cfg.dias === null ? rotuloPeriodo : cfg.dias === 0 ? "hoje" : `próximos ${cfg.dias} dias`}
+          dados={detalheDeFestas}
+          carregando={reservas.isLoading}
+          erro={Boolean(reservas.error)}
+          aoFechar={() => setDetalhe(null)}
+        />
+      )}
+      {(detalhe === "FATURAMENTO" || detalhe === "A_RECEBER") && (
+        <DetalheDoIndicador
+          tipo={detalhe}
+          escopo={porAno ? "ANO" : "MES"}
+          mes={mes}
+          aoFechar={() => setDetalhe(null)}
+        />
+      )}
+
       {/* Fechamento de marca. A arte já traz os textos; nada duplicado em HTML.
         *
         * Sem `loading="lazy"`: são duas imagens da própria marca, não um feed
@@ -424,13 +503,21 @@ function VariacaoDoMes({ v, melhorQuandoSobe }: { v: Variacao; melhorQuandoSobe:
   );
 }
 
+/**
+ * Um número do topo.
+ *
+ * Quando `aoAbrir` existe, o cartão explica de onde o número veio em vez de
+ * navegar: a pergunta "de quem é esse saldo?" se responde ali, sem trocar de
+ * tela e perder o filtro. Sem `aoAbrir`, continua sendo um atalho.
+ */
 function CartaoTopo({
-  icone, rotulo, valor, nota, href,
+  icone, rotulo, valor, nota, href, aoAbrir,
 }: {
-  icone: React.ReactNode; rotulo: string; valor: string; nota: string; href: string;
+  icone: React.ReactNode; rotulo: string; valor: string; nota: string;
+  href?: string; aoAbrir?: () => void;
 }) {
-  return (
-    <Link href={href} className="painel-cartao flex items-center gap-3 p-4 transition-colors hover:bg-muted/30">
+  const conteudo = (
+    <>
       <span
         className="flex size-10 shrink-0 items-center justify-center rounded-lg"
         style={{ background: "rgba(224,90,58,0.09)", color: "var(--color-coral)" }}
@@ -447,6 +534,23 @@ function CartaoTopo({
         </span>
         <span className="block truncate text-xs text-muted-foreground">{nota}</span>
       </span>
+    </>
+  );
+
+  const classe = "painel-cartao flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/30";
+
+  if (aoAbrir) {
+    return (
+      <button type="button" onClick={aoAbrir} className={classe} title={`Ver de onde vem: ${rotulo}`}>
+        {conteudo}
+        <ChevronRight className="painel-abre size-4 shrink-0" aria-hidden />
+        <span className="sr-only">ver detalhamento</span>
+      </button>
+    );
+  }
+  return (
+    <Link href={href ?? "#"} className={classe}>
+      {conteudo}
     </Link>
   );
 }

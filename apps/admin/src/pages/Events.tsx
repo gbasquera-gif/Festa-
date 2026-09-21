@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { EVENT_TYPES, EVENT_TYPE_META, formatarDataDaFesta, isEventType } from "@festae/shared";
+import {
+  EVENT_TYPES,
+  EVENT_TYPE_META,
+  diaEmChapeco,
+  diasEntre,
+  formatarDataDaFesta,
+  isEventType,
+} from "@festae/shared";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -219,19 +226,107 @@ function ExcluirEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () =>
   );
 }
 
+const ABAS = ["PROXIMOS", "CONCLUIDOS", "TODOS"] as const;
+type Aba = (typeof ABAS)[number];
+const ABA_LABEL: Record<Aba, string> = {
+  PROXIMOS: "Próximos",
+  CONCLUIDOS: "Concluídos",
+  TODOS: "Todos",
+};
+const ABA_NOTA: Record<Aba, string> = {
+  PROXIMOS: "festas de hoje em diante, da mais próxima para a mais distante",
+  CONCLUIDOS: "já aconteceram — ficam para consulta",
+  TODOS: "tudo que foi cadastrado",
+};
+
 export default function Events() {
   const [editando, setEditando] = useState<EventRow | null>(null);
   const [excluindo, setExcluindo] = useState<EventRow | null>(null);
+  const [aba, setAba] = useState<Aba>("PROXIMOS");
+  const [busca, setBusca] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["events-admin"],
     queryFn: () => api<EventRow[]>("/events/admin/all"),
   });
 
+  const linhas = data ?? [];
+  const hoje = useMemo(() => diaEmChapeco(new Date()), [data]);
+  /** Dias até a festa. Negativo = já passou. */
+  const dias = (e: EventRow) => diasEntre(hoje, diaEmChapeco(new Date(e.date)));
+
+  const contadores = useMemo(
+    () => ({
+      PROXIMOS: linhas.filter((e) => dias(e) >= 0).length,
+      CONCLUIDOS: linhas.filter((e) => dias(e) < 0).length,
+      TODOS: linhas.length,
+    }),
+    [linhas, hoje],
+  );
+
+  const visiveis = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    const daAba = linhas.filter((e) =>
+      aba === "TODOS" ? true : aba === "PROXIMOS" ? dias(e) >= 0 : dias(e) < 0,
+    );
+    const filtradas = termo
+      ? daAba.filter((e) =>
+          [e.user.name, e.user.email ?? "", e.city, e.theme?.name ?? ""]
+            .join(" ")
+            .toLowerCase()
+            .includes(termo),
+        )
+      : daAba;
+    // Futuro lê-se do mais próximo para a frente; passado, do mais recente
+    // para trás. É a mesma lista, com duas perguntas diferentes.
+    return [...filtradas].sort((a, b) =>
+      aba === "PROXIMOS" ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date),
+    );
+  }, [linhas, aba, busca, hoje]);
+
+  const compacto = aba === "CONCLUIDOS";
+
   return (
     <div>
       <h1 className="mb-1 text-[1.65rem] font-semibold text-navy">Eventos</h1>
-      <p className="mb-6 text-muted-foreground">Todas as festas criadas pelos clientes no app.</p>
+      <p className="mb-5 text-sm text-muted-foreground">
+        Todas as festas cadastradas — pelo app e pelo balcão.
+      </p>
+
+      <nav className="painel-abas mb-1 flex flex-wrap gap-1 border-b" aria-label="Situação dos eventos">
+        {ABAS.map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => setAba(a)}
+            aria-current={aba === a ? "page" : undefined}
+            className="painel-aba min-h-11 px-3 text-sm"
+            style={{
+              color: aba === a ? "var(--color-navy)" : "var(--color-muted, #7a7266)",
+              borderBottom: `2px solid ${aba === a ? "var(--color-coral)" : "transparent"}`,
+              marginBottom: "-1px",
+            }}
+          >
+            {ABA_LABEL[a]}
+            {!isLoading && (
+              <span className="ml-1.5 text-xs tabular-nums" style={{ opacity: aba === a ? 0.8 : 0.55 }}>
+                {contadores[a]}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
+      <p className="painel-periodo mb-4">{ABA_NOTA[aba]}</p>
+
+      <label className="mb-4 flex max-w-md items-center gap-2">
+        <span className="sr-only">Buscar evento</span>
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Cliente, cidade ou tema"
+          className="painel-cartao h-11 w-full px-3 text-sm"
+        />
+      </label>
 
       <div className="tabela-cards">
       <Table>
@@ -253,8 +348,15 @@ export default function Events() {
               <TableCell colSpan={8}>Carregando...</TableCell>
             </TableRow>
           )}
-          {data?.map((event) => (
-            <TableRow key={event.id}>
+          {!isLoading && visiveis.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={8} className="text-muted-foreground">
+                {busca.trim() ? `Nada encontrado para “${busca.trim()}”.` : "Nenhum evento nesta aba."}
+              </TableCell>
+            </TableRow>
+          )}
+          {visiveis.map((event) => (
+            <TableRow key={event.id} style={compacto ? { opacity: 0.72 } : undefined}>
               <TableCell data-label="Data">{formatarDataDaFesta(event.date)}</TableCell>
               <TableCell data-label="Cliente">
                 <div className="font-medium">{event.user.name}</div>
