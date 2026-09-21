@@ -9,5 +9,8 @@ import { AvailabilityModule } from "../availability/availability.module";
   imports: [EventsModule, AvailabilityModule],
   controllers: [ReservationsController],
   providers: [ReservationsService, ManualReservationService],
+  // Exportado para o módulo de Orçamentos converter proposta aprovada
+  // em venda pelo MESMO caminho, sem uma segunda lógica de reserva.
+  exports: [ManualReservationService],
 })
 export class ReservationsModule {}

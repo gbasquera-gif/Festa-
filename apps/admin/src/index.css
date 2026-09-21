@@ -803,3 +803,230 @@ button.painel-cartao:focus-visible .painel-abre {
   text-decoration-color: #d8c9b6;
 }
 .fin-explicavel:hover { text-decoration-color: var(--color-coral); }
+
+/* ======================================================================
+ * A proposta que a cliente abre
+ *
+ * Mora no mesmo bundle do painel, mas não se parece com ele: sem menu, sem
+ * tabela, sem densidade de sistema. É um documento de venda lido no celular,
+ * quase sempre vindo do WhatsApp — por isso uma coluna só, texto grande e o
+ * preço só depois de a proposta já ter valor.
+ * ==================================================================== */
+.proposta {
+  --p-navy: #132238;
+  --p-coral: #e05a3a;
+  --p-gold: #c69654;
+  --p-cream: #fdf8f4;
+  --p-linha: #ece2d6;
+  background: var(--p-cream);
+  color: var(--p-navy);
+  min-height: 100vh;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.proposta-centro {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 25vh 1.5rem;
+  text-align: center;
+  color: #6f6659;
+}
+
+.proposta-capa {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 1rem;
+  text-align: center;
+}
+.proposta-marca { width: 132px; height: auto; margin: 0 auto 2.25rem; display: block; }
+.proposta-capa h1 {
+  font-size: clamp(1.75rem, 6vw, 2.6rem);
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0.75rem 0 0;
+  text-wrap: balance;
+}
+.proposta-capa h1 strong { font-weight: 600; }
+.proposta-data { color: #7a7266; font-size: 0.95rem; margin-top: 0.75rem; }
+.proposta-hero {
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  margin-top: 1.75rem;
+  border: 1px solid var(--p-linha);
+}
+.proposta-slogan {
+  font-size: 0.95rem;
+  color: var(--p-coral);
+  margin-top: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.proposta-eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--p-gold);
+  margin: 0 0 0.5rem;
+}
+
+.proposta-corpo { max-width: 44rem; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
+
+.proposta-secao {
+  padding: 2.25rem 0;
+  border-top: 1px solid var(--p-linha);
+}
+.proposta-secao:first-child { border-top: 0; }
+.proposta-secao h2 {
+  font-size: clamp(1.25rem, 4vw, 1.6rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.75rem;
+  text-wrap: balance;
+}
+.proposta-texto {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: #4a4a48;
+  max-width: 38rem;
+  margin: 0 0 0.75rem;
+  white-space: pre-line;
+}
+.proposta-secao > img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 0.5rem 0 1rem;
+  border: 1px solid var(--p-linha);
+}
+
+/* Quem está por trás: retrato ao lado do texto onde couber. */
+@media (min-width: 640px) {
+  .proposta-retrato { display: grid; grid-template-columns: 180px 1fr; gap: 1.5rem; align-items: start; }
+  .proposta-retrato .proposta-eyebrow { grid-column: 1 / -1; }
+  .proposta-retrato > img { margin: 0; border-radius: 12px; aspect-ratio: 3 / 4; object-fit: cover; }
+}
+
+.proposta-galeria {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0 1.5rem;
+}
+.proposta-galeria img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--p-linha);
+}
+
+.proposta-itens { list-style: none; margin: 0; padding: 0; }
+.proposta-itens li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--p-linha);
+}
+.proposta-item-nome { min-width: 0; }
+.proposta-item-tipo {
+  display: block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9a9086;
+  margin-top: 0.15rem;
+}
+.proposta-item-valor { font-family: "IBM Plex Mono", monospace; font-size: 0.95rem; white-space: nowrap; }
+
+.proposta-investimento dl { margin: 0 0 1rem; }
+.proposta-investimento dl > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+  color: #6f6659;
+  font-size: 0.95rem;
+}
+.proposta-investimento dd { font-family: "IBM Plex Mono", monospace; margin: 0; }
+.proposta-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--p-linha);
+  padding-top: 1rem;
+  margin: 0;
+}
+.proposta-total strong {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  font-weight: 500;
+}
+
+.proposta-cta { text-align: center; }
+.proposta-botao {
+  display: inline-block;
+  width: 100%;
+  max-width: 22rem;
+  min-height: 52px;
+  margin-top: 1rem;
+  padding: 0 1.5rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--p-coral);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.proposta-botao:hover:not(:disabled) { background: #c4472a; }
+.proposta-botao:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.proposta-confirmar { max-width: 22rem; margin: 1rem auto 0; text-align: left; }
+.proposta-resumo {
+  background: #fff;
+  border: 1px solid var(--p-linha);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  font-size: 0.9rem;
+  color: #4a4a48;
+  margin: 0 0 1rem;
+}
+.proposta-confirmar label {
+  display: block;
+  font-size: 0.8rem;
+  color: #6f6659;
+}
+.proposta-confirmar input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 0.35rem;
+  padding: 0 0.9rem;
+  border: 1px solid var(--p-linha);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 1rem;
+  color: var(--p-navy);
+}
+.proposta-nota { font-size: 0.72rem; color: #9a9086; margin-top: 0.85rem; line-height: 1.5; }
+.proposta-erro { color: #c0614a; font-size: 0.85rem; margin-top: 0.75rem; }
+
+.proposta-rodape {
+  border-top: 1px solid var(--p-linha);
+  padding: 2rem 1.25rem 3rem;
+  text-align: center;
+}
+.proposta-rodape img { width: 104px; height: auto; margin: 0 auto 0.75rem; display: block; opacity: 0.85; }
+.proposta-rodape p {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.22em;
+  color: #9a9086;
+  margin: 0;
+}

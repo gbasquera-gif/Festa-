@@ -186,6 +186,7 @@ model User {
   passwordChangedAt DateTime?
 
   events              Event[]
+  orcamentos          Orcamento[]
   tarefasFeitas       ReservationTask[]
   reservasCanceladas  Reservation[]      @relation("ReservasCanceladas")
   excecoesAutorizadas ExcecaoComercial[] @relation("ExcecoesAutorizadas")
@@ -205,8 +206,9 @@ model Theme {
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
-  kits   Kit[]
-  events Event[]
+  kits       Kit[]
+  events     Event[]
+  orcamentos Orcamento[]
 
   @@map("themes")
 }
@@ -270,8 +272,9 @@ model Product {
   updatedAt     DateTime        @updatedAt
 
   partner    Partner?     @relation(fields: [partnerId], references: [id])
-  kitLinks   KitProduct[]
-  orderItems OrderItem[]
+  kitLinks       KitProduct[]
+  orderItems     OrderItem[]
+  orcamentoItens OrcamentoItem[]
 
   @@index([partnerId])
   @@map("products")
@@ -292,9 +295,10 @@ model Kit {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  theme    Theme?       @relation(fields: [themeId], references: [id])
-  products KitProduct[]
-  orders   Order[]
+  theme      Theme?       @relation(fields: [themeId], references: [id])
+  products   KitProduct[]
+  orders     Order[]
+  orcamentos Orcamento[]
 
   @@index([themeId])
   @@map("kits")
@@ -418,6 +422,7 @@ model Reservation {
 
   order       Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
   cancelledBy User?              @relation("ReservasCanceladas", fields: [cancelledById], references: [id], onDelete: SetNull)
+  orcamento   Orcamento?
   tasks       ReservationTask[]
   excecoes    ExcecaoComercial[]
 
@@ -661,4 +666,190 @@ model ExcecaoComercial {
   @@index([regra])
   @@index([autorizadaPorId])
   @@map("excecoes_comerciais")
+}
+
+/// Em que pé está a proposta.
+///
+/// RASCUNHO é o que ainda está sendo montado e ninguém viu. ENVIADO é o que
+/// já tem link na mão da cliente — e por isso não pode mais ser reescrito em
+/// silêncio. APROVADO e RECUSADO fecham a negociação; EXPIRADO é derivado da
+/// validade, e existe como estado para a lista poder separá-lo do que ainda
+/// está de pé.
+enum StatusDoOrcamento {
+  RASCUNHO
+  ENVIADO
+  APROVADO
+  RECUSADO
+  EXPIRADO
+}
+
+/// O que cada linha da proposta é.
+///
+/// MANUAL é a linha digitada na hora ("Arco orgânico personalizado"), que
+/// existe porque a Festaê vende o que ainda não está cadastrado. Ela não tem
+/// `productId` de propósito: virar produto do acervo é decisão de catálogo,
+/// não efeito colateral de uma proposta.
+enum TipoDaLinha {
+  KIT
+  PRODUTO
+  BALOES
+  SERVICO
+  MONTAGEM
+  ENTREGA
+  MANUAL
+}
+
+/// Uma proposta comercial.
+///
+/// Não é uma reserva: orçamento não segura data nem peça. É por isso que a
+/// conversão em `Reservation + Order` acontece num passo explícito, depois da
+/// aprovação, passando pela mesma validação de disponibilidade da venda
+/// manual. Se o balão acabou entre a proposta e o aceite, o sistema tem de
+/// dizer isso em vez de reservar o que não existe.
+model Orcamento {
+  id String @id @default(cuid())
+
+  /// Número que a cliente vê. Sequência do banco, como o contrato.
+  numero Int               @unique @default(autoincrement())
+  versao Int               @default(1)
+  status StatusDoOrcamento @default(RASCUNHO)
+
+  /// A chave do link público. Aleatória e longa: o link é a única barreira
+  /// entre a proposta e quem tiver o endereço, então não pode ser adivinhável
+  /// nem sequencial.
+  token String @unique
+
+  /// Cliente do cadastro, quando já existe. Nulo para quem ainda não é
+  /// cliente — a proposta vem antes da conta.
+  userId String?
+
+  /// Cópia dos dados de contato no momento da proposta. Não é duplicação
+  /// preguiçosa: a proposta é um documento, e documento não muda de
+  /// destinatário porque alguém corrigiu o cadastro depois.
+  clienteNome     String
+  clienteTelefone String
+  clienteEmail    String?
+
+  festaEm     DateTime
+  tipoDeFesta EventType @default(ANIVERSARIO)
+  cidade      String    @default("Chapecó")
+  local       String?
+  convidados  Int?
+  observacoes String?
+
+  /// Até quando a proposta vale. Depois disso ela continua legível, mas não
+  /// aprovável: preço de festa muda, e proposta sem prazo vira preço eterno.
+  validoAte DateTime
+
+  themeId String?
+  kitId   String?
+
+  /// As imagens escolhidas para esta proposta, em ordem de exibição.
+  /// Escolhidas, e não herdadas: nem toda foto do catálogo serve para toda
+  /// cliente.
+  imagens String[] @default([])
+
+  subtotal Decimal @default(0) @db.Decimal(10, 2)
+  desconto Decimal @default(0) @db.Decimal(10, 2)
+  entrega  Decimal @default(0) @db.Decimal(10, 2)
+  montagem Decimal @default(0) @db.Decimal(10, 2)
+  total    Decimal @default(0) @db.Decimal(10, 2)
+
+  enviadoEm  DateTime?
+  aprovadoEm DateTime?
+  recusadoEm DateTime?
+
+  /// Por que se perdeu. Campo livre e opcional: obrigar a escolher um motivo
+  /// de uma lista curta produz estatística bonita e falsa.
+  motivoDaPerda String?
+
+  /// Evidência de quem aprovou, do lado do cliente. Não é assinatura
+  /// eletrônica com valor jurídico — é registro de manifestação, e a tela diz
+  /// exatamente isso para não prometer o que não é.
+  aprovadoPorNome   String?
+  aprovadoPorIp     String?
+  aprovadoPorAgente String?
+  valorAprovado     Decimal? @db.Decimal(10, 2)
+
+  /// A reserva que nasceu desta proposta. Um para um: proposta aprovada vira
+  /// uma venda, não várias.
+  reservationId String? @unique
+
+  criadoPorId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  theme       Theme?             @relation(fields: [themeId], references: [id])
+  kit         Kit?               @relation(fields: [kitId], references: [id])
+  reservation Reservation?       @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  itens       OrcamentoItem[]
+  versoes     OrcamentoVersao[]
+
+  @@index([status])
+  @@index([festaEm])
+  @@index([userId])
+  @@map("orcamentos")
+}
+
+/// Uma linha da proposta.
+model OrcamentoItem {
+  id          String      @id @default(cuid())
+  orcamentoId String
+  tipo        TipoDaLinha @default(PRODUTO)
+
+  /// Existe quando a linha veio do catálogo. É ele que permite conferir
+  /// disponibilidade na conversão — linha manual não tem, e por isso não
+  /// entra na checagem de estoque.
+  productId String?
+
+  descricao     String
+  quantidade    Int     @default(1)
+  valorUnitario Decimal @db.Decimal(10, 2)
+  total         Decimal @db.Decimal(10, 2)
+  imagemUrl     String?
+  ordem         Int     @default(0)
+
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id])
+
+  @@index([orcamentoId])
+  @@index([productId])
+  @@map("orcamento_itens")
+}
+
+/// A fotografia de uma versão que já saiu para a cliente.
+///
+/// Proposta enviada não se reescreve por cima: a cliente tem na mão um valor
+/// e uma composição, e "R$ 1.200 virou R$ 1.050" precisa continuar legível
+/// depois. Guardamos o documento inteiro em JSON — é histórico para leitura,
+/// não estrutura para consultar.
+model OrcamentoVersao {
+  id          String   @id @default(cuid())
+  orcamentoId String
+  versao      Int
+  total       Decimal  @db.Decimal(10, 2)
+  conteudo    Json
+  criadoEm    DateTime @default(now())
+
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+
+  @@unique([orcamentoId, versao])
+  @@map("orcamento_versoes")
+}
+
+/// Conteúdo institucional da proposta, editável pelo painel.
+///
+/// Uma tabela chave-valor em vez de um CMS: são oito blocos de texto e duas
+/// fotos, e qualquer coisa maior que isso seria estrutura demais para o
+/// problema. Deixar no código obrigaria um deploy para trocar a foto da Maria
+/// Luiza.
+model ConteudoInstitucional {
+  chave       String   @id
+  titulo      String?
+  texto       String?
+  imagemUrl   String?
+  atualizadoEm DateTime @updatedAt
+
+  @@map("conteudo_institucional")
 }

@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { ModuloComAbas, ResumoDoModulo } from "@/components/ModuloComAbas";
 import Funil from "./Funil";
+import Orcamentos from "./Orcamentos";
+import ConteudoInstitucional from "./ConteudoInstitucional";
 import { api } from "@/lib/api";
 import { brl } from "@/components/financeiro/formato";
 import type { Panorama } from "@/components/financeiro/panorama";
@@ -55,12 +57,15 @@ export default function Comercial() {
                   href: "/financeiro",
                 },
                 { rotulo: "Jornada na loja", valor: "Funil", href: "/comercial/funil" },
+                { rotulo: "Propostas", valor: "Orçamentos", href: "/comercial/orcamentos" },
               ]}
-              aviso="Origem dos contratos, tipos de festa e ticket por canal ficam para a próxima etapa. Orçamentos e Inteligência ainda não existem — por isso não há aba vazia para eles."
+              aviso="Origem dos contratos, tipos de festa e ticket por canal ficam para a Inteligência, que ainda não existe — por isso não há aba vazia para ela."
             />
           ),
         },
         { chave: "funil", rotulo: "Funil", conteudo: <Funil /> },
+        { chave: "orcamentos", rotulo: "Orçamentos", conteudo: <Orcamentos /> },
+        { chave: "conteudo", rotulo: "Conteúdo da proposta", conteudo: <ConteudoInstitucional /> },
       ]}
     />
   );

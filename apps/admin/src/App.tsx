@@ -16,6 +16,9 @@ import NovaReservaManual from "@/pages/NovaReservaManual";
 import EditarReserva from "@/pages/EditarReserva";
 import Comprovante from "@/pages/Comprovante";
 import Financeiro from "@/pages/Financeiro";
+import NovoOrcamento from "@/pages/NovoOrcamento";
+import OrcamentoDetalhe from "@/pages/OrcamentoDetalhe";
+import Proposta from "@/pages/Proposta";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -37,6 +40,32 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+
+      {/* A proposta da cliente. Fora do `Protected` de propósito: ela chega
+          pelo WhatsApp e abre sem conta. A barreira é o token do link. */}
+      <Route path="/proposta/:token">
+        {(params) => <Proposta token={params.token} />}
+      </Route>
+
+      <Route path="/comercial/orcamentos/novo">
+        <Protected>
+          <NovoOrcamento />
+        </Protected>
+      </Route>
+      <Route path="/comercial/orcamentos/:id/editar">
+        {(params) => (
+          <Protected>
+            <NovoOrcamento id={params.id} />
+          </Protected>
+        )}
+      </Route>
+      <Route path="/comercial/orcamentos/:id">
+        {(params) => (
+          <Protected>
+            <OrcamentoDetalhe id={params.id} />
+          </Protected>
+        )}
+      </Route>
       <Route path="/">
         <Protected>
           <Dashboard />
