@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink, Trash2 } from "lucide-react";
 import {
   EVENT_TYPE_META,
   STATUS_DO_ORCAMENTO_LABEL,
@@ -74,6 +74,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const [motivo, setMotivo] = useState("");
   const [perdendo, setPerdendo] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [conflito, setConflito] = useState<string | null>(null);
 
   const { data: o, isLoading } = useQuery<any>({
@@ -93,6 +94,40 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     mutationFn: () => api(`/orcamentos/${id}/enviar`, { method: "PATCH" }),
     onSuccess: () => { invalidar(); toast.success("Proposta marcada como enviada. Mande o link para a cliente."); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao enviar."),
+  });
+
+  /**
+   * Enviar e copiar, nesta ordem, num clique só.
+   *
+   * O link de um rascunho responde "não encontrada" — é a regra que protege
+   * a cliente de abrir proposta pela metade. Mas a tela oferecia o botão de
+   * copiar do mesmo jeito, e o recado saiu no WhatsApp com um link morto. A
+   * cópia agora espera a proposta virar ENVIADO: se o envio falhar, nada é
+   * copiado, e o erro aparece em vez de um link que não abre.
+   */
+  const enviarECopiar = useMutation({
+    mutationFn: async () => {
+      await api(`/orcamentos/${id}/enviar`, { method: "PATCH" });
+    },
+    onSuccess: async () => {
+      invalidar();
+      await copiar(mensagem, "Proposta enviada. Mensagem copiada!");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao enviar. Nada foi copiado."),
+  });
+
+  const excluir = useMutation({
+    mutationFn: () => api(`/orcamentos/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setExcluindo(false);
+      queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
+      navegar("/comercial/orcamentos");
+      toast.success("Orçamento excluído.");
+    },
+    onError: (e) => {
+      setExcluindo(false);
+      toast.error(e instanceof Error ? e.message : "Não foi possível excluir.");
+    },
   });
 
   const recusar = useMutation({
@@ -137,6 +172,17 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   if (isLoading || !o) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
   const situacao = o.situacao as StatusDoOrcamento;
+  const ehRascunho = situacao === "RASCUNHO";
+  /**
+   * Quem some da tela e quem fica.
+   *
+   * A mesma regra do backend, e por isso EXPIRADO entra: expirada é uma
+   * proposta enviada que passou da validade — não virou negócio nenhum. O
+   * botão não aparece para aprovada, perdida ou convertida; o servidor
+   * recusa de novo, mas oferecer o que será negado é convite a erro.
+   */
+  const podeExcluir =
+    !o.reservaId && !o.aprovadoEm && ["RASCUNHO", "ENVIADO", "EXPIRADO"].includes(situacao);
   const tipoDeFesta = isEventType(String(o.tipoDeFesta))
     ? EVENT_TYPE_META[String(o.tipoDeFesta) as keyof typeof EVENT_TYPE_META].label
     : String(o.tipoDeFesta);
@@ -263,16 +309,33 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           Link da proposta
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            className="min-h-11"
-            title="Copiar mensagem e link"
-            onClick={() => copiar(mensagem, "Mensagem copiada!")}
-          >
-            <Copy className="mr-1 size-4" /> Copiar mensagem e link
-          </Button>
+          {ehRascunho ? (
+            <Button
+              className="min-h-11"
+              title="Marcar como enviada e copiar"
+              disabled={enviarECopiar.isPending}
+              onClick={() => enviarECopiar.mutate()}
+            >
+              <Copy className="mr-1 size-4" />
+              {enviarECopiar.isPending ? "Enviando…" : "Marcar como enviada e copiar"}
+            </Button>
+          ) : (
+            <Button
+              className="min-h-11"
+              title="Copiar mensagem e link"
+              onClick={() => copiar(mensagem, "Mensagem copiada!")}
+            >
+              <Copy className="mr-1 size-4" /> Copiar mensagem e link
+            </Button>
+          )}
           <Button
             variant="outline" className="min-h-11"
-            title="Copiar somente link"
+            disabled={ehRascunho}
+            title={
+              ehRascunho
+                ? "Enquanto for rascunho, este link responde “não encontrada”. Marque como enviada primeiro."
+                : "Copiar somente link"
+            }
             onClick={() => copiar(linkPublico, "Link copiado!")}
           >
             Copiar somente link
@@ -290,8 +353,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           {mensagem}
         </p>
         <p className="text-xs text-muted-foreground">
-          {situacao === "RASCUNHO"
-            ? "Enquanto for rascunho, o link responde “não encontrada” — a cliente não vê proposta pela metade."
+          {ehRascunho
+            ? "Enquanto for rascunho, o link responde “não encontrada” — a cliente não vê proposta pela metade. Por isso copiar já marca como enviada."
             : "Quem tiver o link vê esta proposta. O endereço é aleatório e não dá acesso a nenhuma outra."}
         </p>
       </section>
@@ -366,17 +429,61 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </section>
       )}
 
-      {situacao !== "APROVADO" && situacao !== "RECUSADO" && (
-        <div className="flex justify-end pb-4">
-          <Button variant="ghost" className="min-h-11 text-muted-foreground" onClick={() => setPerdendo(true)}>
-            Marcar como perdida
-          </Button>
+      {/* RODAPÉ — o que tira a proposta de circulação.
+        *
+        * Fica aqui embaixo, em tom apagado, longe dos botões que fazem a
+        * venda andar. Excluir é permanente: não merece estar ao lado de
+        * "Enviar" esperando um clique errado. */}
+      {(podeExcluir || (situacao !== "APROVADO" && situacao !== "RECUSADO")) && (
+        <div className="flex flex-wrap items-center justify-end gap-1 pb-4">
+          {situacao !== "APROVADO" && situacao !== "RECUSADO" && (
+            <Button variant="ghost" className="min-h-11 text-muted-foreground" onClick={() => setPerdendo(true)}>
+              Marcar como perdida
+            </Button>
+          )}
+          {podeExcluir && (
+            <Button
+              variant="ghost"
+              className="min-h-11 text-muted-foreground"
+              onClick={() => setExcluindo(true)}
+            >
+              <Trash2 className="mr-1 size-4" /> Excluir orçamento
+            </Button>
+          )}
         </div>
       )}
 
       {o.motivoDaPerda && (
         <p className="pb-4 text-sm text-muted-foreground">Motivo registrado: {o.motivoDaPerda}</p>
       )}
+
+      <AlertDialog open={excluindo} onOpenChange={(v) => !v && setExcluindo(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Excluir a proposta nº {o.numero} de {o.cliente}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é permanente e não tem desfazer. Somem a proposta, os itens dela e o
+              histórico de versões, e o link público para de abrir para sempre — se ele já estiver
+              no WhatsApp da cliente, ela vai ver “não encontrada”. Cliente, catálogo, reservas e
+              pagamentos não são tocados. Se a intenção é só tirar da lista de acompanhamento, use
+              “Marcar como perdida”, que preserva o histórico.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11"
+              style={{ background: "var(--color-coral-dark, #c4472a)" }}
+              onClick={(e) => { e.preventDefault(); excluir.mutate(); }}
+              disabled={excluir.isPending}
+            >
+              {excluir.isPending ? "Excluindo…" : "Excluir definitivamente"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={perdendo} onOpenChange={(v) => !v && setPerdendo(false)}>
         <AlertDialogContent>

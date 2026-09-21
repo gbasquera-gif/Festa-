@@ -199,6 +199,64 @@ export class OrcamentosService {
     return { ok: true };
   }
 
+  /**
+   * Apaga uma proposta de vez.
+   *
+   * Vale para o que ainda não virou negócio: rascunho e proposta enviada sem
+   * resposta. O que virou — aprovada, convertida em reserva, ou recusada com
+   * o motivo registrado — fica, porque é justamente o histórico que diz onde
+   * a Festaê ganha e onde perde. Proposta perdida não é lixo: é a estatística
+   * que ainda não existe.
+   *
+   * A exclusão leva junto apenas o que é exclusivo dela — itens e versões,
+   * por cascata do próprio banco. Reserva, pedido, pagamento, cliente e
+   * catálogo são apontados pela proposta, não o contrário: apagar a proposta
+   * não os toca. As imagens no bucket também ficam: a mesma URL pode ter sido
+   * escolhida do catálogo e estar em uso em outra proposta.
+   */
+  async excluir(id: string) {
+    const o = await prisma.orcamento.findUnique({
+      where: { id },
+      select: { id: true, numero: true, status: true, reservationId: true, aprovadoEm: true },
+    });
+    if (!o) throw new NotFoundException("Orçamento não encontrado.");
+
+    const impedimentos: string[] = [];
+    if (o.status === "APROVADO") impedimentos.push("ela foi aprovada pela cliente");
+    if (o.status === "RECUSADO") {
+      impedimentos.push("ela está registrada como perdida, e esse registro é o histórico da venda");
+    }
+    if (o.reservationId) impedimentos.push("ela já virou reserva");
+    if (o.aprovadoEm) impedimentos.push("existe aceite da cliente registrado nela");
+
+    if (impedimentos.length > 0) {
+      throw new ConflictException(
+        `A proposta nº ${o.numero} não pode ser excluída: ${impedimentos.join(", ")}. ` +
+          "Excluir apagaria esse histórico. Para desfazer a venda, cancele a reserva na tela de Reservas.",
+      );
+    }
+
+    // A condição vai no próprio DELETE, e não só na leitura acima: entre uma
+    // coisa e outra a cliente pode ter aprovado a proposta pelo link, e o
+    // aceite dela não pode perder para um clique no painel.
+    const { count } = await prisma.orcamento.deleteMany({
+      where: {
+        id,
+        status: { in: ["RASCUNHO", "ENVIADO"] },
+        reservationId: null,
+        aprovadoEm: null,
+      },
+    });
+    if (count === 0) {
+      throw new ConflictException(
+        "A proposta mudou de situação enquanto esta tela estava aberta e não foi excluída. " +
+          "Recarregue para ver como ela está agora.",
+      );
+    }
+
+    return { excluido: true, numero: o.numero };
+  }
+
   /** O documento que a cliente abre. Só o que a proposta precisa mostrar. */
   async propostaPublica(token: string) {
     const o = await prisma.orcamento.findUnique({

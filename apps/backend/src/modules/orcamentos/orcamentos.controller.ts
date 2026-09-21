@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { orcamentoSchema, recusarOrcamentoSchema, type OrcamentoInput } from "@festae/shared";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -63,6 +63,19 @@ export class OrcamentosController {
   @Patch(":id/enviar")
   enviar(@Param("id") id: string) {
     return this.orcamentos.enviar(id);
+  }
+
+  // Só ADMIN: apagar proposta é apagar documento, e OPS monta proposta o dia
+  // inteiro. Um clique errado no meio do expediente não pode sumir com uma.
+  @ApiOperation({
+    summary: "Exclui a proposta definitivamente",
+    description:
+      "Só rascunho e proposta enviada sem resposta. Aprovada, convertida em reserva ou registrada como perdida são recusadas com 409 — o histórico fica. Itens e versões saem por cascata; reserva, pedido, pagamento, cliente e catálogo não são tocados.",
+  })
+  @Roles("ADMIN")
+  @Delete(":id")
+  excluir(@Param("id") id: string) {
+    return this.orcamentos.excluir(id);
   }
 
   @Patch(":id/recusar")
