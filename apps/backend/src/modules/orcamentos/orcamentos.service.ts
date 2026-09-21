@@ -19,6 +19,7 @@ import {
   type StatusDoOrcamento,
 } from "@festae/shared";
 import { ManualReservationService } from "../reservations/manual-reservation.service";
+import { ReservationsService } from "../reservations/reservations.service";
 
 /** Decimal do Prisma vira número uma vez, aqui. */
 const num = (v: unknown) => Number(v);
@@ -37,7 +38,10 @@ function novoToken(): string {
 
 @Injectable()
 export class OrcamentosService {
-  constructor(private readonly reservas: ManualReservationService) {}
+  constructor(
+    private readonly reservas: ManualReservationService,
+    private readonly pagamentos: ReservationsService,
+  ) {}
 
   async listar() {
     const agora = new Date();
@@ -415,6 +419,70 @@ export class OrcamentosService {
     });
 
     return { reservaId: (reserva as { id: string }).id };
+  }
+
+  /**
+   * A Festaê confirma que o sinal caiu.
+   *
+   * Um botão só, no lugar onde a proposta está sendo acompanhada, porque era
+   * o que faltava: converter e depois procurar a reserva noutra tela para
+   * digitar o valor à mão é onde se erra o número e onde se esquece de
+   * lançar.
+   *
+   * O que ele NÃO faz: calcular dinheiro por conta própria. Converte pelo
+   * mesmo caminho da venda manual (com a checagem de disponibilidade) e
+   * registra o recebimento chamando o MESMO `registrarPagamento` da tela de
+   * Reservas — com o lock `FOR UPDATE`, a recusa de sobrepagamento e o
+   * encerramento de pendências que já existiam. Nenhuma segunda lógica
+   * financeira nasce aqui.
+   */
+  async confirmarSinal(
+    id: string,
+    usuarioId: string,
+    dados: { forma?: string; recebidoEm?: string } = {},
+  ) {
+    const o = await prisma.orcamento.findUnique({ where: { id } });
+    if (!o) throw new NotFoundException("Orçamento não encontrado.");
+    if (o.status !== "APROVADO") {
+      throw new ConflictException(
+        "Só proposta aprovada tem sinal a confirmar. Registre a aprovação da cliente antes.",
+      );
+    }
+
+    const conteudo = await this.conteudo();
+    const sinal = await this.sinalDa(o, conteudo);
+    if (toCentsInt(sinal.valor) <= 0) {
+      throw new BadRequestException(
+        "O sinal desta proposta é zero. Registre o recebimento direto na reserva.",
+      );
+    }
+    // Já coberto é já coberto: sem esta guarda, confirmar duas vezes criaria
+    // um segundo DEPOSIT que o saldo do pedido ainda comporta — dinheiro que
+    // ninguém recebeu entrando no caixa.
+    if (sinal.pago) {
+      throw new ConflictException(
+        `O sinal desta proposta já está confirmado (${sinal.recebido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} recebidos). Lance qualquer valor a mais pela tela de Reservas.`,
+      );
+    }
+
+    // Converter primeiro: é aqui que a disponibilidade é conferida, e é aqui
+    // que a conversão pode ser recusada. Registrar o pagamento antes deixaria
+    // dinheiro lançado numa venda que não existe.
+    const reservaId =
+      o.reservationId ?? (await this.converter(id, usuarioId)).reservaId;
+
+    await this.pagamentos.registrarPagamento(
+      reservaId,
+      {
+        tipo: "DEPOSIT",
+        valor: sinal.valor,
+        forma: dados.forma ?? "PIX",
+        recebidoEm: dados.recebidoEm,
+      },
+      usuarioId,
+    );
+
+    return { reservaId, valor: sinal.valor, jaTinhaReserva: Boolean(o.reservationId) };
   }
 
   /** Conteúdo institucional da proposta, como um mapa simples. */

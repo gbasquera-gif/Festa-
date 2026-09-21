@@ -11,6 +11,6 @@ import { AvailabilityModule } from "../availability/availability.module";
   providers: [ReservationsService, ManualReservationService],
   // Exportado para o módulo de Orçamentos converter proposta aprovada
   // em venda pelo MESMO caminho, sem uma segunda lógica de reserva.
-  exports: [ManualReservationService],
+  exports: [ManualReservationService, ReservationsService],
 })
 export class ReservationsModule {}

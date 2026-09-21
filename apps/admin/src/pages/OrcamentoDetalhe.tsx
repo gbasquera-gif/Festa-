@@ -29,6 +29,28 @@ import { brl } from "@/components/financeiro/formato";
  * estoque, e é a única que pode ser recusada pelo sistema — por isso o
  * conflito dela aparece inteiro na tela, com o que faltou.
  */
+/**
+ * O 409 de disponibilidade traz os conflitos detalhados.
+ *
+ * Mostrar só "erro" esconderia exatamente a informação que permite decidir:
+ * qual peça faltou, e para quando.
+ */
+function mensagemDeConflito(e: unknown): string {
+  if (e instanceof ApiError && e.detalhes?.conflitos) {
+    const lista = (e.detalhes.conflitos as any[])
+      .map((c) => {
+        const falta =
+          typeof c.necessario === "number" && typeof c.disponivel === "number"
+            ? `precisa de ${c.necessario}, há ${c.disponivel} livre${c.disponivel === 1 ? "" : "s"}`
+            : "sem quantidade suficiente";
+        return `${c.produto ?? "item"} (${falta})`;
+      })
+      .join(" · ");
+    return `${e.message} ${lista}`;
+  }
+  return e instanceof Error ? e.message : "Não foi possível concluir.";
+}
+
 export default function OrcamentoDetalhe({ id }: { id: string }) {
   const [, navegar] = useLocation();
   const queryClient = useQueryClient();
@@ -60,6 +82,28 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar."),
   });
 
+  /**
+   * A confirmação do sinal, num botão só.
+   *
+   * Converte (com checagem de disponibilidade) e registra o recebimento pelo
+   * mesmo caminho da tela de Reservas. O 409 de falta de peça cai no mesmo
+   * tratamento do botão de converter — e, nesse caso, nada é criado nem
+   * lançado.
+   */
+  const confirmarSinal = useMutation({
+    mutationFn: () =>
+      api<{ reservaId: string; valor: number }>(`/orcamentos/${id}/confirmar-sinal`, {
+        method: "POST",
+        body: JSON.stringify({ forma: "PIX" }),
+      }),
+    onSuccess: (r) => {
+      invalidar();
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      toast.success(`Sinal de ${brl(r.valor)} confirmado. A data está reservada.`);
+    },
+    onError: (e) => setConflito(mensagemDeConflito(e)),
+  });
+
   const converter = useMutation({
     mutationFn: () => api<{ reservaId: string }>(`/orcamentos/${id}/converter`, { method: "POST" }),
     onSuccess: (r) => {
@@ -68,19 +112,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
       navegar(`/reservas`);
       return r;
     },
-    onError: (e) => {
-      // O 409 de disponibilidade traz os conflitos detalhados. Mostrar só
-      // "erro" aqui seria esconder exatamente a informação que permite
-      // decidir: qual peça faltou, e para quando.
-      if (e instanceof ApiError && e.detalhes?.conflitos) {
-        const lista = (e.detalhes.conflitos as any[])
-          .map((c) => `${c.produto ?? c.nome ?? "item"}: faltam ${c.faltando ?? "?"}`)
-          .join(" · ");
-        setConflito(`${e.message} ${lista}`);
-      } else {
-        setConflito(e instanceof Error ? e.message : "Não foi possível converter.");
-      }
-    },
+    onError: (e) => setConflito(mensagemDeConflito(e)),
   });
 
   if (isLoading || !o) return <p className="text-sm text-muted-foreground">Carregando…</p>;
@@ -114,9 +146,23 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               {situacao === "RASCUNHO" ? "Marcar como enviada" : "Reenviar"}
             </Button>
           )}
+          {situacao === "APROVADO" && o.sinal && !o.sinal.pago && (
+            <Button
+              className="min-h-11"
+              onClick={() => { setConflito(null); confirmarSinal.mutate(); }}
+              disabled={confirmarSinal.isPending}
+            >
+              {confirmarSinal.isPending ? "Confirmando…" : `Confirmar sinal de ${brl(o.sinal.valor)}`}
+            </Button>
+          )}
           {situacao === "APROVADO" && !o.reservaId && (
-            <Button className="min-h-11" onClick={() => converter.mutate()} disabled={converter.isPending}>
-              {converter.isPending ? "Convertendo…" : "Converter em reserva"}
+            <Button
+              variant="outline"
+              className="min-h-11"
+              onClick={() => { setConflito(null); converter.mutate(); }}
+              disabled={converter.isPending}
+            >
+              {converter.isPending ? "Convertendo…" : "Só converter em reserva"}
             </Button>
           )}
         </div>
@@ -183,9 +229,11 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             </div>
           </dl>
           <p className="text-xs text-muted-foreground">
-            {o.reservaId
-              ? "O recebimento é registrado na reserva, como em toda venda — nada é dado como pago pela aprovação da cliente."
-              : "Enquanto a proposta não vira reserva, não existe pagamento a registrar: o recebimento mora no pedido."}
+            {o.sinal.pago
+              ? "Recebimento registrado no pedido, como em toda venda."
+              : o.reservaId
+                ? "Confirmar o sinal lança o recebimento nesta reserva, pelo mesmo caminho da tela de Reservas."
+                : "Confirmar o sinal cria a reserva — conferindo a disponibilidade das peças para a data — e lança o recebimento. Nada é dado como pago pela aprovação da cliente."}
           </p>
         </section>
       )}

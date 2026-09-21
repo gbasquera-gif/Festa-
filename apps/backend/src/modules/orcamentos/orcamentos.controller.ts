@@ -74,6 +74,20 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
+    summary: "Confirma que o sinal caiu",
+    description:
+      "Converte a proposta (com checagem de disponibilidade) e registra o sinal pelo mesmo caminho da tela de Reservas. Recusa se o sinal já estiver coberto.",
+  })
+  @Post(":id/confirmar-sinal")
+  confirmarSinal(
+    @Param("id") id: string,
+    @Body() body: { forma?: string; recebidoEm?: string },
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.orcamentos.confirmarSinal(id, user.userId, body ?? {});
+  }
+
+  @ApiOperation({
     summary: "Converte a proposta aprovada em reserva",
     description:
       "Passa pelo mesmo fluxo da venda manual, com a mesma checagem de disponibilidade. Falta de peça devolve 409 com os conflitos e nada é criado.",
