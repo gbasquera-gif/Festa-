@@ -70,7 +70,7 @@ export class OrcamentosController {
   @ApiOperation({
     summary: "Exclui a proposta definitivamente",
     description:
-      "Só rascunho e proposta enviada sem resposta. Aprovada, convertida em reserva ou registrada como perdida são recusadas com 409 — o histórico fica. Itens e versões saem por cascata; reserva, pedido, pagamento, cliente e catálogo não são tocados.",
+      "Vale enquanto a proposta não virou reserva — inclusive aprovada e ainda não convertida. Convertida em reserva ou registrada como perdida são recusadas com 409. Itens e versões saem por cascata; reserva, pedido, pagamento, cliente e catálogo não são tocados.",
   })
   @Roles("ADMIN")
   @Delete(":id")

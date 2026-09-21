@@ -202,11 +202,17 @@ export class OrcamentosService {
   /**
    * Apaga uma proposta de vez.
    *
-   * Vale para o que ainda não virou negócio: rascunho e proposta enviada sem
-   * resposta. O que virou — aprovada, convertida em reserva, ou recusada com
-   * o motivo registrado — fica, porque é justamente o histórico que diz onde
-   * a Festaê ganha e onde perde. Proposta perdida não é lixo: é a estatística
-   * que ainda não existe.
+   * A linha é a reserva, não o aceite: o que nunca virou venda pode ser
+   * apagado — rascunho, proposta enviada sem resposta e até proposta aprovada
+   * que ainda não foi convertida. O que virou reserva fica para sempre, com
+   * pedido e recebimentos junto.
+   *
+   * Proposta recusada também fica: o motivo da perda é o histórico que diz
+   * onde a Festaê deixa de vender, e isso não é lixo — é a estatística que
+   * ainda não existe.
+   *
+   * Apagar uma proposta aprovada apaga o aceite da cliente, então a tela
+   * mostra quem aprovou e quando antes de confirmar, e só ADMIN chega aqui.
    *
    * A exclusão leva junto apenas o que é exclusivo dela — itens e versões,
    * por cascata do próprio banco. Reserva, pedido, pagamento, cliente e
@@ -217,17 +223,17 @@ export class OrcamentosService {
   async excluir(id: string) {
     const o = await prisma.orcamento.findUnique({
       where: { id },
-      select: { id: true, numero: true, status: true, reservationId: true, aprovadoEm: true },
+      select: { id: true, numero: true, status: true, reservationId: true },
     });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
 
     const impedimentos: string[] = [];
-    if (o.status === "APROVADO") impedimentos.push("ela foi aprovada pela cliente");
+    if (o.reservationId) {
+      impedimentos.push("ela já virou reserva, com pedido e recebimentos ligados a ela");
+    }
     if (o.status === "RECUSADO") {
       impedimentos.push("ela está registrada como perdida, e esse registro é o histórico da venda");
     }
-    if (o.reservationId) impedimentos.push("ela já virou reserva");
-    if (o.aprovadoEm) impedimentos.push("existe aceite da cliente registrado nela");
 
     if (impedimentos.length > 0) {
       throw new ConflictException(
@@ -237,14 +243,13 @@ export class OrcamentosService {
     }
 
     // A condição vai no próprio DELETE, e não só na leitura acima: entre uma
-    // coisa e outra a cliente pode ter aprovado a proposta pelo link, e o
-    // aceite dela não pode perder para um clique no painel.
+    // coisa e outra a proposta pode ter sido convertida em reserva, e uma
+    // venda não pode perder para um clique que já estava na tela.
     const { count } = await prisma.orcamento.deleteMany({
       where: {
         id,
-        status: { in: ["RASCUNHO", "ENVIADO"] },
+        status: { in: ["RASCUNHO", "ENVIADO", "APROVADO"] },
         reservationId: null,
-        aprovadoEm: null,
       },
     });
     if (count === 0) {

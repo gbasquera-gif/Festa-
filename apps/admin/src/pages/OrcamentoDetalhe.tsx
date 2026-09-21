@@ -176,13 +176,14 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   /**
    * Quem some da tela e quem fica.
    *
-   * A mesma regra do backend, e por isso EXPIRADO entra: expirada é uma
-   * proposta enviada que passou da validade — não virou negócio nenhum. O
-   * botão não aparece para aprovada, perdida ou convertida; o servidor
+   * A mesma regra do backend: a linha é a reserva. Enquanto a proposta não
+   * virou venda ela pode ser apagada — inclusive aprovada e ainda não
+   * convertida, e inclusive expirada, que é proposta enviada que passou da
+   * validade. Convertida e perdida não aparecem com o botão; o servidor
    * recusa de novo, mas oferecer o que será negado é convite a erro.
    */
   const podeExcluir =
-    !o.reservaId && !o.aprovadoEm && ["RASCUNHO", "ENVIADO", "EXPIRADO"].includes(situacao);
+    !o.reservaId && ["RASCUNHO", "ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
   const tipoDeFesta = isEventType(String(o.tipoDeFesta))
     ? EVENT_TYPE_META[String(o.tipoDeFesta) as keyof typeof EVENT_TYPE_META].label
     : String(o.tipoDeFesta);
@@ -464,11 +465,19 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               Excluir a proposta nº {o.numero} de {o.cliente}?
             </AlertDialogTitle>
             <AlertDialogDescription>
+              {situacao === "APROVADO" && (
+                <strong style={{ display: "block", marginBottom: "0.5rem", color: "var(--color-coral-dark, #c4472a)" }}>
+                  Atenção: esta proposta foi aprovada por {o.aprovadoPorNome ?? "—"}
+                  {o.aprovadoEm ? ` em ${new Date(o.aprovadoEm).toLocaleString("pt-BR")}` : ""}. Excluir
+                  apaga esse aceite, e ele não volta.
+                </strong>
+              )}
               Esta ação é permanente e não tem desfazer. Somem a proposta, os itens dela e o
               histórico de versões, e o link público para de abrir para sempre — se ele já estiver
               no WhatsApp da cliente, ela vai ver “não encontrada”. Cliente, catálogo, reservas e
-              pagamentos não são tocados. Se a intenção é só tirar da lista de acompanhamento, use
-              “Marcar como perdida”, que preserva o histórico.
+              pagamentos não são tocados.
+              {situacao !== "APROVADO" &&
+                " Se a intenção é só tirar da lista de acompanhamento, use “Marcar como perdida”, que preserva o histórico."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
