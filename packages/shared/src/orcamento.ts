@@ -261,15 +261,19 @@ export function primeiroNome(nomeCompleto: string): string {
  * A mensagem que a Maria Luiza cola no WhatsApp.
  *
  * Copiar só a URL deixava para ela escrever o recado toda vez — e o recado é
- * parte da venda: diz o que é o link e que dá para aprovar por ali. Fica aqui,
- * e não na tela, porque é texto de negócio e precisa de teste.
+ * parte da venda: diz o que é o link e que dá para aprovar por ali. O link fica
+ * numa linha só, sem Markdown nem HTML, porque o WhatsApp só transforma em
+ * toque o que reconhece como URL crua. Fica aqui, e não na tela, porque é texto
+ * de negócio e precisa de teste.
  */
 export function mensagemDaProposta(cliente: string, link: string): string {
   const nome = primeiroNome(cliente);
   return [
     `${nome ? `Oi, ${nome}!` : "Oi!"} 💛 Preparamos uma proposta para a sua festa.`,
     "",
-    "Acesse o link abaixo para conferir. Se gostar, você pode aprovar por lá e já visualizar os dados para o sinal e reserva da data:",
+    "Veja sua proposta:",
     link,
+    "",
+    "Se gostar, você pode aprovar por lá e visualizar os dados para o sinal e reserva da data.",
   ].join("\n");
 }

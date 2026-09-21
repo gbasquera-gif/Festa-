@@ -20,6 +20,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { api, ApiError } from "@/lib/api";
+import { urlDaProposta } from "@/lib/site";
 import { brl } from "@/components/financeiro/formato";
 
 /**
@@ -80,7 +81,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     queryFn: () => api(`/orcamentos/${id}`),
   });
 
-  const linkPublico = o ? `${window.location.origin}/proposta/${o.token}` : "";
+  const linkPublico = o ? urlDaProposta(String(o.token)) : "";
   const mensagem = o ? mensagemDaProposta(String(o.cliente ?? ""), linkPublico) : "";
 
   const invalidar = () => {
@@ -261,7 +262,6 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
           Link da proposta
         </h2>
-        <code className="block truncate rounded bg-muted px-3 py-2 text-xs">{linkPublico}</code>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             className="min-h-11"
@@ -279,11 +279,14 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           </Button>
           <Button variant="outline" className="min-h-11" asChild>
             <a href={linkPublico} target="_blank" rel="noreferrer">
-              <ExternalLink className="mr-1 size-4" /> Abrir
+              <ExternalLink className="mr-1 size-4" /> Abrir proposta
             </a>
           </Button>
         </div>
-        <p className="whitespace-pre-line rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        {/* A prévia é o texto exato que foi para a área de transferência.
+            Serve de conferência e de saída manual quando o navegador recusa
+            copiar — é também o único lugar onde a URL aparece escrita. */}
+        <p className="whitespace-pre-line rounded bg-muted/50 px-3 py-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
           {mensagem}
         </p>
         <p className="text-xs text-muted-foreground">
@@ -305,7 +308,10 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               : "a cliente vê só o investimento total"}
           </span>
         </div>
-        <table className="fin-tabela mt-3">
+        {/* Cinco colunas não cabem em 390px: no celular cada item vira uma
+            linha vertical, com a mesma informação — descrição, tipo,
+            quantidade, unitário e total. Nenhum dado sai da tela. */}
+        <table className="fin-tabela mt-3 hidden md:table">
           <thead>
             <tr><th>Item</th><th>Tipo</th><th className="num">Qtd</th><th className="num">Unitário</th><th className="num">Total</th></tr>
           </thead>
@@ -321,6 +327,19 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             ))}
           </tbody>
         </table>
+        <ul className="mt-3 md:hidden">
+          {o.linhas.map((l: any) => (
+            <li key={l.id} className="flex items-start justify-between gap-3 border-t px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm" style={{ color: "var(--fin-navy-ink)" }}>{l.descricao}</p>
+                <p className="painel-periodo mt-0.5">
+                  {TIPO_DA_LINHA_LABEL[l.tipo as TipoDaLinha]} · {l.quantidade} × {brl(l.valorUnitario)}
+                </p>
+              </div>
+              <span className="fin-numero shrink-0 text-sm">{brl(l.total)}</span>
+            </li>
+          ))}
+        </ul>
         <dl className="space-y-1 border-t p-4 text-sm">
           <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd className="fin-numero">{brl(o.valores.subtotal)}</dd></div>
           {o.valores.desconto > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Desconto</dt><dd className="fin-numero" style={{ color: "#c0614a" }}>− {brl(o.valores.desconto)}</dd></div>}

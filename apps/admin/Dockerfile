@@ -24,6 +24,11 @@ COPY --from=pruner /repo/out/full/ .
 # provedor de hospedagem consegue sobrescrever sem editar este arquivo.
 ARG VITE_API_URL=https://festa-production.up.railway.app/api/v1
 ENV VITE_API_URL=$VITE_API_URL
+# Domínio público do painel — é o endereço que vai no link da proposta enviado
+# à cliente. Sem ele, o link herdaria a origem de onde a Maria Luiza abriu o
+# painel, que pode ser o endereço interno da hospedagem.
+ARG VITE_PUBLIC_URL=https://painel.festaechapeco.com.br
+ENV VITE_PUBLIC_URL=$VITE_PUBLIC_URL
 RUN npx turbo run build --filter=@festae/admin
 
 FROM node:22-alpine AS runtime

@@ -124,19 +124,32 @@ describe("calcularSinal", () => {
 describe("mensagemDaProposta", () => {
   const link = "https://painel.festaechapeco.com.br/proposta/abc123";
 
-  it("chama a cliente pelo primeiro nome e termina no link", () => {
+  it("chama a cliente pelo primeiro nome e não deixa marcador por preencher", () => {
     const m = mensagemDaProposta("Ana Paula Ribeiro de Souza", link);
-    expect(m.startsWith("Oi, Ana! 💛")).toBe(true);
-    expect(m.endsWith(link)).toBe(true);
+    expect(m.startsWith("Oi, Ana! 💛 Preparamos uma proposta para a sua festa.")).toBe(true);
+    expect(m).toContain(link);
     expect(m).not.toContain("[LINK]");
     expect(m).not.toContain("Ribeiro");
   });
 
   it("preserva as quebras de linha da mensagem", () => {
     const linhas = mensagemDaProposta("Ana", link).split("\n");
-    expect(linhas).toHaveLength(4);
-    expect(linhas[1]).toBe("");
+    expect(linhas).toEqual([
+      "Oi, Ana! 💛 Preparamos uma proposta para a sua festa.",
+      "",
+      "Veja sua proposta:",
+      link,
+      "",
+      "Se gostar, você pode aprovar por lá e visualizar os dados para o sinal e reserva da data.",
+    ]);
+  });
+
+  it("deixa o link sozinho na linha, cru — é assim que o WhatsApp o reconhece", () => {
+    const linhas = mensagemDaProposta("Ana", link).split("\n");
     expect(linhas[3]).toBe(link);
+    const m = mensagemDaProposta("Ana", link);
+    expect(m).not.toMatch(/\[.*\]\(.*\)/);
+    expect(m).not.toContain("<a ");
   });
 
   it("aguenta nome com espaços sobrando e nome vazio", () => {
