@@ -51,6 +51,40 @@ const BLOCOS = [
   },
 ] as const;
 
+/**
+ * O que a cliente precisa para pagar o sinal.
+ *
+ * Fica aqui, e não no código, porque chave Pix muda e favorecido muda — e
+ * cada troca exigiria um deploy. São campos de uma linha, não parágrafos,
+ * então têm o seu próprio bloco em vez de virarem "texto".
+ */
+const PAGAMENTO = [
+  {
+    chave: "sinal_percentual",
+    rotulo: "Percentual do sinal",
+    ajuda: "Vale para toda proposta que não definir o seu. Em branco, o sistema usa 30%.",
+    placeholder: "30",
+  },
+  {
+    chave: "pix_chave",
+    rotulo: "Chave Pix",
+    ajuda: "O que a cliente copia na proposta. CNPJ, telefone, e-mail ou chave aleatória.",
+    placeholder: "00.000.000/0001-00",
+  },
+  {
+    chave: "pix_favorecido",
+    rotulo: "Favorecido",
+    ajuda: "O nome que aparece para a cliente conferir antes de pagar.",
+    placeholder: "Festaê Decorações LTDA",
+  },
+  {
+    chave: "pix_instrucao",
+    rotulo: "Instrução de pagamento",
+    ajuda: "O que fazer depois do Pix. Em branco, a proposta usa uma instrução padrão.",
+    placeholder: "Envie o comprovante no WhatsApp para confirmarmos sua data.",
+  },
+] as const;
+
 type Bloco = { titulo: string; texto: string; imagemUrl: string };
 
 export default function ConteudoInstitucional() {
@@ -65,7 +99,7 @@ export default function ConteudoInstitucional() {
   useEffect(() => {
     if (!data) return;
     const inicial: Record<string, Bloco> = {};
-    for (const b of BLOCOS) {
+    for (const b of [...BLOCOS, ...PAGAMENTO] as { chave: string }[]) {
       inicial[b.chave] = {
         titulo: data[b.chave]?.titulo ?? "",
         texto: data[b.chave]?.texto ?? "",
@@ -80,7 +114,7 @@ export default function ConteudoInstitucional() {
       api("/orcamentos/conteudo", {
         method: "PUT",
         body: JSON.stringify({
-          blocos: BLOCOS.map((b) => ({
+          blocos: [...BLOCOS, ...PAGAMENTO].map((b) => ({
             chave: b.chave,
             titulo: valores[b.chave]?.titulo,
             texto: valores[b.chave]?.texto,
@@ -156,6 +190,30 @@ export default function ConteudoInstitucional() {
           )}
         </section>
       ))}
+
+      <section className="painel-cartao space-y-4 p-4">
+        <div>
+          <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
+            Pagamento do sinal
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            O que a proposta mostra depois que a cliente aprova. Aprovar não é pagar: o
+            recebimento continua sendo confirmado por vocês, na reserva.
+          </p>
+        </div>
+        {PAGAMENTO.map((c) => (
+          <div key={c.chave} className="space-y-1.5">
+            <Label htmlFor={c.chave}>{c.rotulo}</Label>
+            <Input
+              id={c.chave}
+              value={valores[c.chave]?.texto ?? ""}
+              onChange={(e) => alterar(c.chave, "texto", e.target.value)}
+              placeholder={c.placeholder}
+            />
+            <p className="text-xs text-muted-foreground">{c.ajuda}</p>
+          </div>
+        ))}
+      </section>
 
       <div className="flex justify-end pb-4">
         <Button className="min-h-11" onClick={() => salvar.mutate()} disabled={salvar.isPending}>

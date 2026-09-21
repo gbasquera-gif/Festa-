@@ -42,6 +42,14 @@ type PropostaPublica = {
   validoAte: string;
   aprovadoEm: string | null;
   aprovadoPorNome: string | null;
+  sinal: {
+    percentual: number;
+    valor: number;
+    saldo: number;
+    recebido: number;
+    pago: boolean;
+    pix: { chave: string | null; favorecido: string | null; instrucao: string | null };
+  };
   conteudo: Record<string, Bloco>;
 };
 
@@ -60,6 +68,7 @@ export default function Proposta({ token }: { token: string }) {
   const queryClient = useQueryClient();
   const [nome, setNome] = useState("");
   const [confirmando, setConfirmando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   const { data: p, isLoading, error } = useQuery<PropostaPublica>({
     queryKey: ["proposta", token],
@@ -182,11 +191,13 @@ export default function Proposta({ token }: { token: string }) {
         <section className="proposta-secao proposta-cta">
           {p.aprovadoEm ? (
             <>
-              <h2>Sua festa está confirmada com a gente 🎉</h2>
+              <h2>{p.sinal.pago ? "Sua data está reservada 🎉" : "Proposta aprovada 🎉"}</h2>
               <p className="proposta-texto">
                 Aprovada por {p.aprovadoPorNome} em{" "}
-                {new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}. A Festaê entra em contato para
-                combinar os próximos passos.
+                {new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}.
+                {p.sinal.pago
+                  ? " O sinal foi confirmado pela Festaê e a data é sua."
+                  : " Falta um passo para a data ficar reservada."}
               </p>
             </>
           ) : p.podeAprovar ? (
@@ -245,6 +256,74 @@ export default function Proposta({ token }: { token: string }) {
           )}
         </section>
       </main>
+
+      {/* RESERVE SUA DATA
+        *
+        * Só aparece depois do aceite, e some quando o sinal é confirmado.
+        * Aprovar não é pagar: a proposta aprovada fica aguardando o sinal, e
+        * quem confirma o recebimento é a Festaê no painel — não este botão. */}
+      {p.aprovadoEm && !p.sinal.pago && p.sinal.valor > 0 && (
+        <section className="proposta-sinal">
+          <div className="proposta-sinal-caixa">
+            <p className="proposta-eyebrow">Reserve sua data</p>
+            <h2>Falta o sinal para a data ser sua</h2>
+            <p className="proposta-texto">
+              A data fica reservada quando o sinal cai. O restante você paga na retirada ou na
+              entrega.
+            </p>
+
+            <dl className="proposta-sinal-conta">
+              <div>
+                <dt>Total aprovado</dt>
+                <dd>{brl(p.valores.total)}</dd>
+              </div>
+              <div>
+                <dt>Sinal ({p.sinal.percentual.toLocaleString("pt-BR")}%)</dt>
+                <dd className="proposta-sinal-valor">{brl(p.sinal.valor)}</dd>
+              </div>
+              <div>
+                <dt>Saldo na retirada ou entrega</dt>
+                <dd>{brl(p.sinal.saldo)}</dd>
+              </div>
+            </dl>
+
+            {p.sinal.pix.chave ? (
+              <div className="proposta-pix">
+                <p className="proposta-eyebrow">Pix</p>
+                {p.sinal.pix.favorecido && (
+                  <p className="proposta-pix-favorecido">{p.sinal.pix.favorecido}</p>
+                )}
+                <div className="proposta-pix-chave">
+                  <code>{p.sinal.pix.chave}</code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(p.sinal.pix.chave ?? "");
+                      setCopiado(true);
+                      setTimeout(() => setCopiado(false), 2500);
+                    }}
+                  >
+                    {copiado ? "Copiada!" : "Copiar chave"}
+                  </button>
+                </div>
+                <p className="proposta-texto proposta-pix-instrucao">
+                  {p.sinal.pix.instrucao ??
+                    `Faça o Pix de ${brl(p.sinal.valor)} para a chave acima e envie o comprovante para a Festaê no WhatsApp. Assim que confirmarmos, sua data está reservada.`}
+                </p>
+              </div>
+            ) : (
+              <p className="proposta-texto">
+                Fale com a Festaê no WhatsApp para combinar o pagamento do sinal.
+              </p>
+            )}
+
+            <p className="proposta-nota">
+              O valor só é considerado recebido depois que a Festaê confirma. Esta página não
+              processa pagamento.
+            </p>
+          </div>
+        </section>
+      )}
 
       <footer className="proposta-rodape">
         <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} />

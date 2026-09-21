@@ -1030,3 +1030,72 @@ button.painel-cartao:focus-visible .painel-abre {
   color: #9a9086;
   margin: 0;
 }
+
+/* Reserve sua data — o passo do sinal, depois do aceite.
+ *
+ * Fica num bloco destacado e no fim da página de propósito: é a única coisa
+ * que resta para a cliente fazer, e ela chega aqui já tendo dito sim. */
+.proposta-sinal { padding: 0 1.25rem 3rem; }
+.proposta-sinal-caixa {
+  max-width: 41.5rem;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--p-linha);
+  border-radius: 14px;
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+}
+.proposta-sinal-conta { margin: 1.5rem 0; text-align: left; }
+.proposta-sinal-conta > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--p-linha);
+  font-size: 0.95rem;
+  color: #6f6659;
+}
+.proposta-sinal-conta > div:last-child { border-bottom: 0; }
+.proposta-sinal-conta dd { font-family: "IBM Plex Mono", monospace; margin: 0; color: var(--p-navy); }
+.proposta-sinal-valor { font-size: 1.35rem; color: var(--p-coral) !important; }
+
+.proposta-pix {
+  background: var(--p-cream);
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: left;
+}
+.proposta-pix-favorecido { font-size: 0.95rem; margin: 0 0 0.75rem; color: var(--p-navy); }
+.proposta-pix-chave {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.proposta-pix-chave code {
+  flex: 1;
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+  background: #fff;
+  border: 1px solid var(--p-linha);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.9rem;
+  color: var(--p-navy);
+}
+.proposta-pix-chave button {
+  min-height: 48px;
+  padding: 0 1.1rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--p-navy);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.proposta-pix-chave button:hover { background: #0d1a2c; }
+.proposta-pix-instrucao { margin-top: 1rem; font-size: 0.92rem; }

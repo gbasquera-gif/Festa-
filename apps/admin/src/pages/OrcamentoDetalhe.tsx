@@ -147,6 +147,49 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </div>
       )}
 
+      {/* O SINAL
+        *
+        * Aprovada não quer dizer paga. Enquanto o sinal não é confirmado na
+        * reserva, a proposta fica aqui como "aguardando" — e quem confirma o
+        * recebimento é a tela de Reservas, pelo caminho de sempre. Nenhum
+        * pagamento nasce de um clique da cliente. */}
+      {situacao === "APROVADO" && o.sinal && (
+        <section className="painel-cartao space-y-2 p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
+              Sinal para reservar a data
+            </h2>
+            <span
+              className="rounded px-2 py-0.5 text-[0.6rem] font-medium uppercase tracking-wider"
+              style={
+                o.sinal.pago
+                  ? { background: "rgba(46,155,107,0.12)", color: "#2e9b6b" }
+                  : { background: "rgba(224,90,58,0.12)", color: "#c4472a" }
+              }
+            >
+              {o.sinal.pago ? "sinal confirmado" : "aguardando sinal"}
+            </span>
+          </div>
+          <dl className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">
+                Sinal ({o.sinal.percentual.toLocaleString("pt-BR")}% do aprovado)
+              </dt>
+              <dd className="fin-numero">{brl(o.sinal.valor)}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Recebido até agora</dt>
+              <dd className="fin-numero">{brl(o.sinal.recebido)}</dd>
+            </div>
+          </dl>
+          <p className="text-xs text-muted-foreground">
+            {o.reservaId
+              ? "O recebimento é registrado na reserva, como em toda venda — nada é dado como pago pela aprovação da cliente."
+              : "Enquanto a proposta não vira reserva, não existe pagamento a registrar: o recebimento mora no pedido."}
+          </p>
+        </section>
+      )}
+
       {/* LINK PÚBLICO */}
       <section className="painel-cartao space-y-2 p-4">
         <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>

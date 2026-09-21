@@ -295,6 +295,7 @@ export {
   TIPO_DA_LINHA_LABEL,
   aprovarPropostaSchema,
   calcularOrcamento,
+  calcularSinal,
   exigeNovaVersao,
   linhaDoOrcamentoSchema,
   orcamentoSchema,

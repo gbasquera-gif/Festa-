@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { splitPayment } from "./pricing";
 import {
   calcularOrcamento,
+  calcularSinal,
   exigeNovaVersao,
   podeSerAprovada,
   situacaoDoOrcamento,
@@ -85,5 +87,34 @@ describe("exigeNovaVersao", () => {
     expect(exigeNovaVersao("RASCUNHO")).toBe(false);
     expect(exigeNovaVersao("ENVIADO")).toBe(true);
     expect(exigeNovaVersao("APROVADO")).toBe(true);
+  });
+});
+
+describe("calcularSinal", () => {
+  it("usa 30% quando a proposta não define percentual", () => {
+    expect(calcularSinal(1000)).toEqual({ percentual: 30, valor: 300, saldo: 700 });
+    expect(calcularSinal(1000, null)).toEqual({ percentual: 30, valor: 300, saldo: 700 });
+  });
+
+  it("respeita o percentual da proposta quando existe", () => {
+    expect(calcularSinal(1000, 50)).toEqual({ percentual: 50, valor: 500, saldo: 500 });
+    expect(calcularSinal(1000, 0)).toEqual({ percentual: 0, valor: 0, saldo: 1000 });
+  });
+
+  it("arredonda em centavos, e sinal mais saldo devolvem o total", () => {
+    const { valor, saldo } = calcularSinal(1250.33, 30);
+    expect(valor).toBe(375.1);
+    expect(Number((valor + saldo).toFixed(2))).toBe(1250.33);
+  });
+
+  it("o sinal da proposta é o mesmo de splitPayment, para o mesmo total", () => {
+    for (const total of [400, 520.5, 1250, 3333.33]) {
+      expect(calcularSinal(total).valor).toBe(splitPayment(total).deposit);
+    }
+  });
+
+  it("percentual fora da faixa é contido em vez de virar valor absurdo", () => {
+    expect(calcularSinal(1000, 150).valor).toBe(1000);
+    expect(calcularSinal(1000, -10).valor).toBe(0);
   });
 });

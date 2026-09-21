@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "./enums";
 import { dataDaFestaSchema } from "./data-da-festa";
-import { fromCentsInt, toCentsInt } from "./pricing";
+import { DEPOSIT_RATE, fromCentsInt, toCentsInt } from "./pricing";
 
 /**
  * A proposta comercial da Festaê.
@@ -149,6 +149,33 @@ export function exigeNovaVersao(status: StatusDoOrcamento): boolean {
   return status !== "RASCUNHO";
 }
 
+/**
+ * O sinal que reserva a data.
+ *
+ * O percentual vem do painel, e cada proposta pode ter o seu: a taxa padrão
+ * resolve o caso comum, e a exceção existe de verdade — festa grande com
+ * entrada menor, cliente antiga com condição combinada. Fixar 30% no código
+ * obrigaria um deploy para honrar um acordo feito no WhatsApp.
+ *
+ * O arredondamento é o mesmo de `splitPayment`, em centavos: o sinal de uma
+ * proposta e o sinal de uma reserva têm de dar o mesmo número, senão a
+ * cliente paga um valor e o sistema cobra outro.
+ */
+export function calcularSinal(
+  total: number,
+  percentual?: number | null,
+): { percentual: number; valor: number; saldo: number } {
+  const taxa = percentual === null || percentual === undefined ? DEPOSIT_RATE * 100 : percentual;
+  const limitada = Math.min(100, Math.max(0, taxa));
+  const totalEmCentavos = toCentsInt(total);
+  const sinalEmCentavos = Math.round((totalEmCentavos * limitada) / 100);
+  return {
+    percentual: limitada,
+    valor: fromCentsInt(sinalEmCentavos),
+    saldo: fromCentsInt(totalEmCentavos - sinalEmCentavos),
+  };
+}
+
 export const linhaDoOrcamentoSchema = z.object({
   tipo: z.enum(TIPOS_DA_LINHA).default("PRODUTO"),
   productId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
@@ -179,6 +206,12 @@ export const orcamentoSchema = z.object({
     imagens: z.array(z.string().max(500)).max(12).default([]),
     /** Dias de validade a partir de hoje. */
     validadeEmDias: z.coerce.number().int().min(1).max(180).default(15),
+    /**
+     * Percentual do sinal desta proposta. Vazio usa o padrão do painel —
+     * gravar a taxa em toda proposta faria a mudança do padrão não alcançar
+     * nenhuma delas.
+     */
+    percentualDoSinal: z.coerce.number().min(0).max(100).optional(),
   }),
   itens: z.array(linhaDoOrcamentoSchema).min(1, "A proposta precisa de ao menos um item."),
   valores: z.object({

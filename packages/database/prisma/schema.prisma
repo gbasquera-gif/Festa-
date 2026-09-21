@@ -744,6 +744,11 @@ model Orcamento {
   themeId String?
   kitId   String?
 
+  /// Percentual do sinal desta proposta. Nulo usa o padrão configurado no
+  /// painel — gravar a taxa em toda proposta faria a mudança do padrão não
+  /// alcançar nenhuma das que já existem.
+  percentualDoSinal Decimal? @db.Decimal(5, 2)
+
   /// As imagens escolhidas para esta proposta, em ordem de exibição.
   /// Escolhidas, e não herdadas: nem toda foto do catálogo serve para toda
   /// cliente.

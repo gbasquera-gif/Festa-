@@ -8,6 +8,8 @@ import {
 import { prisma } from "@festae/database";
 import {
   calcularOrcamento,
+  calcularSinal,
+  toCentsInt,
   exigeNovaVersao,
   podeSerAprovada,
   situacaoDoOrcamento,
@@ -61,7 +63,8 @@ export class OrcamentosService {
       },
     });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
-    return this.detalhar(o, new Date());
+    const conteudo = await this.conteudo();
+    return { ...this.detalhar(o, new Date()), sinal: await this.sinalDa(o, conteudo) };
   }
 
   async criar(input: OrcamentoInput, criadoPorId: string) {
@@ -84,6 +87,7 @@ export class OrcamentosService {
         validoAte,
         themeId: input.proposta.themeId || undefined,
         kitId: input.proposta.kitId || undefined,
+        percentualDoSinal: input.proposta.percentualDoSinal ?? null,
         imagens: input.proposta.imagens,
         ...totais,
         criadoPorId,
@@ -146,6 +150,7 @@ export class OrcamentosService {
           validoAte,
           themeId: input.proposta.themeId || null,
           kitId: input.proposta.kitId || null,
+          percentualDoSinal: input.proposta.percentualDoSinal ?? null,
           imagens: input.proposta.imagens,
           ...totais,
           versao: precisaVersionar ? atual.versao + 1 : atual.versao,
@@ -206,6 +211,8 @@ export class OrcamentosService {
 
     const agora = new Date();
     const situacao = situacaoDoOrcamento(o.status as StatusDoOrcamento, o.validoAte, agora);
+    const conteudo = await this.conteudo();
+    const sinal = await this.sinalDa(o, conteudo);
 
     return {
       numero: o.numero,
@@ -242,7 +249,56 @@ export class OrcamentosService {
       validoAte: o.validoAte.toISOString(),
       aprovadoEm: o.aprovadoEm?.toISOString() ?? null,
       aprovadoPorNome: o.aprovadoPorNome,
-      conteudo: await this.conteudo(),
+      sinal,
+      conteudo,
+    };
+  }
+
+  /**
+   * O passo "reserve sua data".
+   *
+   * Aprovar não é pagar. A proposta aprovada fica aguardando o sinal, e é
+   * isso que a tela diz — inventar um Payment PAID no aceite faria o
+   * Financeiro contar como recebido um dinheiro que ninguém viu.
+   *
+   * `pago` não é um estado novo: é lido dos Payments da reserva que nasceu
+   * desta proposta, pela mesma regra de sempre (só PAID conta). Enquanto não
+   * há reserva, não há o que ter sido recebido.
+   */
+  private async sinalDa(
+    o: { total: unknown; percentualDoSinal: unknown; reservationId: string | null },
+    conteudo: Record<string, { titulo: string | null; texto: string | null }>,
+  ) {
+    const padrao = Number(conteudo.sinal_percentual?.texto);
+    const percentual =
+      o.percentualDoSinal !== null && o.percentualDoSinal !== undefined
+        ? num(o.percentualDoSinal)
+        : Number.isFinite(padrao) && conteudo.sinal_percentual?.texto
+          ? padrao
+          : null;
+
+    const conta = calcularSinal(num(o.total), percentual);
+
+    let recebido = 0;
+    if (o.reservationId) {
+      const reserva = await prisma.reservation.findUnique({
+        where: { id: o.reservationId },
+        select: { order: { select: { payments: { where: { status: "PAID" }, select: { amount: true } } } } },
+      });
+      recebido = (reserva?.order.payments ?? []).reduce((soma, p) => soma + num(p.amount), 0);
+    }
+
+    return {
+      percentual: conta.percentual,
+      valor: conta.valor,
+      saldo: conta.saldo,
+      recebido,
+      pago: toCentsInt(recebido) >= toCentsInt(conta.valor) && toCentsInt(conta.valor) > 0,
+      pix: {
+        chave: conteudo.pix_chave?.texto ?? null,
+        favorecido: conteudo.pix_favorecido?.texto ?? null,
+        instrucao: conteudo.pix_instrucao?.texto ?? null,
+      },
     };
   }
 
@@ -472,6 +528,7 @@ export class OrcamentosService {
       observacoes: o.observacoes,
       themeId: o.themeId,
       kitId: o.kitId,
+      percentualDoSinal: o.percentualDoSinal === null ? null : num(o.percentualDoSinal),
       imagens: o.imagens,
       valores: {
         subtotal: num(o.subtotal),

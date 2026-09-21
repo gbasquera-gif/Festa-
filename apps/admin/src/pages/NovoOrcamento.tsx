@@ -73,6 +73,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   const [themeId, setThemeId] = useState("");
   const [kitId, setKitId] = useState("");
   const [validade, setValidade] = useState("15");
+  const [percentualDoSinal, setPercentualDoSinal] = useState("");
   const [imagens, setImagens] = useState<string[]>([]);
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [desconto, setDesconto] = useState("0");
@@ -96,6 +97,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     setThemeId(o.themeId ?? "");
     setKitId(o.kitId ?? "");
     setImagens(o.imagens ?? []);
+    setPercentualDoSinal(o.percentualDoSinal === null || o.percentualDoSinal === undefined ? "" : String(o.percentualDoSinal));
     setDesconto(String(o.valores.desconto));
     setEntrega(String(o.valores.entrega));
     setMontagem(String(o.valores.montagem));
@@ -197,6 +199,9 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           kitId: kitId || undefined,
           imagens,
           validadeEmDias: Number(validade) || 15,
+          // Vazio deixa a proposta seguir o padrão do painel. Gravar a taxa
+          // em toda proposta faria a mudança do padrão não alcançar nenhuma.
+          percentualDoSinal: percentualDoSinal.trim() ? Number(percentualDoSinal) : undefined,
         },
         itens: linhas.map((l) => ({
           tipo: l.tipo,
@@ -488,6 +493,17 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           <div className="space-y-1.5">
             <Label htmlFor="validade">Validade (dias)</Label>
             <Input id="validade" type="number" min={1} value={validade} onChange={(e) => setValidade(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sinal">Sinal (%)</Label>
+            <Input
+              id="sinal" type="number" min={0} max={100} value={percentualDoSinal}
+              onChange={(e) => setPercentualDoSinal(e.target.value)}
+              placeholder="padrão do painel"
+            />
+            <p className="text-xs text-muted-foreground">
+              Em branco usa o percentual configurado em Conteúdo da proposta.
+            </p>
           </div>
         </div>
 
