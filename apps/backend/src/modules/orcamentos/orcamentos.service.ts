@@ -9,11 +9,13 @@ import { prisma } from "@festae/database";
 import {
   calcularOrcamento,
   calcularSinal,
+  fromCentsInt,
   toCentsInt,
   exigeNovaVersao,
   podeSerAprovada,
   situacaoDoOrcamento,
   totalDaLinha,
+  valorOficialDoOrcamento,
   type LinhaDoOrcamento,
   type OrcamentoInput,
   type StatusDoOrcamento,
@@ -461,15 +463,7 @@ export class OrcamentosService {
           endereco: o.local ?? undefined,
           cidade: o.cidade,
         },
-        financeiro: {
-          valorProdutos: num(o.subtotal),
-          entrega: num(o.entrega),
-          montagem: num(o.montagem),
-          desconto: num(o.desconto),
-          sinal: 0,
-          formaPagamento: "PIX",
-          statusPagamento: "PENDING",
-        },
+        financeiro: this.financeiroDaConversao(o),
         origem,
         observacoesInternas: `Nasceu da proposta nº ${o.numero} (versão ${o.versao}).`,
       } as never,
@@ -582,6 +576,57 @@ export class OrcamentosService {
 
   // ---------------------------------------------------------------- privados
 
+  /**
+   * As parcelas que fazem o pedido fechar no valor aprovado.
+   *
+   * A venda manual calcula o total como produtos + entrega + montagem −
+   * desconto, e não tem campo de acréscimo. O valor que precisa sair daqui é
+   * exatamente o que a cliente aprovou — nunca a soma dos itens recalculada
+   * agora, que pode ser outra por negociação.
+   *
+   * Então a diferença entra onde couber: para baixo, no desconto do pedido;
+   * para cima, no valor dos produtos. Entrega e montagem ficam intactas
+   * porque elas também decidem se a festa é entregue e montada.
+   */
+  private financeiroDaConversao(o: {
+    subtotal: unknown;
+    entrega: unknown;
+    montagem: unknown;
+    total: unknown;
+    valorAprovado: unknown;
+  }) {
+    const entrega = num(o.entrega);
+    const montagem = num(o.montagem);
+    // O aprovado manda. Editar proposta aprovada é recusado, então os dois
+    // coincidem — mas se algum dia deixarem de coincidir, quem vale é o que
+    // a cliente aceitou.
+    const alvoEmCentavos = toCentsInt(
+      o.valorAprovado !== null && o.valorAprovado !== undefined ? num(o.valorAprovado) : num(o.total),
+    );
+    const brutoEmCentavos = toCentsInt(num(o.subtotal)) + toCentsInt(entrega) + toCentsInt(montagem);
+    const sobra = brutoEmCentavos - alvoEmCentavos;
+
+    return {
+      valorProdutos: fromCentsInt(toCentsInt(num(o.subtotal)) + Math.max(0, -sobra)),
+      entrega,
+      montagem,
+      desconto: fromCentsInt(Math.max(0, sobra)),
+      sinal: 0,
+      formaPagamento: "PIX",
+      statusPagamento: "PENDING",
+    };
+  }
+
+  /**
+   * Os valores gravados: as parcelas da composição, o total calculado e o
+   * total oficial.
+   *
+   * `total` é o oficial de propósito — é o campo que a proposta pública, o
+   * sinal, a aprovação, a conversão e os indicadores já leem. Guardar o
+   * negociado num campo novo e deixar `total` como a soma obrigaria cada um
+   * desses lugares a lembrar de preferir o outro, e o primeiro que esquecesse
+   * cobraria da cliente um valor que ela não aceitou.
+   */
   private totaisDe(input: OrcamentoInput) {
     const linhas: LinhaDoOrcamento[] = input.itens.map((i) => ({
       tipo: i.tipo,
@@ -589,12 +634,23 @@ export class OrcamentosService {
       quantidade: i.quantidade,
       valorUnitario: i.valorUnitario,
     }));
-    return calcularOrcamento(
+    const composicao = calcularOrcamento(
       linhas,
       input.valores.desconto,
       input.valores.entrega,
       input.valores.montagem,
     );
+    const oficial = valorOficialDoOrcamento(composicao.total, input.valores.valorFinal);
+
+    return {
+      subtotal: composicao.subtotal,
+      desconto: composicao.desconto,
+      entrega: composicao.entrega,
+      montagem: composicao.montagem,
+      total: oficial.total,
+      totalCalculado: oficial.totalCalculado,
+      valorFinalManual: oficial.manual,
+    };
   }
 
   private linhasParaBanco(itens: OrcamentoInput["itens"]) {
@@ -673,7 +729,11 @@ export class OrcamentosService {
         desconto: num(o.desconto),
         entrega: num(o.entrega),
         montagem: num(o.montagem),
+        /** O oficial: o que a cliente vê, aprova e paga. */
         total: num(o.total),
+        /** A soma da composição, para o painel mostrar a negociação. */
+        totalCalculado: num(o.totalCalculado),
+        valorFinalManual: o.valorFinalManual === true,
       },
       linhas: o.itens.map((i: any) => ({
         id: i.id,

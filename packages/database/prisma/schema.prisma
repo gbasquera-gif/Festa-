@@ -767,7 +767,26 @@ model Orcamento {
   desconto Decimal @default(0) @db.Decimal(10, 2)
   entrega  Decimal @default(0) @db.Decimal(10, 2)
   montagem Decimal @default(0) @db.Decimal(10, 2)
-  total    Decimal @default(0) @db.Decimal(10, 2)
+
+  /// O valor oficial da proposta: o que a cliente vê, aprova e paga, e o que
+  /// vira o total do pedido na conversão. Quando não há negociação, é igual a
+  /// `totalCalculado`.
+  total Decimal @default(0) @db.Decimal(10, 2)
+
+  /// A soma da composição, preservada mesmo quando o valor final é outro.
+  ///
+  /// A Maria Luiza negocia: arredonda para baixo para fechar, cobra a mais
+  /// por uma personalização. Redistribuir essa diferença entre os itens
+  /// falsificaria o preço de cada peça, e chamá-la de "desconto" seria mentir
+  /// quando ela é acréscimo. Então os dois valores ficam: a composição, que
+  /// diz como o preço foi montado, e o total, que é o que vale.
+  totalCalculado Decimal @default(0) @db.Decimal(10, 2)
+
+  /// Se o valor final foi digitado à mão.
+  ///
+  /// É o que decide o comportamento ao mexer na composição: valor automático
+  /// acompanha a nova soma, valor negociado não é sobrescrito em silêncio.
+  valorFinalManual Boolean @default(false)
 
   enviadoEm  DateTime?
   aprovadoEm DateTime?

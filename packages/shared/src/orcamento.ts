@@ -226,6 +226,18 @@ export const orcamentoSchema = z.object({
     desconto: z.coerce.number().min(0).default(0),
     entrega: z.coerce.number().min(0).default(0),
     montagem: z.coerce.number().min(0).default(0),
+    /**
+     * O valor final negociado. Nulo ou ausente acompanha a composição.
+     *
+     * Validado aqui, e não só na tela: o valor oficial da proposta é o que
+     * vira pedido e recebimento, e uma tela é só uma das portas da API.
+     */
+    valorFinal: z.coerce
+      .number()
+      .min(0, "O valor final não pode ser negativo.")
+      .max(1_000_000)
+      .nullable()
+      .optional(),
   }),
 });
 export type OrcamentoInput = z.infer<typeof orcamentoSchema>;
@@ -245,6 +257,39 @@ export type AprovarPropostaInput = z.infer<typeof aprovarPropostaSchema>;
 export const recusarOrcamentoSchema = z.object({
   motivo: z.string().max(500).optional().or(z.literal("")),
 });
+
+/**
+ * O valor que vale.
+ *
+ * A composição diz como o preço foi montado; o valor final é o que foi
+ * negociado e é o que a cliente aprova, paga e recebe como pedido. Os dois
+ * convivem porque a diferença não é redistribuível: baixar R$ 90 para fechar
+ * não torna cada balão mais barato, e cobrar R$ 90 a mais por uma
+ * personalização não encarece o kit.
+ *
+ * Também não é "desconto". Desconto tem sinal; isto pode ser para os dois
+ * lados, e nomear errado é pior do que não nomear.
+ *
+ * `valorFinal` nulo ou ausente significa "acompanhe a composição" — é o
+ * padrão, e é o que mantém o total certo quando alguém mexe num item.
+ */
+export function valorOficialDoOrcamento(
+  totalCalculado: number,
+  valorFinal?: number | null,
+): { total: number; totalCalculado: number; manual: boolean; diferenca: number } {
+  const calculado = fromCentsInt(toCentsInt(totalCalculado));
+  const manual = valorFinal !== null && valorFinal !== undefined;
+  // Negativo não existe: proposta não cobra ao contrário. Zero existe, e já
+  // existia antes disto — item a R$ 0 sempre foi aceito, e o sinal de uma
+  // proposta de valor zero é zero sem virar "pago".
+  const total = manual ? fromCentsInt(Math.max(0, toCentsInt(valorFinal as number))) : calculado;
+  return {
+    total,
+    totalCalculado: calculado,
+    manual,
+    diferenca: fromCentsInt(toCentsInt(total) - toCentsInt(calculado)),
+  };
+}
 
 /**
  * O primeiro nome de quem vai receber a mensagem.

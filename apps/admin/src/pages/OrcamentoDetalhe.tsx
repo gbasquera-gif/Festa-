@@ -409,6 +409,18 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           {o.valores.desconto > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Desconto</dt><dd className="fin-numero" style={{ color: "#c0614a" }}>− {brl(o.valores.desconto)}</dd></div>}
           {o.valores.entrega > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Entrega</dt><dd className="fin-numero">{brl(o.valores.entrega)}</dd></div>}
           {o.valores.montagem > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Montagem</dt><dd className="fin-numero">{brl(o.valores.montagem)}</dd></div>}
+          {/* A negociação aparece aqui, e só aqui.
+            *
+            * A cliente vê um número — o que ela vai pagar. Quem monta o preço
+            * precisa dos dois: como foi somado e no que fechou. Sem chamar a
+            * diferença de desconto, porque ela também pode ser para cima. */}
+          {o.valores.valorFinalManual &&
+            o.valores.totalCalculado !== o.valores.total && (
+              <div className="flex justify-between pt-1 text-xs text-muted-foreground">
+                <dt>Composição: {brl(o.valores.totalCalculado)}</dt>
+                <dd>→ Valor final: {brl(o.valores.total)}</dd>
+              </div>
+            )}
           <div className="flex items-baseline justify-between border-t pt-2">
             <dt className="font-medium" style={{ color: "var(--color-navy)" }}>Investimento total</dt>
             <dd className="fin-numero text-xl" style={{ color: "var(--color-navy)" }}>{brl(o.valores.total)}</dd>

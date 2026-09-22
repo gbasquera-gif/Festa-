@@ -9,6 +9,7 @@ import {
   TIPOS_DA_LINHA,
   TIPO_DA_LINHA_LABEL,
   calcularOrcamento,
+  toCentsInt,
   totalDaLinha,
   type TipoDaLinha,
 } from "@festae/shared";
@@ -84,6 +85,18 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   const [desconto, setDesconto] = useState("0");
   const [entrega, setEntrega] = useState("0");
   const [montagem, setMontagem] = useState("0");
+  /**
+   * O valor final negociado.
+   *
+   * Enquanto ninguém digita nada, ele não existe: o oficial é a soma da
+   * composição, e acompanha qualquer mexida nos itens. Digitado, ele passa a
+   * valer — e não é sobrescrito quando a composição muda, porque valor
+   * combinado com a cliente não se atualiza sozinho.
+   */
+  const [valorFinal, setValorFinal] = useState("");
+  const [valorFinalTocado, setValorFinalTocado] = useState(false);
+  /** A composição de quando o valor final foi digitado, para saber se ela mudou depois. */
+  const [baseDaComposicao, setBaseDaComposicao] = useState<number | null>(null);
 
   /** Reabre a proposta existente sem reescrever nada que já foi digitado. */
   useEffect(() => {
@@ -107,6 +120,11 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     setDesconto(String(o.valores.desconto));
     setEntrega(String(o.valores.entrega));
     setMontagem(String(o.valores.montagem));
+    if (o.valores.valorFinalManual) {
+      setValorFinal(String(o.valores.total));
+      setValorFinalTocado(true);
+      setBaseDaComposicao(o.valores.totalCalculado);
+    }
     setLinhas(
       o.linhas.map((l: any) => ({
         tipo: l.tipo,
@@ -123,6 +141,25 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     () => calcularOrcamento(linhas, Number(desconto) || 0, Number(entrega) || 0, Number(montagem) || 0),
     [linhas, desconto, entrega, montagem],
   );
+
+  const valorOficial = valorFinalTocado ? Number(valorFinal) || 0 : totais.total;
+  const negociado = valorFinalTocado && toCentsInt(valorOficial) !== toCentsInt(totais.total);
+  /** A composição mudou depois de o valor final ter sido combinado. */
+  const composicaoMudou =
+    valorFinalTocado &&
+    baseDaComposicao !== null &&
+    toCentsInt(baseDaComposicao) !== toCentsInt(totais.total);
+
+  const digitarValorFinal = (v: string) => {
+    setValorFinal(v);
+    setValorFinalTocado(true);
+    setBaseDaComposicao(totais.total);
+  };
+  const usarValorCalculado = () => {
+    setValorFinal("");
+    setValorFinalTocado(false);
+    setBaseDaComposicao(null);
+  };
 
   /** As imagens que a proposta pode mostrar, vindas do que foi escolhido. */
   const imagensDisponiveis = useMemo(() => {
@@ -229,6 +266,9 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           desconto: Number(desconto) || 0,
           entrega: Number(entrega) || 0,
           montagem: Number(montagem) || 0,
+          // Nulo quer dizer "acompanhe a composição". Mandar sempre o número
+          // faria toda proposta nascer com valor travado à mão.
+          valorFinal: valorFinalTocado ? Number(valorFinal) || 0 : null,
         },
       };
       return editando
@@ -530,6 +570,36 @@ export default function NovoOrcamento({ id }: { id?: string }) {
             <Label htmlFor="desconto">Desconto</Label>
             <Input id="desconto" type="number" min={0} step="0.01" value={desconto} onChange={(e) => setDesconto(e.target.value)} />
           </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label htmlFor="valorFinal">Valor final da proposta</Label>
+              {valorFinalTocado && (
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  style={{ color: "var(--color-coral-dark, #c4472a)" }}
+                  onClick={usarValorCalculado}
+                >
+                  Usar valor calculado
+                </button>
+              )}
+            </div>
+            <Input
+              id="valorFinal" type="number" min={0} step="0.01"
+              value={valorFinalTocado ? valorFinal : String(totais.total)}
+              onChange={(e) => digitarValorFinal(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {valorFinalTocado
+                ? `Valor negociado. A composição soma ${brl(totais.total)}.`
+                : "Acompanha a composição. Digite para negociar outro valor, para baixo ou para cima."}
+            </p>
+            {composicaoMudou && (
+              <p className="text-xs" style={{ color: "var(--color-coral-dark, #c4472a)" }}>
+                A composição foi alterada. Revise o valor final da proposta.
+              </p>
+            )}
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="validade">Validade (dias)</Label>
             <Input id="validade" type="number" min={1} value={validade} onChange={(e) => setValidade(e.target.value)} />
@@ -577,10 +647,21 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           {totais.montagem > 0 && (
             <div className="flex justify-between"><dt className="text-muted-foreground">Montagem</dt><dd className="fin-numero">{brl(totais.montagem)}</dd></div>
           )}
-          <div className="flex items-baseline justify-between border-t pt-2">
-            <dt className="font-medium" style={{ color: "var(--color-navy)" }}>Investimento total</dt>
-            <dd className="fin-numero text-xl" style={{ color: "var(--color-navy)" }}>{brl(totais.total)}</dd>
+          <div className="flex justify-between border-t pt-2">
+            <dt className="text-muted-foreground">Valor calculado da composição</dt>
+            <dd className="fin-numero">{brl(totais.total)}</dd>
           </div>
+          <div className="flex items-baseline justify-between">
+            <dt className="font-medium" style={{ color: "var(--color-navy)" }}>Valor final da proposta</dt>
+            <dd className="fin-numero text-xl" style={{ color: "var(--color-navy)" }}>{brl(valorOficial)}</dd>
+          </div>
+          {negociado && (
+            <p className="pt-1 text-xs text-muted-foreground">
+              É este valor que a cliente vê, aprova e paga — e é dele que saem o sinal e o saldo. A
+              composição fica registrada como foi montada, sem redistribuir a diferença entre os
+              itens.
+            </p>
+          )}
         </dl>
       </section>
 

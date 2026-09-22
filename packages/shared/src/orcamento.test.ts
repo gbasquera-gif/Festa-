@@ -9,6 +9,7 @@ import {
   primeiroNome,
   situacaoDoOrcamento,
   totalDaLinha,
+  valorOficialDoOrcamento,
   type LinhaDoOrcamento,
 } from "./orcamento";
 
@@ -160,5 +161,45 @@ describe("mensagemDaProposta", () => {
   it("primeiroNome devolve vazio quando não há nome", () => {
     expect(primeiroNome("")).toBe("");
     expect(primeiroNome(" Joana Silva ")).toBe("Joana");
+  });
+});
+
+describe("valorOficialDoOrcamento", () => {
+  it("sem valor final, o oficial é a composição", () => {
+    const v = valorOficialDoOrcamento(1190);
+    expect(v).toEqual({ total: 1190, totalCalculado: 1190, manual: false, diferenca: 0 });
+    expect(valorOficialDoOrcamento(1190, null).manual).toBe(false);
+  });
+
+  it("valor final menor vale, e a composição continua registrada", () => {
+    const v = valorOficialDoOrcamento(1190, 1100);
+    expect(v.total).toBe(1100);
+    expect(v.totalCalculado).toBe(1190);
+    expect(v.manual).toBe(true);
+    expect(v.diferenca).toBe(-90);
+  });
+
+  it("valor final maior também vale — não é desconto, é negociação", () => {
+    const v = valorOficialDoOrcamento(1190, 1300);
+    expect(v.total).toBe(1300);
+    expect(v.diferenca).toBe(110);
+  });
+
+  it("o sinal e o saldo saem do valor final, não da composição", () => {
+    const { total } = valorOficialDoOrcamento(1190, 1100);
+    const { valor, saldo } = calcularSinal(total, 30);
+    expect(valor).toBe(330);
+    expect(saldo).toBe(770);
+  });
+
+  it("valor negativo é contido em zero, e zero continua sendo permitido", () => {
+    expect(valorOficialDoOrcamento(1190, -50).total).toBe(0);
+    expect(valorOficialDoOrcamento(1190, 0)).toMatchObject({ total: 0, manual: true, diferenca: -1190 });
+    expect(calcularSinal(0, 30)).toEqual({ percentual: 30, valor: 0, saldo: 0 });
+  });
+
+  it("arredonda em centavos como o resto do dinheiro", () => {
+    expect(valorOficialDoOrcamento(1190, 1100.005).total).toBe(1100.01);
+    expect(valorOficialDoOrcamento(1190.004).totalCalculado).toBe(1190);
   });
 });

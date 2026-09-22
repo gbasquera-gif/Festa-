@@ -305,6 +305,7 @@ export {
   recusarOrcamentoSchema,
   situacaoDoOrcamento,
   totalDaLinha,
+  valorOficialDoOrcamento,
 } from "./orcamento";
 export type {
   AprovarPropostaInput,
