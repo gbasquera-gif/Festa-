@@ -218,9 +218,16 @@ export function PainelDeConflitos({
 export function BlocosDaReserva({
   valor,
   mudar,
+  /**
+   * O ajuste comercial gravado no pedido, quando a venda nasceu de uma
+   * proposta negociada. Não é editável aqui — entra só na conta, para o
+   * total exibido ser o preço que foi vendido e não a soma das parcelas.
+   */
+  ajusteComercial = 0,
 }: {
   valor: DadosDaReserva;
   mudar: (parcial: Partial<DadosDaReserva>) => void;
+  ajusteComercial?: number;
 }) {
   const { kits, temas, produtos } = useCatalogo();
   const kitEscolhido = kits?.find((k) => k.id === valor.kitId);
@@ -233,9 +240,10 @@ export function BlocosDaReserva({
         (Number(valor.valorProdutos) || 0) +
           (Number(valor.entrega) || 0) +
           (Number(valor.montagem) || 0) -
-          (Number(valor.desconto) || 0),
+          (Number(valor.desconto) || 0) +
+          ajusteComercial,
       ),
-    [valor.valorProdutos, valor.entrega, valor.montagem, valor.desconto],
+    [valor.valorProdutos, valor.entrega, valor.montagem, valor.desconto, ajusteComercial],
   );
 
   return (
@@ -507,6 +515,16 @@ export function BlocosDaReserva({
             <p>
               Total do pedido: <strong>{brl(total)}</strong>
             </p>
+            {/* Sem esta linha, quem soma as parcelas na cabeça acharia que o
+                total está errado — e "corrigiria" o preço de uma festa que a
+                cliente já fechou. */}
+            {ajusteComercial !== 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Inclui ajuste comercial do fechamento da proposta:{" "}
+                {ajusteComercial > 0 ? "+" : "−"} {brl(Math.abs(ajusteComercial))}. Ele acompanha
+                esta venda e não é alterado por aqui.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -337,6 +337,19 @@ model Order {
   deliveryFee Decimal @default(0) @db.Decimal(10, 2)
   assemblyFee Decimal @default(0) @db.Decimal(10, 2)
 
+  /// Ajuste comercial do fechamento, positivo ou negativo.
+  ///
+  /// A venda por WhatsApp fecha num número redondo: R$ 1.190 de composição
+  /// viram R$ 1.100 para ganhar a festa, ou R$ 1.300 porque a cliente pediu
+  /// algo a mais. Sem esta coluna, a diferença só teria dois lugares para ir
+  /// — inflar o preço dos produtos ou virar "desconto" —, e os dois mentem:
+  /// um falsifica o valor do acervo vendido, o outro dá sinal a uma
+  /// diferença que pode ser para cima.
+  ///
+  /// Com ela, `total` = produtos + entrega + montagem − desconto + ajuste, e
+  /// cada parcela continua valendo o que vale num relatório.
+  ajusteComercial Decimal @default(0) @db.Decimal(10, 2)
+
   total     Decimal  @default(0) @db.Decimal(10, 2)
   notes     String?
   createdAt DateTime @default(now())

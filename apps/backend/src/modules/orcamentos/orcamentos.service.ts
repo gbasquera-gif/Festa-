@@ -577,40 +577,39 @@ export class OrcamentosService {
   // ---------------------------------------------------------------- privados
 
   /**
-   * As parcelas que fazem o pedido fechar no valor aprovado.
+   * O financeiro do pedido que nasce da proposta.
    *
-   * A venda manual calcula o total como produtos + entrega + montagem −
-   * desconto, e não tem campo de acréscimo. O valor que precisa sair daqui é
-   * exatamente o que a cliente aprovou — nunca a soma dos itens recalculada
-   * agora, que pode ser outra por negociação.
+   * Cada parcela vai como é: os produtos pelo que valem, a entrega e a
+   * montagem pelo que foram cobradas, o desconto pelo desconto que existiu de
+   * verdade na composição. A negociação do fechamento vai separada, no
+   * ajuste, que pode ser para cima ou para baixo.
    *
-   * Então a diferença entra onde couber: para baixo, no desconto do pedido;
-   * para cima, no valor dos produtos. Entrega e montagem ficam intactas
-   * porque elas também decidem se a festa é entregue e montada.
+   * Empurrar a diferença para dentro de `valorProdutos` ou de `desconto`
+   * fecharia a mesma conta e estragaria o relatório: o primeiro inventaria
+   * preço de acervo vendido, o segundo daria sinal a uma diferença que às
+   * vezes é acréscimo.
    */
   private financeiroDaConversao(o: {
     subtotal: unknown;
+    desconto: unknown;
     entrega: unknown;
     montagem: unknown;
     total: unknown;
+    totalCalculado: unknown;
     valorAprovado: unknown;
   }) {
-    const entrega = num(o.entrega);
-    const montagem = num(o.montagem);
     // O aprovado manda. Editar proposta aprovada é recusado, então os dois
     // coincidem — mas se algum dia deixarem de coincidir, quem vale é o que
     // a cliente aceitou.
-    const alvoEmCentavos = toCentsInt(
-      o.valorAprovado !== null && o.valorAprovado !== undefined ? num(o.valorAprovado) : num(o.total),
-    );
-    const brutoEmCentavos = toCentsInt(num(o.subtotal)) + toCentsInt(entrega) + toCentsInt(montagem);
-    const sobra = brutoEmCentavos - alvoEmCentavos;
+    const oficial =
+      o.valorAprovado !== null && o.valorAprovado !== undefined ? num(o.valorAprovado) : num(o.total);
 
     return {
-      valorProdutos: fromCentsInt(toCentsInt(num(o.subtotal)) + Math.max(0, -sobra)),
-      entrega,
-      montagem,
-      desconto: fromCentsInt(Math.max(0, sobra)),
+      valorProdutos: num(o.subtotal),
+      entrega: num(o.entrega),
+      montagem: num(o.montagem),
+      desconto: num(o.desconto),
+      ajusteComercial: fromCentsInt(toCentsInt(oficial) - toCentsInt(num(o.totalCalculado))),
       sinal: 0,
       formaPagamento: "PIX",
       statusPagamento: "PENDING",

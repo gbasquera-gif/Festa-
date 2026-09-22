@@ -71,6 +71,8 @@ export const manualReservationSchema = z.object({
     entrega: z.coerce.number().min(0).default(0),
     montagem: z.coerce.number().min(0).default(0),
     desconto: z.coerce.number().min(0).default(0),
+    /** Sem `min`: o fechamento pode ser acima da composição. */
+    ajusteComercial: z.coerce.number().min(-1_000_000).max(1_000_000).default(0),
     sinal: z.coerce.number().min(0).default(0),
     formaPagamento: z.enum(PAYMENT_METHODS).default("PIX"),
     statusPagamento: z.enum(PAYMENT_STATUSES).default("PENDING"),
@@ -93,8 +95,19 @@ export function totalDaVendaManual(f: {
   entrega?: number;
   montagem?: number;
   desconto?: number;
+  /**
+   * O ajuste do fechamento, que pode subir ou baixar o total sem mexer em
+   * nenhuma parcela. Não é desconto: desconto tem sinal, e isto vai para os
+   * dois lados.
+   */
+  ajusteComercial?: number;
 }): number {
-  const bruto = f.valorProdutos + (f.entrega ?? 0) + (f.montagem ?? 0) - (f.desconto ?? 0);
+  const bruto =
+    f.valorProdutos +
+    (f.entrega ?? 0) +
+    (f.montagem ?? 0) -
+    (f.desconto ?? 0) +
+    (f.ajusteComercial ?? 0);
   return Math.max(0, Math.round(bruto * 100) / 100);
 }
 
@@ -115,8 +128,15 @@ export function descontoEmbutido(p: {
   entrega?: number;
   montagem?: number;
   total: number;
+  /**
+   * O ajuste gravado no pedido entra na conta de volta: sem ele, uma venda
+   * fechada acima da composição reapareceria com desconto zero e total menor
+   * do que o vendido, e a primeira gravação baixaria o preço de uma festa já
+   * combinada.
+   */
+  ajusteComercial?: number;
 }): number {
-  const bruto = p.valorProdutos + (p.entrega ?? 0) + (p.montagem ?? 0);
+  const bruto = p.valorProdutos + (p.entrega ?? 0) + (p.montagem ?? 0) + (p.ajusteComercial ?? 0);
   return Math.max(0, Math.round((bruto - p.total) * 100) / 100);
 }
 
@@ -218,6 +238,11 @@ export const editarReservaSchema = manualReservationSchema
       entrega: z.coerce.number().min(0).default(0),
       montagem: z.coerce.number().min(0).default(0),
       desconto: z.coerce.number().min(0).default(0),
+      /**
+       * Opcional na edição: quem não manda não está zerando a negociação,
+       * está dizendo que não mexeu nela. O servidor mantém o que já estava.
+       */
+      ajusteComercial: z.coerce.number().min(-1_000_000).max(1_000_000).optional(),
     }),
   });
 

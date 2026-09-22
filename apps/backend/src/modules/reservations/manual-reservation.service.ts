@@ -124,6 +124,7 @@ export class ManualReservationService {
           assembly: input.logistica.assembly,
           deliveryFee: input.financeiro.entrega,
           assemblyFee: input.financeiro.montagem,
+          ajusteComercial: input.financeiro.ajusteComercial ?? 0,
           total,
           notes: input.evento.observacoes || undefined,
           items: {
@@ -206,6 +207,7 @@ export class ManualReservationService {
           select: {
             id: true,
             eventId: true,
+            ajusteComercial: true,
             event: {
               select: {
                 id: true,
@@ -259,7 +261,12 @@ export class ManualReservationService {
       });
     }
 
-    const total = totalDaVendaManual(input.financeiro);
+    // Edição que não fala do ajuste não está zerando a negociação: está
+    // dizendo que não mexeu nela. Zerar por omissão mudaria o preço de uma
+    // festa já vendida na primeira correção de endereço.
+    const ajusteComercial =
+      input.financeiro.ajusteComercial ?? Number(reserva.order.ajusteComercial);
+    const total = totalDaVendaManual({ ...input.financeiro, ajusteComercial });
     const precos = await this.precosDosItens(input.produtos.itens.map((i) => i.productId));
     const cliente = reserva.order.event.user;
     const emailNovo = input.cliente.email?.trim() || null;
@@ -306,6 +313,7 @@ export class ManualReservationService {
           assembly: input.logistica.assembly,
           deliveryFee: input.financeiro.entrega,
           assemblyFee: input.financeiro.montagem,
+          ajusteComercial,
           total,
           notes: observacoes,
           items: {

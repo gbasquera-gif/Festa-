@@ -33,6 +33,7 @@ interface ReservaCompleta {
     subtotalKit: string | number;
     deliveryFee: string | number;
     assemblyFee: string | number;
+    ajusteComercial?: string | number;
     total: string | number;
     notes: string | null;
     kitId: string | null;
@@ -61,6 +62,10 @@ function paraFormulario(r: ReservaCompleta): DadosDaReserva {
     valorProdutos: Number(r.order.subtotalKit),
     entrega: Number(r.order.deliveryFee),
     montagem: Number(r.order.assemblyFee),
+    // Venda que nasceu de proposta negociada tem ajuste próprio: sem ele a
+    // conta devolveria desconto errado, e a gravação seguinte mudaria o
+    // preço de uma festa já vendida.
+    ajusteComercial: Number(r.order.ajusteComercial ?? 0),
     total: Number(r.order.total),
   });
 
@@ -132,6 +137,16 @@ export default function EditarReserva() {
     }
   }, [reserva, carregado]);
 
+  /**
+   * O ajuste comercial não é editável aqui, mas entra na conta.
+   *
+   * Ele veio do fechamento da proposta. A tela de correção de reserva mexe
+   * nas parcelas; mudar a negociação é outro assunto, e nenhum campo desta
+   * tela promete isso. O que ela não pode é exibir um total que ignore o
+   * ajuste e gravar esse número por cima do preço combinado.
+   */
+  const ajusteComercial = Number(reserva?.order.ajusteComercial ?? 0);
+
   const total = useMemo(
     () =>
       totalDaVendaManual({
@@ -139,8 +154,9 @@ export default function EditarReserva() {
         entrega: Number(dados.entrega) || 0,
         montagem: Number(dados.montagem) || 0,
         desconto: Number(dados.desconto) || 0,
+        ajusteComercial,
       }),
-    [dados.valorProdutos, dados.entrega, dados.montagem, dados.desconto],
+    [dados.valorProdutos, dados.entrega, dados.montagem, dados.desconto, ajusteComercial],
   );
 
   const pago =
@@ -164,6 +180,7 @@ export default function EditarReserva() {
             entrega: Number(dados.entrega) || 0,
             montagem: Number(dados.montagem) || 0,
             desconto: Number(dados.desconto) || 0,
+            ajusteComercial,
           },
           origem: origem || undefined,
         }),
@@ -244,7 +261,7 @@ export default function EditarReserva() {
       )}
 
       <div className="space-y-6">
-        <BlocosDaReserva valor={dados} mudar={mudar} />
+        <BlocosDaReserva valor={dados} mudar={mudar} ajusteComercial={ajusteComercial} />
 
         <Card>
           <CardHeader className="pb-3">

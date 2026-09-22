@@ -44,6 +44,52 @@ describe("desconto na ida e na volta", () => {
   });
 });
 
+/**
+ * O ajuste comercial é o fechamento da negociação, e vale para os dois lados.
+ * Ele tem de sobreviver à mesma ida e volta: uma venda fechada acima da
+ * composição não pode reabrir mais barata.
+ */
+describe("ajuste comercial na ida e na volta", () => {
+  const casos = [
+    { valorProdutos: 1190, entrega: 0, montagem: 0, desconto: 0, ajusteComercial: -90 },
+    { valorProdutos: 1190, entrega: 0, montagem: 0, desconto: 0, ajusteComercial: 110 },
+    { valorProdutos: 800, entrega: 50, montagem: 50, desconto: 100, ajusteComercial: -50 },
+    { valorProdutos: 800, entrega: 50, montagem: 50, desconto: 100, ajusteComercial: 75.5 },
+    { valorProdutos: 1190, entrega: 0, montagem: 0, desconto: 0, ajusteComercial: 0 },
+  ];
+
+  for (const caso of casos) {
+    it(`${caso.valorProdutos} − ${caso.desconto} ${caso.ajusteComercial >= 0 ? "+" : "−"} ${Math.abs(caso.ajusteComercial)}`, () => {
+      const total = totalDaVendaManual(caso);
+      expect(total).toBe(
+        caso.valorProdutos + caso.entrega + caso.montagem - caso.desconto + caso.ajusteComercial,
+      );
+
+      // A volta devolve o desconto de verdade, e não o ajuste disfarçado.
+      const volta = descontoEmbutido({ ...caso, total });
+      expect(volta).toBe(caso.desconto);
+      expect(totalDaVendaManual({ ...caso, desconto: volta })).toBe(total);
+    });
+  }
+
+  it("venda fechada acima da composição não reabre mais barata", () => {
+    const caso = { valorProdutos: 1190, entrega: 0, montagem: 0, ajusteComercial: 110 };
+    const total = totalDaVendaManual(caso);
+    expect(total).toBe(1300);
+    // Sem o ajuste na conta, a volta daria desconto 0 e o total cairia para
+    // 1190 — o preço de uma festa já vendida mudaria sozinho.
+    expect(descontoEmbutido({ ...caso, total })).toBe(0);
+    expect(totalDaVendaManual({ ...caso, desconto: 0 })).toBe(1300);
+  });
+
+  it("pedido antigo, sem ajuste, se comporta como antes", () => {
+    const caso = { valorProdutos: 800, entrega: 50, montagem: 50, desconto: 100 };
+    const total = totalDaVendaManual(caso);
+    expect(total).toBe(800);
+    expect(descontoEmbutido({ ...caso, total })).toBe(100);
+  });
+});
+
 describe("editarReservaSchema", () => {
   const base = {
     cliente: { nome: "Maria", telefone: "49999990000" },
