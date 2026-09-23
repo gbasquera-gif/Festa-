@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EVENT_TYPE_META,
@@ -82,6 +82,20 @@ export default function Proposta({ token }: { token: string }) {
     queryFn: () => buscar(token),
     retry: false,
   });
+
+  /**
+   * A aba da cliente não diz "Gestão".
+   *
+   * A proposta pública é servida pelo mesmo aplicativo do painel, então ela
+   * herdava o título de lá. Quem abre o link é a cliente, e o que aparece na
+   * aba dela — e no que ela compartilha — tem de ser a Festaê, não o nome do
+   * sistema interno.
+   */
+  useEffect(() => {
+    const anterior = document.title;
+    document.title = "Sua proposta · Festaê";
+    return () => { document.title = anterior; };
+  }, []);
 
   const aprovar = useMutation({
     mutationFn: async () => {

@@ -5,12 +5,31 @@
     <!-- viewport-fit=cover para o conteúdo alcançar as bordas no iPhone com
          notch; sem user-scalable=no, que tiraria o zoom de quem precisa. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- ÍCONES
+       *
+       * O iPhone só usa o apple-touch-icon ao adicionar à tela inicial, e
+       * ignora o manifest para isso — por isso ele vem primeiro e num arquivo
+       * próprio, já sem a moldura branca da arte: o iOS aplica a máscara
+       * arredondada dele por cima.
+       *
+       * O favicon é a caixa sozinha. A arte inteira, com "FESTAÊ Gestão"
+       * escrito, vira um borrão cinza nos 16px de uma aba. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- O nome embaixo do ícone na tela inicial do iPhone. Sem isto, o iOS
+         usa o <title>, que é onde vive o nome da aba. -->
+    <meta name="apple-mobile-web-app-title" content="Festaê Gestão" />
+    <meta name="application-name" content="Festaê Gestão" />
+    <meta name="theme-color" content="#1B2E4B" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
       rel="stylesheet" />
-    <title>Festaê Admin</title>
+    <title>Festaê Gestão</title>
   </head>
   <body>
     <div id="root"></div>
