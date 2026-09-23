@@ -22,7 +22,7 @@ export class OrdersService {
   }
 
   async selectKit(eventId: string, input: SelectKitInput) {
-    const order = await this.getOrderOrThrow(eventId);
+    const order = await this.carrinhoAbertoOrThrow(eventId);
     const kit = await prisma.kit.findUnique({ where: { id: input.kitId } });
     if (!kit || !kit.active) throw new NotFoundException("Kit não encontrado.");
 
@@ -31,7 +31,7 @@ export class OrdersService {
   }
 
   async addItem(eventId: string, input: AddOrderItemInput) {
-    const order = await this.getOrderOrThrow(eventId);
+    const order = await this.carrinhoAbertoOrThrow(eventId);
     const product = await prisma.product.findUnique({ where: { id: input.productId } });
     if (!product || !product.active) throw new NotFoundException("Produto não encontrado.");
 
@@ -50,7 +50,7 @@ export class OrdersService {
   }
 
   async updateItem(eventId: string, productId: string, input: UpdateOrderItemInput) {
-    const order = await this.getOrderOrThrow(eventId);
+    const order = await this.carrinhoAbertoOrThrow(eventId);
 
     if (input.quantity === 0) {
       await prisma.orderItem.deleteMany({ where: { orderId: order.id, productId } });
@@ -72,12 +72,7 @@ export class OrdersService {
    * desatualizada e a API é a fronteira que precisa segurar a regra.
    */
   async setLogistics(eventId: string, input: SetLogisticsInput) {
-    const order = await this.getOrderOrThrow(eventId);
-    if (order.status !== "CART") {
-      throw new ConflictException(
-        "Este pedido já foi enviado. Fale com a Festaê para alterar a entrega ou a montagem.",
-      );
-    }
+    const order = await this.carrinhoAbertoOrThrow(eventId);
 
     const allowed = checkFulfillment(input.fulfillment, order.event.city, input.assembly);
     if (!allowed.allowed) throw new BadRequestException(allowed.reason);
@@ -103,6 +98,35 @@ export class OrdersService {
     });
 
     return this.recalculate(order.id);
+  }
+
+  /**
+   * O pedido, desde que ainda seja carrinho.
+   *
+   * Toda mudança que a loja faz no pedido — kit, itens, quantidade, remoção,
+   * entrega e montagem — passa por aqui. Depois que o pedido vira reserva,
+   * ele guarda o kit congelado, o estoque comprometido para a data e um
+   * valor que pode já ter sido negociado e pago em parte. Mudar qualquer
+   * uma dessas coisas pelo carrinho pularia a conferência de estoque e
+   * reescreveria o preço com a tabela, por cima do combinado.
+   *
+   * Por isso a pergunta é "já existe reserva?", e não só o status: o
+   * pedido de uma reserva cancelada continua sendo história, não carrinho.
+   * O status fica junto na conta para não afrouxar o que a entrega e a
+   * montagem já exigiam antes.
+   *
+   * A alteração de uma reserva existe — é a edição pelo painel, que confere
+   * estoque, preserva o que foi negociado e só recongela o kit se ele mudar.
+   */
+  private async carrinhoAbertoOrThrow(eventId: string) {
+    const order = await this.getOrderOrThrow(eventId);
+    if (order.reservation || order.status !== "CART") {
+      throw new ConflictException(
+        "Este pedido já virou reserva e não pode mais ser alterado pelo carrinho. " +
+          "Para mudar kit, itens, entrega ou montagem, fale com a Festaê — a alteração é feita na reserva, pelo painel.",
+      );
+    }
+    return order;
   }
 
   private async getOrderOrThrow(eventId: string) {
