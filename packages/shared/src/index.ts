@@ -288,6 +288,9 @@ export type {
 } from "./reservas";
 
 export {
+  CATEGORIAS_DA_PERDA,
+  CATEGORIA_DA_PERDA_LABEL,
+  converterOrcamentoSchema,
   STATUS_DO_ORCAMENTO,
   STATUS_DO_ORCAMENTO_LABEL,
   STATUS_DO_ORCAMENTO_NOTA,
@@ -309,9 +312,13 @@ export {
 } from "./orcamento";
 export type {
   AprovarPropostaInput,
+  CategoriaDaPerda,
+  ConverterOrcamentoInput,
   LinhaDoOrcamento,
   OrcamentoInput,
   StatusDoOrcamento,
   TipoDaLinha,
   TotaisDoOrcamento,
 } from "./orcamento";
+
+export { formasDoTelefone, normalizarTelefone } from "./telefone";

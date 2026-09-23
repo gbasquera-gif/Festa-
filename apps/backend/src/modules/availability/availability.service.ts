@@ -3,10 +3,12 @@ import { prisma } from "@festae/database";
 import { RESERVATION_HOLD_MINUTES } from "@festae/shared";
 import {
   conflitosDoPedido,
+  itensDoKitDoPedido,
   somarCompromisso,
   type Conflito,
   type PedidoComprometido,
 } from "./item-commitment";
+import { SELECAO_DO_COMPROMISSO } from "./selecao-do-pedido";
 
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
@@ -118,12 +120,7 @@ export class AvailabilityService {
       },
       select: {
         eventDate: true,
-        order: {
-          select: {
-            kit: { select: { products: { select: { productId: true, quantity: true } } } },
-            items: { select: { productId: true, quantity: true } },
-          },
-        },
+        order: { select: SELECAO_DO_COMPROMISSO },
       },
     });
 
@@ -135,7 +132,7 @@ export class AvailabilityService {
 
       const doDia = pedidosPorDia.get(key) ?? [];
       doDia.push({
-        itensDoKit: reservation.order.kit?.products ?? [],
+        itensDoKit: itensDoKitDoPedido(reservation.order),
         itensAvulsos: reservation.order.items,
       });
       pedidosPorDia.set(key, doDia);
@@ -207,18 +204,11 @@ export class AvailabilityService {
         status: { in: [...COUNTED_STATUSES] },
         ...(ignorarOrderId ? { orderId: { not: ignorarOrderId } } : {}),
       },
-      select: {
-        order: {
-          select: {
-            kit: { select: { products: { select: { productId: true, quantity: true } } } },
-            items: { select: { productId: true, quantity: true } },
-          },
-        },
-      },
+      select: { order: { select: SELECAO_DO_COMPROMISSO } },
     });
 
     const pedidos: PedidoComprometido[] = reservas.map((reserva) => ({
-      itensDoKit: reserva.order.kit?.products ?? [],
+      itensDoKit: itensDoKitDoPedido(reserva.order),
       itensAvulsos: reserva.order.items,
     }));
 

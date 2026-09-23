@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "./enums";
+import { SALE_CHANNELS } from "./sale-channels";
 import { dataDaFestaSchema } from "./data-da-festa";
 import { DEPOSIT_RATE, fromCentsInt, toCentsInt } from "./pricing";
 
@@ -220,6 +221,12 @@ export const orcamentoSchema = z.object({
      * nenhuma delas.
      */
     percentualDoSinal: z.coerce.number().min(0).max(100).optional(),
+    /**
+     * Por onde a cliente chegou. Opcional: "não sei" é resposta melhor que um
+     * canal escolhido ao acaso. A conversão em reserva pede o canal se ele
+     * ainda estiver vazio.
+     */
+    canal: z.enum(SALE_CHANNELS).nullable().optional(),
   }),
   itens: z.array(linhaDoOrcamentoSchema).min(1, "A proposta precisa de ao menos um item."),
   valores: z.object({
@@ -243,6 +250,17 @@ export const orcamentoSchema = z.object({
 export type OrcamentoInput = z.infer<typeof orcamentoSchema>;
 
 /**
+ * O que a conversão em reserva aceita.
+ *
+ * O canal só é usado quando a proposta ainda não tem um: a venda nasce com a
+ * origem declarada por quem converte, e nunca com uma escolhida pelo sistema.
+ */
+export const converterOrcamentoSchema = z.object({
+  canal: z.enum(SALE_CHANNELS).optional(),
+});
+export type ConverterOrcamentoInput = z.infer<typeof converterOrcamentoSchema>;
+
+/**
  * O aceite da cliente.
  *
  * Pede o nome de quem está aprovando — é a evidência mínima de manifestação,
@@ -254,7 +272,35 @@ export const aprovarPropostaSchema = z.object({
 });
 export type AprovarPropostaInput = z.infer<typeof aprovarPropostaSchema>;
 
+/**
+ * Por que a proposta não virou venda — a parte que se agrupa.
+ *
+ * Lista curta, com OUTRO e o texto livre ao lado: lista longa faz a pessoa
+ * escolher o primeiro item parecido só para conseguir salvar.
+ */
+export const CATEGORIAS_DA_PERDA = [
+  "PRECO",
+  "DATA_INDISPONIVEL",
+  "FECHOU_COM_OUTRO",
+  "DESISTIU",
+  "SEM_RESPOSTA",
+  "OUTRO",
+] as const;
+export type CategoriaDaPerda = (typeof CATEGORIAS_DA_PERDA)[number];
+
+export const CATEGORIA_DA_PERDA_LABEL: Record<CategoriaDaPerda, string> = {
+  PRECO: "Preço",
+  DATA_INDISPONIVEL: "Data indisponível",
+  FECHOU_COM_OUTRO: "Fechou com outro fornecedor",
+  DESISTIU: "Desistiu da festa",
+  SEM_RESPOSTA: "Sem resposta",
+  OUTRO: "Outro motivo",
+};
+
 export const recusarOrcamentoSchema = z.object({
+  /** Obrigatória: é ela que permite contar por que se perde venda. */
+  categoria: z.enum(CATEGORIAS_DA_PERDA, { message: "Escolha o motivo da perda." }),
+  /** Complemento livre, para o que a categoria não diz. */
   motivo: z.string().max(500).optional().or(z.literal("")),
 });
 

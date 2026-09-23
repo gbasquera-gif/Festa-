@@ -1,6 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { orcamentoSchema, recusarOrcamentoSchema, type OrcamentoInput } from "@festae/shared";
+import {
+  converterOrcamentoSchema,
+  orcamentoSchema,
+  recusarOrcamentoSchema,
+  type CategoriaDaPerda,
+  type ConverterOrcamentoInput,
+  type OrcamentoInput,
+  type SaleChannel,
+} from "@festae/shared";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -81,9 +89,10 @@ export class OrcamentosController {
   @Patch(":id/recusar")
   recusar(
     @Param("id") id: string,
-    @Body(new ZodValidationPipe(recusarOrcamentoSchema)) body: { motivo?: string },
+    @Body(new ZodValidationPipe(recusarOrcamentoSchema))
+    body: { categoria: CategoriaDaPerda; motivo?: string },
   ) {
-    return this.orcamentos.recusar(id, body.motivo);
+    return this.orcamentos.recusar(id, body.categoria, body.motivo);
   }
 
   @ApiOperation({
@@ -94,10 +103,12 @@ export class OrcamentosController {
   @Post(":id/confirmar-sinal")
   confirmarSinal(
     @Param("id") id: string,
-    @Body() body: { forma?: string; recebidoEm?: string },
+    @Body() body: { forma?: string; recebidoEm?: string; canal?: SaleChannel },
     @CurrentUser() user: AuthUser,
   ) {
-    return this.orcamentos.confirmarSinal(id, user.userId, body ?? {});
+    const canal = converterOrcamentoSchema.safeParse({ canal: body?.canal ?? undefined });
+    if (!canal.success) throw new BadRequestException("Canal inválido.");
+    return this.orcamentos.confirmarSinal(id, user.userId, { ...(body ?? {}), canal: canal.data.canal });
   }
 
   @ApiOperation({
@@ -106,7 +117,11 @@ export class OrcamentosController {
       "Passa pelo mesmo fluxo da venda manual, com a mesma checagem de disponibilidade. Falta de peça devolve 409 com os conflitos e nada é criado.",
   })
   @Post(":id/converter")
-  converter(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.orcamentos.converter(id, user.userId);
+  converter(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(converterOrcamentoSchema)) body: ConverterOrcamentoInput,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.orcamentos.converter(id, user.userId, body?.canal);
   }
 }

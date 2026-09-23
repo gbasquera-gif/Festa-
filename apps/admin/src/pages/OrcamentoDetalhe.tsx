@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
 import {
+  CATEGORIAS_DA_PERDA,
+  CATEGORIA_DA_PERDA_LABEL,
   EVENT_TYPE_META,
+  SALE_CHANNELS,
+  SALE_CHANNEL_LABELS,
+  type SaleChannel,
   STATUS_DO_ORCAMENTO_LABEL,
   TIPO_DA_LINHA_LABEL,
   formatarDataDaFesta,
@@ -73,6 +78,9 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   const [, navegar] = useLocation();
   const queryClient = useQueryClient();
   const [motivo, setMotivo] = useState("");
+  const [categoriaDaPerda, setCategoriaDaPerda] = useState("");
+  /** Canal informado na conversão, quando a proposta não tem um. */
+  const [canalNaConversao, setCanalNaConversao] = useState("");
   const [perdendo, setPerdendo] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
   const [conflito, setConflito] = useState<string | null>(null);
@@ -131,7 +139,11 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   });
 
   const recusar = useMutation({
-    mutationFn: () => api(`/orcamentos/${id}/recusar`, { method: "PATCH", body: JSON.stringify({ motivo }) }),
+    mutationFn: () =>
+      api(`/orcamentos/${id}/recusar`, {
+        method: "PATCH",
+        body: JSON.stringify({ categoria: categoriaDaPerda, motivo }),
+      }),
     onSuccess: () => { invalidar(); setPerdendo(false); toast.success("Proposta marcada como perdida."); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao registrar."),
   });
@@ -148,7 +160,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     mutationFn: () =>
       api<{ reservaId: string; valor: number }>(`/orcamentos/${id}/confirmar-sinal`, {
         method: "POST",
-        body: JSON.stringify({ forma: "PIX" }),
+        body: JSON.stringify({ forma: "PIX", canal: canalNaConversao || undefined }),
       }),
     onSuccess: (r) => {
       invalidar();
@@ -159,7 +171,11 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   });
 
   const converter = useMutation({
-    mutationFn: () => api<{ reservaId: string }>(`/orcamentos/${id}/converter`, { method: "POST" }),
+    mutationFn: () =>
+      api<{ reservaId: string }>(`/orcamentos/${id}/converter`, {
+        method: "POST",
+        body: JSON.stringify({ canal: canalNaConversao || undefined }),
+      }),
     onSuccess: (r) => {
       invalidar();
       toast.success("Reserva criada a partir da proposta.");
@@ -173,6 +189,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
 
   const situacao = o.situacao as StatusDoOrcamento;
   const ehRascunho = situacao === "RASCUNHO";
+  /** Aprovada, ainda não convertida e sem canal: a conversão vai pedir um. */
+  const precisaDeCanal = situacao === "APROVADO" && !o.reservaId && !o.canal;
   /**
    * Quem some da tela e quem fica.
    *
@@ -201,6 +219,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           <p className="mt-0.5 text-sm text-muted-foreground">
             {tipoDeFesta} em {formatarDataDaFesta(o.festaEm)} · {o.cidade}
             {o.local ? ` · ${o.local}` : ""} · válida até {formatarDataDaFesta(o.validoAte)}
+            {" · "}
+            {o.canal ? `chegou por ${SALE_CHANNEL_LABELS[o.canal as SaleChannel]}` : "canal não informado"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -216,7 +236,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             <Button
               className="min-h-11"
               onClick={() => { setConflito(null); confirmarSinal.mutate(); }}
-              disabled={confirmarSinal.isPending}
+              disabled={confirmarSinal.isPending || (precisaDeCanal && !canalNaConversao)}
             >
               {confirmarSinal.isPending ? "Confirmando…" : `Confirmar sinal de ${brl(o.sinal.valor)}`}
             </Button>
@@ -226,13 +246,35 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               variant="outline"
               className="min-h-11"
               onClick={() => { setConflito(null); converter.mutate(); }}
-              disabled={converter.isPending}
+              disabled={converter.isPending || (precisaDeCanal && !canalNaConversao)}
             >
               {converter.isPending ? "Convertendo…" : "Só converter em reserva"}
             </Button>
           )}
         </div>
       </div>
+
+      {/* O canal que faltou. A venda não nasce com origem escolhida pelo
+          sistema: sem canal na proposta, quem converte diz por onde a
+          cliente chegou — e só então os botões acima se liberam. */}
+      {precisaDeCanal && (
+        <div className="painel-cartao flex flex-wrap items-center gap-3 p-4">
+          <label htmlFor="canal-conversao" className="text-sm" style={{ color: "var(--color-navy)" }}>
+            Antes de virar reserva: por qual canal esta cliente chegou?
+          </label>
+          <select
+            id="canal-conversao"
+            value={canalNaConversao}
+            onChange={(e) => setCanalNaConversao(e.target.value)}
+            className="h-11 min-w-[12rem] rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">Escolha o canal</option>
+            {SALE_CHANNELS.map((c) => (
+              <option key={c} value={c}>{SALE_CHANNEL_LABELS[c]}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {conflito && (
         <div className="painel-cartao p-4" style={{ borderColor: "var(--color-coral)" }}>
@@ -466,8 +508,13 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </div>
       )}
 
-      {o.motivoDaPerda && (
-        <p className="pb-4 text-sm text-muted-foreground">Motivo registrado: {o.motivoDaPerda}</p>
+      {(o.categoriaDaPerda || o.motivoDaPerda) && (
+        <p className="pb-4 text-sm text-muted-foreground">
+          Motivo registrado:{" "}
+          {o.categoriaDaPerda ? CATEGORIA_DA_PERDA_LABEL[o.categoriaDaPerda as keyof typeof CATEGORIA_DA_PERDA_LABEL] : ""}
+          {o.categoriaDaPerda && o.motivoDaPerda ? " — " : ""}
+          {o.motivoDaPerda ?? ""}
+        </p>
       )}
 
       <AlertDialog open={excluindo} onOpenChange={(v) => !v && setExcluindo(false)}>
@@ -511,18 +558,38 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Marcar a proposta de {o.cliente} como perdida?</AlertDialogTitle>
             <AlertDialogDescription>
-              Ela sai da lista de acompanhamento e fica no histórico. O motivo é opcional — e é ele
-              que, lá na frente, diz onde a Festaê está perdendo venda.
+              Ela sai da lista de acompanhamento e fica no histórico. O motivo é o que, lá na
+              frente, diz onde a Festaê está perdendo venda — por isso a categoria é obrigatória, e
+              o comentário fica para o que ela não disser.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <label htmlFor="categoria-perda" className="text-sm" style={{ color: "var(--color-navy)" }}>
+            Motivo
+          </label>
+          <select
+            id="categoria-perda"
+            value={categoriaDaPerda}
+            onChange={(e) => setCategoriaDaPerda(e.target.value)}
+            className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">Escolha o motivo</option>
+            {CATEGORIAS_DA_PERDA.map((c) => (
+              <option key={c} value={c}>{CATEGORIA_DA_PERDA_LABEL[c]}</option>
+            ))}
+          </select>
           <Input
             value={motivo}
             onChange={(e) => setMotivo(e.target.value)}
-            placeholder="Preço, prazo, fechou com outro fornecedor…"
+            placeholder="Comentário (opcional)"
+            aria-label="Comentário sobre a perda"
           />
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11">Cancelar</AlertDialogCancel>
-            <AlertDialogAction className="min-h-11" onClick={(e) => { e.preventDefault(); recusar.mutate(); }}>
+            <AlertDialogAction
+              className="min-h-11"
+              disabled={!categoriaDaPerda || recusar.isPending}
+              onClick={(e) => { e.preventDefault(); recusar.mutate(); }}
+            >
               Marcar como perdida
             </AlertDialogAction>
           </AlertDialogFooter>

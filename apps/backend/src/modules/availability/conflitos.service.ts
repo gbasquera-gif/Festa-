@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { somarCompromisso, type PedidoComprometido } from "./item-commitment";
+import { itensDoKitDoPedido, somarCompromisso, type PedidoComprometido } from "./item-commitment";
+import { SELECAO_DO_COMPROMISSO } from "./selecao-do-pedido";
 
 /** Quantas unidades sobrando já contam como aperto e merecem aviso. */
 const MARGEM_DE_RISCO = 1;
@@ -109,8 +110,7 @@ export class ConflitosService {
         status: true,
         order: {
           select: {
-            kit: { select: { products: { select: { productId: true, quantity: true } } } },
-            items: { select: { productId: true, quantity: true } },
+            ...SELECAO_DO_COMPROMISSO,
             event: { select: { user: { select: { name: true, phone: true } } } },
           },
         },
@@ -128,7 +128,7 @@ export class ConflitosService {
 
     const idsUsados = new Set<string>();
     for (const reserva of reservas) {
-      for (const item of [...(reserva.order.kit?.products ?? []), ...reserva.order.items]) {
+      for (const item of [...itensDoKitDoPedido(reserva.order), ...reserva.order.items]) {
         idsUsados.add(item.productId);
       }
     }
@@ -143,7 +143,7 @@ export class ConflitosService {
 
     for (const [data, doDia] of porData) {
       const pedidos: PedidoComprometido[] = doDia.map((r) => ({
-        itensDoKit: r.order.kit?.products ?? [],
+        itensDoKit: itensDoKitDoPedido(r.order),
         itensAvulsos: r.order.items,
       }));
 

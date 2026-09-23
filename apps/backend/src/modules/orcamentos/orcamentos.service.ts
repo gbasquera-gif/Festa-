@@ -12,12 +12,15 @@ import {
   fromCentsInt,
   toCentsInt,
   exigeNovaVersao,
+  normalizarTelefone,
   podeSerAprovada,
   situacaoDoOrcamento,
   totalDaLinha,
   valorOficialDoOrcamento,
+  type CategoriaDaPerda,
   type LinhaDoOrcamento,
   type OrcamentoInput,
+  type SaleChannel,
   type StatusDoOrcamento,
 } from "@festae/shared";
 import { ManualReservationService } from "../reservations/manual-reservation.service";
@@ -82,7 +85,7 @@ export class OrcamentosService {
         token: novoToken(),
         userId: input.cliente.userId || undefined,
         clienteNome: input.cliente.nome.trim(),
-        clienteTelefone: input.cliente.telefone.trim(),
+        clienteTelefone: normalizarTelefone(input.cliente.telefone),
         clienteEmail: input.cliente.email?.trim() || undefined,
         festaEm: input.festa.data,
         tipoDeFesta: input.festa.tipo as never,
@@ -96,6 +99,7 @@ export class OrcamentosService {
         percentualDoSinal: input.proposta.percentualDoSinal ?? null,
         mostrarValoresIndividuais: input.proposta.mostrarValoresIndividuais ?? false,
         imagens: input.proposta.imagens,
+        canal: input.proposta.canal ?? null,
         ...totais,
         criadoPorId,
         itens: { create: this.linhasParaBanco(input.itens) },
@@ -145,7 +149,7 @@ export class OrcamentosService {
         where: { id: atual.id },
         data: {
           clienteNome: input.cliente.nome.trim(),
-          clienteTelefone: input.cliente.telefone.trim(),
+          clienteTelefone: normalizarTelefone(input.cliente.telefone),
           clienteEmail: input.cliente.email?.trim() || null,
           userId: input.cliente.userId || null,
           festaEm: input.festa.data,
@@ -160,6 +164,7 @@ export class OrcamentosService {
           percentualDoSinal: input.proposta.percentualDoSinal ?? null,
           mostrarValoresIndividuais: input.proposta.mostrarValoresIndividuais ?? false,
           imagens: input.proposta.imagens,
+          canal: input.proposta.canal ?? null,
           ...totais,
           versao: precisaVersionar ? atual.versao + 1 : atual.versao,
           status: "RASCUNHO",
@@ -181,14 +186,28 @@ export class OrcamentosService {
       throw new BadRequestException("A proposta precisa de ao menos um item antes de ser enviada.");
     }
 
+    const agora = new Date();
+    // O primeiro envio só é gravado quando dá para provar que é o primeiro:
+    // proposta na versão 1 e sem envio registrado. Proposta antiga que já
+    // tinha saído (e foi editada, ou está sendo reenviada) fica sem ele — a
+    // data verdadeira não existe em lugar nenhum, e a de hoje mentiria.
+    const ePrimeiroEnvio = o.primeiroEnvioEm === null && o.enviadoEm === null && o.versao === 1;
+
     await prisma.orcamento.update({
       where: { id },
-      data: { status: "ENVIADO", enviadoEm: new Date(), recusadoEm: null, motivoDaPerda: null },
+      data: {
+        status: "ENVIADO",
+        enviadoEm: agora,
+        ...(ePrimeiroEnvio ? { primeiroEnvioEm: agora } : {}),
+        recusadoEm: null,
+        motivoDaPerda: null,
+        categoriaDaPerda: null,
+      },
     });
     return { token: o.token };
   }
 
-  async recusar(id: string, motivo?: string) {
+  async recusar(id: string, categoria: CategoriaDaPerda, motivo?: string) {
     const o = await prisma.orcamento.findUnique({ where: { id } });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
     if (o.status === "APROVADO") {
@@ -196,7 +215,12 @@ export class OrcamentosService {
     }
     await prisma.orcamento.update({
       where: { id },
-      data: { status: "RECUSADO", recusadoEm: new Date(), motivoDaPerda: motivo?.trim() || null },
+      data: {
+        status: "RECUSADO",
+        recusadoEm: new Date(),
+        categoriaDaPerda: categoria,
+        motivoDaPerda: motivo?.trim() || null,
+      },
     });
     return { ok: true };
   }
@@ -426,9 +450,20 @@ export class OrcamentosService {
    * `productId`, então não viram item de pedido — o dinheiro é registrado,
    * o acervo não é inventado.
    */
-  async converter(id: string, criadoPorId: string, origem = "WHATSAPP") {
+  async converter(id: string, criadoPorId: string, canalInformado?: SaleChannel) {
     const o = await prisma.orcamento.findUnique({ where: { id }, include: { itens: true } });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
+
+    // A venda nasce com a origem declarada: a da proposta, ou a que quem
+    // converte informa agora. Nunca uma escolhida pelo sistema — o canal
+    // "padrão" que existia aqui gravava toda proposta convertida como
+    // WhatsApp, e é exatamente o número que a Inteligência vai ler.
+    const canal = o.canal ?? canalInformado ?? null;
+    if (!canal) {
+      throw new BadRequestException(
+        "Informe por qual canal esta cliente chegou antes de converter a proposta.",
+      );
+    }
     if (o.status !== "APROVADO") {
       throw new ConflictException(
         "Só proposta aprovada vira reserva. Registre a aprovação da cliente antes de converter.",
@@ -464,15 +499,21 @@ export class OrcamentosService {
           cidade: o.cidade,
         },
         financeiro: this.financeiroDaConversao(o),
-        origem,
+        origem: canal,
         observacoesInternas: `Nasceu da proposta nº ${o.numero} (versão ${o.versao}).`,
       } as never,
       criadoPorId,
+      { tipo: "CONVERSAO_DE_PROPOSTA", referencia: o.id },
     );
 
     await prisma.orcamento.update({
       where: { id: o.id },
-      data: { reservationId: (reserva as { id: string }).id },
+      data: {
+        reservationId: (reserva as { id: string }).id,
+        // Informado na conversão, o canal fica também na proposta: o funil e
+        // a venda passam a contar a mesma origem.
+        ...(o.canal ? {} : { canal }),
+      },
     });
 
     return { reservaId: (reserva as { id: string }).id };
@@ -496,7 +537,7 @@ export class OrcamentosService {
   async confirmarSinal(
     id: string,
     usuarioId: string,
-    dados: { forma?: string; recebidoEm?: string } = {},
+    dados: { forma?: string; recebidoEm?: string; canal?: SaleChannel } = {},
   ) {
     const o = await prisma.orcamento.findUnique({ where: { id } });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
@@ -526,7 +567,7 @@ export class OrcamentosService {
     // que a conversão pode ser recusada. Registrar o pagamento antes deixaria
     // dinheiro lançado numa venda que não existe.
     const reservaId =
-      o.reservationId ?? (await this.converter(id, usuarioId)).reservaId;
+      o.reservationId ?? (await this.converter(id, usuarioId, dados.canal)).reservaId;
 
     await this.pagamentos.registrarPagamento(
       reservaId,
@@ -701,6 +742,9 @@ export class OrcamentosService {
       enviadoEm: o.enviadoEm?.toISOString() ?? null,
       aprovadoEm: o.aprovadoEm?.toISOString() ?? null,
       motivoDaPerda: o.motivoDaPerda ?? null,
+      categoriaDaPerda: o.categoriaDaPerda ?? null,
+      canal: o.canal ?? null,
+      primeiroEnvioEm: o.primeiroEnvioEm?.toISOString() ?? null,
       token: o.token,
       reservaId: o.reservationId ?? null,
     };

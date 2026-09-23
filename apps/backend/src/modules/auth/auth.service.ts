@@ -3,7 +3,7 @@ import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/co
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { prisma } from "@festae/database";
-import { TERMS_VERSION } from "@festae/shared";
+import { TERMS_VERSION, normalizarTelefone } from "@festae/shared";
 import type { LoginInput, SignupInput } from "@festae/shared";
 
 @Injectable()
@@ -19,7 +19,9 @@ export class AuthService {
       data: {
         name: input.name,
         email: input.email,
-        phone: input.phone,
+        // Só dígitos, como todo telefone gravado: é o que deixa a cliente do
+        // app ser reconhecida quando a Festaê lança uma venda pelo número dela.
+        phone: input.phone ? normalizarTelefone(input.phone) : input.phone,
         passwordHash,
         // Prova de consentimento: quando aceitou e qual versão do texto
         // estava valendo. Publicar termos novos não apaga esse histórico.

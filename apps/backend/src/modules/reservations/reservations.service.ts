@@ -15,7 +15,8 @@ import {
 } from "@festae/shared";
 import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
-import { mensagemDeConflito } from "../availability/item-commitment";
+import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-commitment";
+import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
 
 @Injectable()
@@ -52,9 +53,14 @@ export class ReservationsService {
       itensAvulsos: event.order.items,
     });
     if (conflitos.length > 0) {
+      await registrarConflitosDeAcervo(conflitos, event.date, "LOJA", event.order.id);
       throw new ConflictException(mensagemDeConflito(conflitos));
     }
 
+    // O pedido vira reserva com a composição que acabou de ser conferida
+    // congelada junto. É ela que a disponibilidade passa a ler daqui em
+    // diante — mudar o kit no cadastro depois não mexe nesta festa.
+    const itensDoKit = event.order.kit?.products ?? [];
     const [reservation] = await prisma.$transaction([
       prisma.reservation.create({
         data: {
@@ -63,7 +69,18 @@ export class ReservationsService {
           notes: input.notes,
         },
       }),
-      prisma.order.update({ where: { id: event.order.id }, data: { status: "REQUESTED" } }),
+      prisma.orderKitItem.deleteMany({ where: { orderId: event.order.id } }),
+      prisma.orderKitItem.createMany({
+        data: itensDoKit.map((i) => ({
+          orderId: event.order!.id,
+          productId: i.productId,
+          quantity: i.quantity,
+        })),
+      }),
+      prisma.order.update({
+        where: { id: event.order.id },
+        data: { status: "REQUESTED", kitCongeladoEm: new Date() },
+      }),
     ]);
 
     return reservation;
@@ -84,6 +101,9 @@ export class ReservationsService {
           include: {
             event: { include: { user: true, theme: true } },
             kit: { include: { products: { include: { product: true } } } },
+            // O que foi vendido. A lista de separação usa isto quando existe;
+            // o kit acima fica para pedido anterior ao congelamento.
+            kitItems: { include: { product: true } },
             items: { include: { product: true } },
             payments: { orderBy: { createdAt: "desc" } },
           },
@@ -108,6 +128,9 @@ export class ReservationsService {
           include: {
             event: { include: { user: true, theme: true } },
             kit: { include: { products: { include: { product: true } } } },
+            // O que foi vendido. A lista de separação usa isto quando existe;
+            // o kit acima fica para pedido anterior ao congelamento.
+            kitItems: { include: { product: true } },
             items: { include: { product: true } },
             payments: { orderBy: { createdAt: "desc" } },
           },
@@ -445,6 +468,9 @@ export class ReservationsService {
       include: {
         order: {
           include: {
+            kitItems: { select: { productId: true, quantity: true } },
+            // Só para pedido anterior ao congelamento: a remarcação continua
+            // lendo o kit como sempre leu (sem produto desativado).
             kit: {
               select: {
                 products: {
@@ -478,15 +504,18 @@ export class ReservationsService {
       throw new BadRequestException("A festa já está marcada para esta data.");
     }
 
+    // O que muda de dia é o que foi vendido — o congelado —, e não o kit como
+    // está cadastrado hoje.
     const conflitos = await this.availability.conflitosDeItens(
       novaData,
       {
-        itensDoKit: reserva.order.kit?.products ?? [],
+        itensDoKit: itensDoKitDoPedido(reserva.order),
         itensAvulsos: reserva.order.items,
       },
       reserva.order.id,
     );
     if (conflitos.length > 0) {
+      await registrarConflitosDeAcervo(conflitos, novaData, "REAGENDAMENTO", id);
       throw new ConflictException({
         message: "Falta material na data nova.",
         conflitos: conflitos.map((c) => ({

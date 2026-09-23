@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import {
+  normalizarTelefone,
   RESERVATION_TASKS,
   diasAteAFesta,
   etapaDaRegua,
@@ -206,7 +207,7 @@ export class OperationsService {
           where: { id: reserva.order.event.userId },
           data: {
             ...(dados.nome ? { name: dados.nome.trim() } : {}),
-            ...(dados.telefone ? { phone: dados.telefone.trim() } : {}),
+            ...(dados.telefone ? { phone: normalizarTelefone(dados.telefone) } : {}),
           },
         });
       }

@@ -8,11 +8,18 @@ import {
 import { prisma } from "@festae/database";
 import {
   diaDaFesta,
+  formasDoTelefone,
+  normalizarTelefone,
   totalDaVendaManual,
   type EditarReservaInput,
   type ManualReservationInput,
 } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
+import { itensDoKitDoPedido } from "../availability/item-commitment";
+import {
+  registrarConflitosDeAcervo,
+  type ContextoDoConflito,
+} from "../availability/registro-de-conflitos";
 
 /** Estados que seguram data e material. Recusada e cancelada devolvem tudo. */
 const RESERVAS_ATIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
@@ -55,7 +62,15 @@ export class ManualReservationService {
    * reserva não — é o tipo de registro que ninguém encontra e que some da
    * agenda justamente por não ter reserva.
    */
-  async criar(input: ManualReservationInput, criadoPorId: string) {
+  async criar(
+    input: ManualReservationInput,
+    criadoPorId: string,
+    /**
+     * De onde a venda veio, para o registro de conflito de acervo saber
+     * distinguir uma venda de balcão de uma proposta convertida.
+     */
+    contexto: { tipo: ContextoDoConflito; referencia?: string } = { tipo: "VENDA_MANUAL" },
+  ) {
     // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
     // segunda regra de fuso à espera de divergir da primeira.
     const dataDaFesta = input.evento.data;
@@ -86,6 +101,7 @@ export class ManualReservationService {
 
     const conflitos = await this.availability.conflitosDeItens(dataDaFesta, pedido);
     if (conflitos.length > 0) {
+      await registrarConflitosDeAcervo(conflitos, dataDaFesta, contexto.tipo, contexto.referencia);
       throw new ConflictException({
         message: "Faltam itens para esta data.",
         conflitos: await this.detalhar(conflitos, dataDaFesta),
@@ -127,6 +143,16 @@ export class ManualReservationService {
           ajusteComercial: input.financeiro.ajusteComercial ?? 0,
           total,
           notes: input.evento.observacoes || undefined,
+          // A composição que acabou de passar pela conferência de estoque,
+          // congelada: é ela que esta festa compromete daqui em diante,
+          // mesmo que o kit mude no cadastro. Vazio quando não há kit.
+          kitCongeladoEm: new Date(),
+          kitItems: {
+            create: (kit?.products ?? []).map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+          },
           items: {
             create: input.produtos.itens.map((item) => ({
               productId: item.productId,
@@ -207,7 +233,20 @@ export class ManualReservationService {
           select: {
             id: true,
             eventId: true,
+            kitId: true,
             ajusteComercial: true,
+            kitCongeladoEm: true,
+            kitItems: { select: { productId: true, quantity: true } },
+            // Só para pedido anterior ao congelamento, lido como a edição
+            // sempre leu (sem produto desativado).
+            kit: {
+              select: {
+                products: {
+                  where: { product: { active: true } },
+                  select: { productId: true, quantity: true },
+                },
+              },
+            },
             event: {
               select: {
                 id: true,
@@ -249,12 +288,20 @@ export class ManualReservationService {
       throw new BadRequestException("O kit escolhido não existe mais.");
     }
 
+    // O kit só é relido do cadastro quando a própria edição troca de kit.
+    // Mantido o mesmo kit, a reserva continua segurando o que foi vendido —
+    // corrigir o endereço não pode, de carona, trazer para esta festa a
+    // composição nova que alguém salvou no cadastro semana passada.
+    const trocouDeKit = (input.produtos.kitId || null) !== (reserva.order.kitId ?? null);
+    const itensDoKit = trocouDeKit ? (kit?.products ?? []) : itensDoKitDoPedido(reserva.order);
+
     const conflitos = await this.availability.conflitosDeItens(
       dataDaFesta,
-      { itensDoKit: kit?.products ?? [], itensAvulsos: input.produtos.itens },
+      { itensDoKit, itensAvulsos: input.produtos.itens },
       reserva.order.id,
     );
     if (conflitos.length > 0) {
+      await registrarConflitosDeAcervo(conflitos, dataDaFesta, "EDICAO_DE_RESERVA", id);
       throw new ConflictException({
         message: "Faltam itens para esta data.",
         conflitos: await this.detalhar(conflitos, dataDaFesta, reserva.order.id),
@@ -277,7 +324,7 @@ export class ManualReservationService {
         where: { id: cliente.id },
         data: {
           name: input.cliente.nome.trim(),
-          phone: input.cliente.telefone.trim(),
+          phone: normalizarTelefone(input.cliente.telefone),
           // E-mail só preenche vazio. Ver a nota 2 acima.
           ...(emailNovo && !cliente.email && !cliente.passwordHash ? { email: emailNovo } : {}),
         },
@@ -307,6 +354,20 @@ export class ManualReservationService {
         where: { id: reserva.order.id },
         data: {
           kitId: kit?.id ?? null,
+          // Trocar de kit é a única edição que recongela: a festa passa a
+          // segurar a composição do kit novo, conferida logo acima.
+          ...(trocouDeKit
+            ? {
+                kitCongeladoEm: new Date(),
+                kitItems: {
+                  deleteMany: {},
+                  create: (kit?.products ?? []).map((item) => ({
+                    productId: item.productId,
+                    quantity: item.quantity,
+                  })),
+                },
+              }
+            : {}),
           subtotalKit: input.financeiro.valorProdutos,
           subtotalExtras: 0,
           fulfillment: input.logistica.fulfillment,
@@ -367,15 +428,17 @@ export class ManualReservationService {
    */
   private async acharOuCriarCliente(dados: ManualReservationInput["cliente"]) {
     const email = dados.email?.trim() || null;
-    const telefone = dados.telefone.trim();
+    const telefone = normalizarTelefone(dados.telefone);
 
     const existente = email
       ? await prisma.user.findUnique({ where: { email } })
-      : await prisma.user.findFirst({ where: { phone: telefone, deletedAt: null } });
+      : await this.clientePorTelefone(dados.telefone);
 
     if (existente && !existente.deletedAt) {
-      // Telefone novo de cliente conhecido é atualização, não conflito.
-      if (existente.phone !== telefone) {
+      // Telefone novo de cliente conhecido é atualização, não conflito. A
+      // comparação é pelos dígitos: o mesmo número com outra máscara não é
+      // telefone novo, e reescrevê-lo só mudaria a formatação.
+      if (normalizarTelefone(existente.phone) !== telefone) {
         await prisma.user.update({ where: { id: existente.id }, data: { phone: telefone } });
       }
       return existente;
@@ -389,6 +452,27 @@ export class ManualReservationService {
         role: "CLIENT",
       },
     });
+  }
+
+  /**
+   * A cliente que já tem este número, com qualquer máscara.
+   *
+   * Os telefones antigos não foram reescritos, então a comparação é feita
+   * pelos dígitos do que está gravado. Se houver mais de um cadastro com o
+   * mesmo número — duplicata de antes desta regra —, vale o mais antigo, e
+   * nenhum é fundido: juntar fichas é decisão de gente, não de busca.
+   */
+  private async clientePorTelefone(telefone: string) {
+    const formas = formasDoTelefone(telefone);
+    if (formas.length === 0) return null;
+
+    const [achado] = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM users
+       WHERE "deletedAt" IS NULL
+         AND regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g') = ANY(${formas})
+       ORDER BY "createdAt" ASC
+       LIMIT 1`;
+    return achado ? prisma.user.findUnique({ where: { id: achado.id } }) : null;
   }
 
   /** Preço de tabela de cada item, congelado no pedido. */
@@ -432,7 +516,9 @@ export class ManualReservationService {
         status: true,
         order: {
           select: {
-            kit: { select: { products: { select: { productId: true } } } },
+            kitCongeladoEm: true,
+            kitItems: { select: { productId: true, quantity: true } },
+            kit: { select: { products: { select: { productId: true, quantity: true } } } },
             items: { select: { productId: true } },
             event: { select: { user: { select: { name: true } } } },
           },
@@ -449,7 +535,7 @@ export class ManualReservationService {
       disponivel: Math.max(0, c.estoque - c.jaComprometido),
       reservasEmChoque: reservas
         .filter((r) =>
-          [...(r.order.kit?.products ?? []), ...r.order.items].some((i) =>
+          [...itensDoKitDoPedido(r.order), ...r.order.items].some((i) =>
             idsEmFalta.has(i.productId) && i.productId === c.productId,
           ),
         )

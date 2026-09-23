@@ -51,6 +51,9 @@ interface ReservationRow {
     fulfillment: "PICKUP" | "DELIVERY";
     assembly: boolean;
     kit: { name: string; products: { quantity: number; product: ProductRef }[] } | null;
+    /** A composição congelada na venda. Vazia em pedido anterior a ela. */
+    kitItems?: { quantity: number; product: ProductRef }[];
+    kitCongeladoEm?: string | null;
     items: { id: string; quantity: number; product: ProductRef }[];
     payments: {
       id: string;
@@ -177,10 +180,16 @@ function paymentSummary(row: ReservationRow) {
 function packingList(row: ReservationRow) {
   const grupos: { titulo: string; itens: { key: string; quantity: number; name: string }[] }[] = [];
 
-  if (row.order.kit && row.order.kit.products.length > 0) {
+  // Separa-se o que foi vendido: a composição congelada no pedido. O kit
+  // do cadastro só vale para pedido anterior ao congelamento — se alguém
+  // mudou o kit depois da venda, a lista não pode mandar carregar outra coisa.
+  const doKit = row.order.kitCongeladoEm
+    ? (row.order.kitItems ?? [])
+    : (row.order.kit?.products ?? []);
+  if (row.order.kit && doKit.length > 0) {
     grupos.push({
       titulo: row.order.kit.name,
-      itens: row.order.kit.products.map((link) => ({
+      itens: doKit.map((link) => ({
         key: `kit-${link.product.id}`,
         quantity: link.quantity,
         name: link.product.name,

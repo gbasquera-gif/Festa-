@@ -6,6 +6,8 @@ import { Plus, Trash2 } from "lucide-react";
 import {
   EVENT_TYPES,
   EVENT_TYPE_META,
+  SALE_CHANNELS,
+  SALE_CHANNEL_LABELS,
   TIPOS_DA_LINHA,
   TIPO_DA_LINHA_LABEL,
   calcularOrcamento,
@@ -79,6 +81,8 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   const [kitId, setKitId] = useState("");
   const [validade, setValidade] = useState("15");
   const [percentualDoSinal, setPercentualDoSinal] = useState("");
+  /** Vazio é "não informado" — melhor que um canal escolhido ao acaso. */
+  const [canal, setCanal] = useState("");
   const [mostrarValores, setMostrarValores] = useState(false);
   const [imagens, setImagens] = useState<string[]>([]);
   const [linhas, setLinhas] = useState<Linha[]>([]);
@@ -116,6 +120,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     setKitId(o.kitId ?? "");
     setImagens(o.imagens ?? []);
     setPercentualDoSinal(o.percentualDoSinal === null || o.percentualDoSinal === undefined ? "" : String(o.percentualDoSinal));
+    setCanal(o.canal ?? "");
     setMostrarValores(Boolean(o.mostrarValoresIndividuais));
     setDesconto(String(o.valores.desconto));
     setEntrega(String(o.valores.entrega));
@@ -253,6 +258,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           // em toda proposta faria a mudança do padrão não alcançar nenhuma.
           percentualDoSinal: percentualDoSinal.trim() ? Number(percentualDoSinal) : undefined,
           mostrarValoresIndividuais: mostrarValores,
+          canal: canal || null,
         },
         itens: linhas.map((l) => ({
           tipo: l.tipo,
@@ -340,6 +346,23 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           <div className="space-y-1.5">
             <Label htmlFor="email">E-mail (opcional)</Label>
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="canal">Como chegou até a Festaê</Label>
+            <select
+              id="canal"
+              value={canal}
+              onChange={(e) => setCanal(e.target.value)}
+              className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">Não informado</option>
+              {SALE_CHANNELS.map((c) => (
+                <option key={c} value={c}>{SALE_CHANNEL_LABELS[c]}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Se ficar em branco, o canal é pedido na hora de virar reserva.
+            </p>
           </div>
         </div>
       </section>

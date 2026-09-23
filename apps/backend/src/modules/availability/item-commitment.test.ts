@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  compromissoPorComposicaoAtual,
   conflitosDoPedido,
+  itensDoKitDoPedido,
   mensagemDeConflito,
   somarCompromisso,
   temPecaDisponivel,
@@ -149,5 +151,42 @@ describe("mensagemDeConflito", () => {
 
   it("não expõe o tamanho do acervo para o cliente", () => {
     expect(mensagemDeConflito([conflito("Painel Redondo")])).not.toMatch(/\d/);
+  });
+});
+
+describe("composição congelada do kit", () => {
+  const kitHoje = { products: [{ productId: "mesa", quantity: 3 }] };
+
+  it("pedido congelado vale pelo que foi vendido, e não pelo cadastro atual", () => {
+    const pedido = {
+      kitCongeladoEm: new Date("2026-09-01"),
+      kitItems: [{ productId: "mesa", quantity: 1 }],
+      kit: kitHoje,
+    };
+    expect(itensDoKitDoPedido(pedido)).toEqual([{ productId: "mesa", quantity: 1 }]);
+    expect(compromissoPorComposicaoAtual(pedido)).toBe(false);
+  });
+
+  it("congelado vazio quer dizer vazio — não cai no kit do cadastro", () => {
+    const pedido = { kitCongeladoEm: new Date(), kitItems: [], kit: kitHoje };
+    expect(itensDoKitDoPedido(pedido)).toEqual([]);
+  });
+
+  it("pedido anterior ao congelamento continua lendo o kit atual, marcado como tal", () => {
+    const pedido = { kitCongeladoEm: null, kitItems: [], kit: kitHoje };
+    expect(itensDoKitDoPedido(pedido)).toEqual(kitHoje.products);
+    expect(compromissoPorComposicaoAtual(pedido)).toBe(true);
+  });
+
+  it("pedido antigo sem kit não compromete nada de kit", () => {
+    expect(itensDoKitDoPedido({ kitCongeladoEm: null, kitItems: [], kit: null })).toEqual([]);
+  });
+
+  it("a mesma peça no kit e como adicional soma no compromisso", () => {
+    const pedido = { kitCongeladoEm: new Date(), kitItems: [{ productId: "mesa", quantity: 2 }], kit: null };
+    const compromisso = somarCompromisso([
+      { itensDoKit: itensDoKitDoPedido(pedido), itensAvulsos: [{ productId: "mesa", quantity: 1 }] },
+    ]);
+    expect(compromisso.get("mesa")).toBe(3);
   });
 });

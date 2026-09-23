@@ -119,3 +119,34 @@ export function mensagemDeConflito(conflitos: Conflito[]): string {
     ? `${lista} já está reservado para esta data. Escolha outra data ou fale com a Festaê pelo WhatsApp.`
     : `${lista} já estão reservados para esta data. Escolha outra data ou fale com a Festaê pelo WhatsApp.`;
 }
+
+/** O que um pedido precisa trazer do banco para dizer o que compromete. */
+export interface PedidoComKit {
+  kitCongeladoEm: Date | null;
+  kitItems: { productId: string; quantity: number }[];
+  kit: { products: { productId: string; quantity: number }[] } | null;
+}
+
+/**
+ * Os itens de kit que este pedido segura.
+ *
+ * Uma regra só, usada por toda leitura de compromisso — disponibilidade,
+ * painel de conflitos, remarcação, edição. Se cada lugar decidisse sozinho
+ * entre o congelado e o cadastro atual, o calendário e a remarcação poderiam
+ * discordar sobre a mesma festa.
+ *
+ * Pedido congelado vale pelo que foi vendido, e vazio quer dizer vazio
+ * (venda sem kit, ou kit retirado numa edição). Pedido anterior ao
+ * congelamento cai na composição atual do kit, como sempre caiu — é o
+ * dado de menor confiabilidade, e fica assim porque não há registro de
+ * como o kit era na época da venda.
+ */
+export function itensDoKitDoPedido(pedido: PedidoComKit): { productId: string; quantity: number }[] {
+  if (pedido.kitCongeladoEm) return pedido.kitItems;
+  return pedido.kit?.products ?? [];
+}
+
+/** Se o compromisso deste pedido vem do cadastro atual do kit, e não do congelado. */
+export function compromissoPorComposicaoAtual(pedido: PedidoComKit): boolean {
+  return !pedido.kitCongeladoEm && (pedido.kit?.products.length ?? 0) > 0;
+}
