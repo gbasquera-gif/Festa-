@@ -55,7 +55,7 @@ export type Detalhamento = {
   confere: boolean;
 };
 
-function paraLinha({ comercial }: LinhaDaCarteira): LinhaDoDetalhe {
+export function paraLinha({ comercial }: LinhaDaCarteira): LinhaDoDetalhe {
   return {
     reservaId: comercial.id,
     numero: comercial.numero,

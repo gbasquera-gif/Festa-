@@ -58,3 +58,21 @@ export function mesesRecentes(quantidade = 18): string[] {
 
 /** O mês corrente, como "AAAA-MM". */
 export const mesCorrente = () => mesesRecentes(1)[0];
+
+/** Os doze meses, "01" a "12", para os filtros de período. */
+export const MESES = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
+
+/**
+ * Os anos que os filtros oferecem.
+ *
+ * Derivados do relógio, nunca digitados: uma lista fixa de anos passa a
+ * mentir sozinha na virada do ano, e alguém só descobre em janeiro. Começa em
+ * 2026, quando o financeiro passou a existir, e vai até o ano seguinte ao
+ * corrente — porque festa é contratada com meses de antecedência.
+ */
+export function anosDisponiveis(): number[] {
+  const atual = new Date().getUTCFullYear();
+  const anos: number[] = [];
+  for (let a = atual + 1; a >= Math.min(2026, atual); a--) anos.push(a);
+  return anos;
+}

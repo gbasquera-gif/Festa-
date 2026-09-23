@@ -523,6 +523,87 @@
 .fin-bloco-escuro .fin-grade p:last-child { color: rgba(255, 255, 255, 0.6); }
 
 /* ----------------------------------------------------------------------
+ * Comercial — Visão Geral
+ *
+ * Mesma língua do Financeiro (tokens de `.financeiro`). Só barras
+ * horizontais: comparam quantidade com quantidade e cabem em 390px sem
+ * legenda — pizza não compara, e eixo duplo confunde.
+ * -------------------------------------------------------------------- */
+
+.com-barras { display: grid; gap: 10px; }
+.com-barras > li {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 32%) minmax(2.5rem, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.com-barras-rotulo {
+  font-size: 0.82rem;
+  color: var(--fin-navy-ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.com-barras-rotulo small,
+.com-barras-valor small {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--fin-muted);
+}
+.com-barras-trilho {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fin-line) 55%, transparent);
+  overflow: hidden;
+}
+.com-barras-trilho > i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: 999px;
+  background: var(--fin-navy);
+}
+.com-barras-valor {
+  font-family: var(--fin-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--fin-navy-ink);
+  text-align: right;
+  white-space: nowrap;
+}
+.com-sazonal > li { grid-template-columns: 3.5rem minmax(2.5rem, 1fr) auto; }
+.com-sazonal .com-barras-trilho > i { background: var(--fin-gold); }
+.com-sazonal .com-barras-rotulo { font-family: var(--fin-mono); font-size: 0.75rem; color: var(--fin-muted); }
+
+.com-pares {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fin-line);
+}
+.com-pares-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 480px) {
+  .com-pares-3 { grid-template-columns: minmax(0, 1fr); }
+}
+.com-pares dt {
+  font-family: var(--fin-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fin-muted);
+}
+.com-pares dd {
+  margin-top: 2px;
+  font-family: var(--fin-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: var(--fin-navy-ink);
+}
+
+/* ----------------------------------------------------------------------
  * Painel de Gestão — estrutura da navegação
  *
  * A barra lateral era uma pilha de botões grandes, todos com o mesmo peso:

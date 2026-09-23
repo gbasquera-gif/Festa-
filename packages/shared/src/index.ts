@@ -322,3 +322,35 @@ export type {
 } from "./orcamento";
 
 export { formasDoTelefone, normalizarTelefone } from "./telefone";
+
+export {
+  BASE_MINIMA_PARA_TAXA,
+  CANAL_HISTORICO,
+  CANAL_NAO_INFORMADO,
+  DIAS_DA_SEMANA,
+  DIA_DA_SEMANA_LABEL,
+  MODELOS_DE_ATENDIMENTO,
+  MODELO_DE_ATENDIMENTO_LABEL,
+  ajustesComerciais,
+  canalDaVenda,
+  diaDaSemanaDaFesta,
+  distribuir,
+  funilDePropostas,
+  janelaFutura,
+  mesDaFesta,
+  modeloDeAtendimento,
+  periodoComercial,
+  rotuloDoCanal,
+  taxa,
+  ultimosDozeMeses,
+} from "./comercial";
+export type {
+  AjustesComerciais,
+  DiaDaSemana,
+  FatiaDaDistribuicao,
+  FunilDePropostas,
+  ModeloDeAtendimento,
+  PeriodoComercial,
+  PropostaDoFunil,
+  Taxa,
+} from "./comercial";

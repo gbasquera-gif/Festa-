@@ -125,6 +125,9 @@ export function DetalhePainel({
   carregando,
   erro,
   aoFechar,
+  titulo,
+  explicacao,
+  vazio,
 }: {
   tipo: TipoDeDetalhe;
   periodo: string;
@@ -132,6 +135,10 @@ export function DetalhePainel({
   carregando: boolean;
   erro: boolean;
   aoFechar: () => void;
+  /** Quem reaproveita o painel fora do Financeiro dá o nome do próprio KPI. */
+  titulo?: string;
+  explicacao?: string;
+  vazio?: string;
 }) {
   const data = dados;
   const isLoading = carregando;
@@ -149,10 +156,10 @@ export function DetalhePainel({
         >
           <div className="min-w-0">
             <DialogTitle className="text-base font-medium" style={{ color: "var(--fin-navy-ink)" }}>
-              {TITULO[tipo]} <span className="font-normal" style={{ color: "var(--fin-muted)" }}>— {periodo}</span>
+              {titulo ?? TITULO[tipo]} <span className="font-normal" style={{ color: "var(--fin-muted)" }}>— {periodo}</span>
             </DialogTitle>
             <p className="mt-1 max-w-xl text-xs" style={{ color: "var(--fin-muted)" }}>
-              {EXPLICACAO[tipo]}
+              {explicacao ?? EXPLICACAO[tipo]}
             </p>
           </div>
           <button
@@ -176,9 +183,10 @@ export function DetalhePainel({
 
           {data && data.linhas.length === 0 && (
             <p className="p-5 text-sm" style={{ color: "var(--fin-muted)" }}>
-              {tipo === "A_RECEBER"
+              {vazio ??
+                (tipo === "A_RECEBER"
                 ? "Nada a receber: todos os contratos vigentes estão quitados."
-                : "Nenhuma festa neste período."}
+                : "Nenhuma festa neste período.")}
             </p>
           )}
 

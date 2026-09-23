@@ -3,7 +3,7 @@ import { Contratos } from "@/components/financeiro/Contratos";
 import { Evolucao } from "@/components/financeiro/Evolucao";
 import { Gastos } from "@/components/financeiro/Gastos";
 import { VisaoGeral } from "@/components/financeiro/VisaoGeral";
-import { nomeDoMes } from "@/components/financeiro/formato";
+import { MESES, anosDisponiveis, nomeDoMes } from "@/components/financeiro/formato";
 
 /**
  * A área financeira.
@@ -30,23 +30,6 @@ const ABAS = [
 ] as const;
 
 type Aba = (typeof ABAS)[number]["chave"];
-
-const MESES = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
-
-/**
- * Os anos que o filtro oferece.
- *
- * Derivados do relógio, nunca digitados: uma lista fixa de anos passa a
- * mentir sozinha na virada do ano, e alguém só descobre em janeiro. Começa em
- * 2026, quando o financeiro passou a existir, e vai até o ano seguinte ao
- * corrente — porque festa é contratada com meses de antecedência.
- */
-function anosDisponiveis(): number[] {
-  const atual = new Date().getUTCFullYear();
-  const anos: number[] = [];
-  for (let a = atual + 1; a >= Math.min(2026, atual); a--) anos.push(a);
-  return anos;
-}
 
 /**
  * As abas que aceitam "todos os meses".

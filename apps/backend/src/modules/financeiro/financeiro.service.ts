@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
+import { lerCarteiraCrua } from "./carteira";
 import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
   detalhar,
@@ -270,49 +271,7 @@ export class FinanceiroService {
    * do seu próprio detalhamento.
    */
   private async carteiraCrua() {
-    return prisma.reservation.findMany({
-      select: {
-        id: true,
-        contractSeq: true,
-        status: true,
-        eventDate: true,
-        requestedAt: true,
-        confirmedAt: true,
-        cancelledAt: true,
-        rescheduledFrom: true,
-        origemDoRegistro: true,
-        referenciaExterna: true,
-        order: {
-          select: {
-            total: true,
-            fulfillment: true,
-            assembly: true,
-            kit: { select: { name: true } },
-            event: {
-              select: {
-                city: true,
-                saleChannel: true,
-                guestCount: true,
-                type: true,
-                theme: { select: { name: true } },
-                user: { select: { name: true, email: true, phone: true } },
-              },
-            },
-            payments: {
-              select: {
-                id: true,
-                type: true,
-                status: true,
-                method: true,
-                amount: true,
-                paidAt: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { eventDate: "desc" },
-    });
+    return lerCarteiraCrua();
   }
 
   async listarContratos(filtro: FiltroDeContratos = {}) {
