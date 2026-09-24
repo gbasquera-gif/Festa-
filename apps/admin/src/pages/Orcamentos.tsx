@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
@@ -71,8 +72,8 @@ const COR: Record<StatusDoOrcamento, string> = {
 };
 
 export default function Orcamentos() {
-  const [aba, setAba] = useState<Aba>("TODOS");
-  const [busca, setBusca] = useState("");
+  const [aba, setAba] = useFiltroNaUrl<Aba>("situacao", "TODOS", ABAS);
+  const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
 
   const { data, isLoading } = useQuery<{ orcamentos: OrcamentoResumo[] }>({
     queryKey: ["orcamentos"],

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Plus, Search } from "lucide-react";
@@ -90,8 +91,8 @@ const STATUS_LABEL: Record<string, string> = {
  * as duas telas passariam a somar conjuntos diferentes.
  */
 export function Contratos({ mes }: { mes: string | null }) {
-  const [situacao, setSituacao] = useState<"" | SituacaoDePagamento>("");
-  const [busca, setBusca] = useState("");
+  const [situacao, setSituacao] = useFiltroNaUrl<"" | SituacaoDePagamento>("situacao", "", ["", ...SITUACOES_DE_PAGAMENTO]);
+  const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
   const [aberto, setAberto] = useState<string | null>(null);
 
   const parametros = new URLSearchParams();

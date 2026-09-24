@@ -91,8 +91,8 @@ describe("contratado e festas", () => {
     expect(montarVisaoGeral(tres, [], SETEMBRO, AGORA).ticketMedio.valor).toBe(100);
   });
 
-  it("realizadas pela data da festa, futuras o resto", () => {
-    expect(v.festas).toEqual({ total: 2, realizadas: 1, futuras: 1 });
+  it("passadas pela data da festa (canceladas fora), futuras o resto", () => {
+    expect(v.festas).toEqual({ total: 2, passadas: 1, futuras: 1 });
   });
 
   it("período vazio: zero, ticket sem valor", () => {

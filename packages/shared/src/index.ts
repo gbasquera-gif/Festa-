@@ -354,3 +354,10 @@ export type {
   PropostaDoFunil,
   Taxa,
 } from "./comercial";
+export {
+  LIMITE_DO_REGISTRO,
+  caminhoDe,
+  destinoDoVoltar,
+  registrarVisita,
+  rotaDeRetorno,
+} from "./navegacao";

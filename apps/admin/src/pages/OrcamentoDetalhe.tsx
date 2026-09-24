@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useVoltar } from "@/lib/voltar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
@@ -76,6 +77,7 @@ async function copiar(texto: string, aviso: string) {
 
 export default function OrcamentoDetalhe({ id }: { id: string }) {
   const [, navegar] = useLocation();
+  const { voltar } = useVoltar();
   const queryClient = useQueryClient();
   const [motivo, setMotivo] = useState("");
   const [categoriaDaPerda, setCategoriaDaPerda] = useState("");
@@ -129,7 +131,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     onSuccess: () => {
       setExcluindo(false);
       queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
-      navegar("/comercial/orcamentos");
+      // A lista de onde veio, com o filtro que tinha.
+      voltar();
       toast.success("Orçamento excluído.");
     },
     onError: (e) => {

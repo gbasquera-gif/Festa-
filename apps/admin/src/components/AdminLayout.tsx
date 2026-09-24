@@ -17,6 +17,8 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useRegistroDeNavegacao } from "@/lib/voltar";
+import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -225,6 +227,7 @@ const CHAVE_RECOLHIDA = "festae:sidebar-recolhida";
  */
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  useRegistroDeNavegacao();
   const [gaveta, setGaveta] = useState(false);
   const [recolhida, setRecolhida] = useState(() => {
     try {
@@ -333,7 +336,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         {/* min-w-0 no pai é o que permite o conteúdo encolher: sem ele, uma
             tabela larga estica o flex e devolve a rolagem lateral. */}
-        <main className="min-w-0 flex-1 p-4 lg:p-7">{children}</main>
+        <main className="min-w-0 flex-1 p-4 lg:p-7">
+          <BotaoVoltar />
+          {children}
+        </main>
       </div>
     </div>
   );

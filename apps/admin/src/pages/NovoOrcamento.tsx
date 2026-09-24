@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useVoltar } from "@/lib/voltar";
 import { api, ApiError } from "@/lib/api";
 import { GaleriaDeImagens } from "@/components/GaleriaDeImagens";
 import { brl } from "@/components/financeiro/formato";
@@ -54,6 +55,7 @@ const hoje = () => new Date().toISOString().slice(0, 10);
 
 export default function NovoOrcamento({ id }: { id?: string }) {
   const [, navegar] = useLocation();
+  const { voltar } = useVoltar();
   const queryClient = useQueryClient();
   const editando = Boolean(id);
 
@@ -689,7 +691,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
       </section>
 
       <div className="flex flex-wrap justify-end gap-2 pb-4">
-        <Button variant="outline" className="min-h-11" onClick={() => navegar("/comercial/orcamentos")}>
+        <Button variant="outline" className="min-h-11" onClick={voltar}>
           Cancelar
         </Button>
         <Button className="min-h-11" disabled={!podeSalvar || salvar.isPending} onClick={() => salvar.mutate()}>

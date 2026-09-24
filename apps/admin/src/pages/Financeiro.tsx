@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Contratos } from "@/components/financeiro/Contratos";
 import { Evolucao } from "@/components/financeiro/Evolucao";
 import { Gastos } from "@/components/financeiro/Gastos";
@@ -45,14 +45,20 @@ const ACEITAM_TODOS: readonly Aba[] = ["contratos", "despesas", "aportes"];
 const TODOS = "todos";
 
 export default function Financeiro() {
-  const [aba, setAba] = useState<Aba>("visao");
+  // Aba, ano e mês moram na URL: é assim que um contrato aberto daqui volta
+  // para o mesmo recorte pelo "← Voltar".
+  const [aba, setAba] = useFiltroNaUrl<Aba>("aba", "visao", ABAS.map((a) => a.chave));
   const hoje = new Date();
   const mesCorrente = String(hoje.getUTCMonth() + 1).padStart(2, "0");
-  const [ano, setAno] = useState(hoje.getUTCFullYear());
-  const [mesNumero, setMesNumero] = useState<string>(mesCorrente);
-  const mes = `${ano}-${mesNumero}`;
+  const [anoNaUrl, setAnoNaUrl] = useFiltroNaUrl("ano", String(hoje.getUTCFullYear()));
+  const ano = /^\d{4}$/.test(anoNaUrl) ? Number(anoNaUrl) : hoje.getUTCFullYear();
+  const setAno = (novo: number) => setAnoNaUrl(String(novo));
+  const [mesNaUrl, setMesNumero] = useFiltroNaUrl<string>("mes", mesCorrente, [...MESES, TODOS]);
 
   const aceitaTodos = ACEITAM_TODOS.includes(aba);
+  // Um link com "todos os meses" numa aba que não aceita cai no mês corrente.
+  const mesNumero = !aceitaTodos && mesNaUrl === TODOS ? mesCorrente : mesNaUrl;
+  const mes = `${ano}-${mesNumero}`;
   /** O que as abas de lista recebem: `null` é "todos os meses". */
   const mesFiltrado = mesNumero === TODOS ? null : mes;
 

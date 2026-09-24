@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useLocation, useRoute } from "wouter";
+import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   COMPANY,
@@ -76,7 +76,6 @@ function telefoneLegivel(bruto: string): string {
  */
 export default function Comprovante() {
   const [, params] = useRoute("/reservas/:id/comprovante");
-  const [, navegar] = useLocation();
   const id = params?.id ?? "";
 
   const { data: reserva, isLoading, error } = useQuery({
@@ -143,9 +142,6 @@ export default function Comprovante() {
       <style>{CSS_DO_COMPROVANTE}</style>
 
       <div className="acoes-do-comprovante">
-        <button type="button" onClick={() => navegar(`/reservas`)} className="botao-secundario">
-          Voltar
-        </button>
         <button type="button" onClick={() => window.print()} className="botao-principal">
           Imprimir ou salvar em PDF
         </button>

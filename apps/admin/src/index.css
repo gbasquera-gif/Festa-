@@ -612,6 +612,23 @@
  * espaço, não com mais cor.
  * -------------------------------------------------------------------- */
 
+/* "← Voltar" das telas internas: discreto, mas com 44px de toque. */
+.painel-voltar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: -10px 0 4px -10px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b6358;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.painel-voltar:hover { background: rgba(27, 46, 75, 0.05); color: var(--color-navy); }
+.painel-voltar:focus-visible { outline: 2px solid var(--color-coral, #e05a3a); outline-offset: 2px; }
+
 .painel-nav-grupo {
   font-family: var(--fin-mono, "IBM Plex Mono", monospace);
   font-size: 0.6rem;

@@ -30,7 +30,7 @@ type Visao = {
   hoje: string;
   contratado: { valor: number; festas: number; confere: boolean };
   ticketMedio: { valor: number | null; contratos: number };
-  festas: { total: number; realizadas: number; futuras: number };
+  festas: { total: number; passadas: number; futuras: number };
   funil: {
     criadas: number;
     enviadas: number;
@@ -190,7 +190,7 @@ function Painel() {
             <Kpi
               rotulo="Festas"
               valor={String(data.festas.total)}
-              nota={`${plural(data.festas.realizadas, "realizada", "realizadas")} · ${plural(data.festas.futuras, "futura", "futuras")}`}
+              nota={`${plural(data.festas.passadas, "passada", "passadas")} · ${plural(data.festas.futuras, "futura", "futuras")}`}
               aoAbrir={() => setDetalhe("FESTAS")}
             />
             <Kpi

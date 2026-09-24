@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useVoltar } from "@/lib/voltar";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ import { ApiError, api } from "@/lib/api";
  */
 export default function NovaReservaManual() {
   const [, navegar] = useLocation();
+  const { voltar } = useVoltar();
 
   const [dados, setDados] = useState<DadosDaReserva>(reservaEmBranco);
   const mudar = (parcial: Partial<DadosDaReserva>) =>
@@ -314,7 +316,7 @@ export default function NovaReservaManual() {
           type="button"
           variant="ghost"
           className="h-11 w-full sm:h-9 sm:w-auto"
-          onClick={() => navegar("/reservas")}
+          onClick={voltar}
         >
           Cancelar
         </Button>

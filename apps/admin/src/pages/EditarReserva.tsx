@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useRoute } from "wouter";
+import { useVoltar } from "@/lib/voltar";
+import { useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -109,7 +110,7 @@ function paraFormulario(r: ReservaCompleta): DadosDaReserva {
  */
 export default function EditarReserva() {
   const [, params] = useRoute("/reservas/:id/editar");
-  const [, navegar] = useLocation();
+  const { voltar } = useVoltar();
   const queryClient = useQueryClient();
   const id = params?.id ?? "";
 
@@ -195,7 +196,9 @@ export default function EditarReserva() {
           ? "Reserva atualizada. A data nova já está bloqueada na loja."
           : "Reserva atualizada.",
       );
-      navegar("/operacao");
+      // De volta para onde a reserva foi aberta (Operação, Reservas,
+      // Financeiro), com o filtro que estava lá.
+      voltar();
     },
     onError: (erro) => {
       setConflitos(null);
@@ -239,7 +242,6 @@ export default function EditarReserva() {
           Esta reserva está cancelada e não pode ser editada — ela não segura mais data nem
           material. Registre uma nova reserva para a festa que voltou.
         </p>
-        <Button onClick={() => navegar("/operacao")}>Voltar para a operação</Button>
       </div>
     );
   }
@@ -330,7 +332,7 @@ export default function EditarReserva() {
           type="button"
           variant="ghost"
           className="h-11 w-full sm:h-9 sm:w-auto"
-          onClick={() => navegar("/operacao")}
+          onClick={voltar}
         >
           Cancelar
         </Button>

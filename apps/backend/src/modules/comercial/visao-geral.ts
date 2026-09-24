@@ -51,11 +51,11 @@ export type Fatia = FatiaDaDistribuicao & { rotulo: string };
 
 export type VisaoGeralComercial = {
   periodo: PeriodoComercial;
-  /** O dia de Chapecó que serviu de "hoje" para realizadas, futuras e carteira. */
+  /** O dia de Chapecó que serviu de "hoje" para passadas, futuras e carteira. */
   hoje: string;
   contratado: { valor: number; festas: number; confere: boolean };
   ticketMedio: { valor: number | null; contratos: number };
-  festas: { total: number; realizadas: number; futuras: number };
+  festas: { total: number; passadas: number; futuras: number };
   funil: Omit<FunilDePropostas, "idsDaCoorte">;
   carteiraFutura: {
     de: string;
@@ -122,13 +122,14 @@ export function montarVisaoGeral(
   const somaDasLinhas = somaCentavos(doPeriodo.map((l) => l.comercial.valor));
   const festas = doPeriodo.length;
 
-  // Ticket em centavos: 3 festas de R$ 100,00 dão R$ 33,33, e não uma dízima.
+  // Ticket em centavos: R$ 100,00 em 3 festas dão R$ 33,33, e não uma dízima.
   const ticket = festas > 0 ? fromCentsInt(Math.round(toCentsInt(contratado) / festas)) : null;
 
-  // "Realizada" é festa com data já passada. O sistema não registra a
-  // conclusão sozinho — COMPLETED é um status que alguém marca à mão, e
-  // quase nunca marca —, então a data é o dado confiável que existe.
-  const realizadas = doPeriodo.filter((l) => l.comercial.festaEm < hoje).length;
+  // "Passada" é festa vigente com data anterior a hoje, e só isso: não quer
+  // dizer que aconteceu. O sistema não registra a conclusão — COMPLETED é um
+  // status que alguém marca à mão, e quase nunca marca —, então a tela não
+  // afirma "realizada" sobre o que só a data sabe.
+  const passadas = doPeriodo.filter((l) => l.comercial.festaEm < hoje).length;
 
   const funilCompleto = funilDePropostas(propostas, periodo.meses, agora);
   const { idsDaCoorte, ...funil } = funilCompleto;
@@ -162,7 +163,7 @@ export function montarVisaoGeral(
       confere: toCentsInt(contratado) === toCentsInt(somaDasLinhas),
     },
     ticketMedio: { valor: ticket, contratos: festas },
-    festas: { total: festas, realizadas, futuras: festas - realizadas },
+    festas: { total: festas, passadas, futuras: festas - passadas },
     funil,
     carteiraFutura: {
       de: carteira.de,

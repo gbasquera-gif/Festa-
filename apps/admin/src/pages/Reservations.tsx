@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Link } from "wouter";
 import { Plus, Search } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -525,8 +526,8 @@ function Pendencia({ row, agora }: { row: ReservationRow; agora: Date }) {
 export default function Reservations() {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [aba, setAba] = useState<AbaDeReserva>("ATIVAS");
-  const [busca, setBusca] = useState("");
+  const [aba, setAba] = useFiltroNaUrl<AbaDeReserva>("aba", "ATIVAS", ABAS_DE_RESERVA);
+  const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
 
   const { data, isLoading } = useQuery({
     queryKey: ["reservations"],
