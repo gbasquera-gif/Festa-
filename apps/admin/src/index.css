@@ -604,6 +604,67 @@
 }
 
 /* ----------------------------------------------------------------------
+ * Acervo — Performance
+ * -------------------------------------------------------------------- */
+
+.acv-segmento {
+  display: inline-flex;
+  border: 1px solid var(--fin-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--fin-paper);
+}
+.acv-segmento > button {
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+  color: var(--fin-muted);
+  font-variant-numeric: tabular-nums;
+}
+.acv-segmento > button + button { border-left: 1px solid var(--fin-line); }
+.acv-segmento > button[aria-pressed="true"] { background: var(--fin-navy); color: #fff; }
+@media (max-width: 400px) { .acv-segmento > button { padding: 0 9px; } }
+
+.acv-filtro {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--fin-line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--fin-muted);
+  background: var(--fin-paper);
+}
+.acv-filtro[aria-pressed="true"] { border-color: var(--fin-navy); color: var(--fin-navy-ink); background: rgba(27, 46, 75, 0.06); }
+
+.acv-tabela .acv-linha { cursor: pointer; }
+.acv-tabela .acv-linha:hover td { background: rgba(27, 46, 75, 0.03); }
+.acv-nome { text-align: left; color: var(--fin-navy-ink); }
+.acv-nome:hover { text-decoration: underline; text-underline-offset: 3px; }
+.acv-etiqueta {
+  margin-left: 6px;
+  font-family: var(--fin-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fin-muted);
+  border: 1px dashed var(--fin-line);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.acv-cartao { display: block; width: 100%; padding: 12px 2px; text-align: left; min-height: 44px; }
+
+.acv-mais { min-height: 44px; font-size: 0.8rem; font-weight: 500; color: var(--fin-coral-dark); }
+
+.acv-resumo { border-top: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px) { .acv-resumo { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.acv-cobertura {
+  padding: 12px 14px;
+  border: 1px dashed var(--fin-line);
+  border-radius: 10px;
+}
+
+/* ----------------------------------------------------------------------
  * Painel de Gestão — estrutura da navegação
  *
  * A barra lateral era uma pilha de botões grandes, todos com o mesmo peso:

@@ -14,6 +14,7 @@ import { ReservationsModule } from "./modules/reservations/reservations.module";
 import { OperationsModule } from "./modules/operations/operations.module";
 import { FinanceiroModule } from "./modules/financeiro/financeiro.module";
 import { ComercialModule } from "./modules/comercial/comercial.module";
+import { AcervoModule } from "./modules/acervo/acervo.module";
 import { OrcamentosModule } from "./modules/orcamentos/orcamentos.module";
 import { PartnersModule } from "./modules/partners/partners.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
@@ -43,6 +44,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
     OperationsModule,
     FinanceiroModule,
     ComercialModule,
+    AcervoModule,
     OrcamentosModule,
     PartnersModule,
     PaymentsModule,

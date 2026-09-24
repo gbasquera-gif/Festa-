@@ -361,3 +361,15 @@ export {
   registrarVisita,
   rotaDeRetorno,
 } from "./navegacao";
+export {
+  CONTEXTO_DO_CONFLITO_LABEL,
+  DIAS_DA_PRESSAO,
+  DIAS_SEM_USO,
+  JANELAS_DO_ACERVO,
+  JANELA_PADRAO_DO_ACERVO,
+  ORIGEM_NO_PEDIDO_LABEL,
+  ehJanelaDoAcervo,
+  janelaPassada,
+  somarDias,
+} from "./acervo-performance";
+export type { JanelaDoAcervo, OrigemNoPedido } from "./acervo-performance";

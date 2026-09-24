@@ -8,14 +8,14 @@ import {
   type Conflito,
   type PedidoComprometido,
 } from "./item-commitment";
-import { SELECAO_DO_COMPROMISSO } from "./selecao-do-pedido";
+import { SELECAO_DO_COMPROMISSO, STATUS_QUE_COMPROMETEM } from "./selecao-do-pedido";
 
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
  * tanto quanto CONFIRMED: a festa existe e o material está comprometido.
  * Só REJECTED e CANCELLED liberam a data.
  */
-const COUNTED_STATUSES = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
+const COUNTED_STATUSES = STATUS_QUE_COMPROMETEM;
 
 export interface DayAvailability {
   date: string;

@@ -3,6 +3,7 @@ import { ModuloComAbas, ResumoDoModulo } from "@/components/ModuloComAbas";
 import Themes from "./Themes";
 import Products from "./Products";
 import Kits from "./Kits";
+import { PerformanceDoAcervo } from "@/components/acervo/PerformanceDoAcervo";
 import { api } from "@/lib/api";
 
 /**
@@ -44,13 +45,14 @@ export default function Acervo() {
                   href: "/acervo/produtos",
                 },
               ]}
-              aviso="Desempenho do acervo — itens mais usados, itens parados e investimento contra utilização — fica para a próxima etapa."
+              aviso="Uso, peças paradas, pressão futura e conflitos estão na aba Performance. Investimento contra utilização fica para a próxima etapa."
             />
           ),
         },
         { chave: "temas", rotulo: "Temas", conteudo: <Themes /> },
         { chave: "produtos", rotulo: "Produtos", conteudo: <Products /> },
         { chave: "kits", rotulo: "Kits", conteudo: <Kits /> },
+        { chave: "performance", rotulo: "Performance", conteudo: <PerformanceDoAcervo /> },
       ]}
     />
   );
