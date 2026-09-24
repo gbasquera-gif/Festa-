@@ -258,10 +258,21 @@ function Kpis({ dados }: { dados: Performance }) {
           nota={`${plural(semUso.nunca, "nunca utilizado", "nunca utilizados")} · produtos ativos`}
         />
       ) : (
+        // Cobertura insuficiente não é erro: é o dado ainda se formando. O
+        // card volta a ser "Sem uso há 90+ dias" sozinho quando o servidor
+        // disser que dá para afirmar.
         <Kpi
-          rotulo={`Sem uso há ${semUso.dias}+ dias`}
+          rotulo="Uso recente ainda em consolidação"
           valor="—"
-          nota={`Ainda não dá para afirmar: ${plural(semUso.festasSemComposicao, "festa", "festas")} dos últimos ${semUso.dias} dias sem composição rastreável pode${semUso.festasSemComposicao === 1 ? "" : "m"} ter usado qualquer peça.`}
+          nota={
+            <>
+              {semUso.festasSemComposicao === 1
+                ? `1 festa dos últimos ${semUso.dias} dias não possui composição histórica rastreável.`
+                : `${semUso.festasSemComposicao} festas dos últimos ${semUso.dias} dias não possuem composição histórica rastreável.`}
+              <br />
+              Enquanto houver festas desse período sem snapshot, o sistema não afirma quais peças ficaram sem uso.
+            </>
+          }
         />
       )}
       <Kpi
@@ -634,8 +645,8 @@ function Cobertura({ cobertura, dias }: { cobertura: Performance["cobertura"]; d
       ) : (
         <ul className="mt-1 space-y-0.5 text-xs" style={cinza}>
           <li>
-            {cobertura.rastreaveis} de {plural(cobertura.festas, "festa possui", "festas possuem")} composição de
-            produtos rastreável
+            {cobertura.rastreaveis} de {cobertura.festas} {cobertura.festas === 1 ? "festa do período possui" : "festas do período possuem"}{" "}
+            composição rastreável · {pct(cobertura.rastreaveis / cobertura.festas, 0)} de cobertura
           </li>
           {cobertura.kitSemSnapshot > 0 && (
             <li>{plural(cobertura.kitSemSnapshot, "festa antiga com kit não possui", "festas antigas com kit não possuem")} snapshot histórico</li>
