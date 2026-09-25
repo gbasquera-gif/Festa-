@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { FileDown } from "lucide-react";
+import { toast } from "sonner";
+import { api, baixarArquivo } from "@/lib/api";
 import { Barra, Indicador, NumeroEscuro, Rotulo } from "./pecas";
 import { brl, nomeDoMes, pct } from "./formato";
 import { DetalheDoIndicador, type TipoDeDetalhe } from "./DetalheDoIndicador";
@@ -33,6 +35,9 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
 
   return (
     <div className="space-y-5">
+      <div className="flex justify-end">
+        <BotaoDoRelatorio ano={ano} mes={mes} />
+      </div>
       {/* Faturou -> gastou -> sobrou -> margem. A conta, na ordem da conta. */}
       <div className="fin-bloco-escuro">
         <p className="fin-rotulo">Resultado operacional · {nomeDoMes(mes)} · por competência</p>
@@ -150,5 +155,40 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * O Relatório Executivo em PDF do mesmo período do filtro.
+ *
+ * O servidor desenha o PDF a partir dos mesmos números desta tela; aqui só
+ * se pede e se entrega o arquivo. Nada fica salvo em lugar nenhum.
+ */
+function BotaoDoRelatorio({ ano, mes }: { ano: number; mes: string }) {
+  const [gerando, setGerando] = useState(false);
+  async function gerar() {
+    setGerando(true);
+    try {
+      await baixarArquivo(
+        `/financeiro/relatorio.pdf?ano=${ano}&mes=${mes}`,
+        `Festae-Relatorio-Financeiro-${mes}.pdf`,
+      );
+    } catch {
+      toast.error("Não foi possível gerar o relatório. Tente de novo em instantes.");
+    } finally {
+      setGerando(false);
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={gerar}
+      disabled={gerando}
+      className="inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium disabled:opacity-60"
+      style={{ borderColor: "var(--fin-line)", color: "var(--fin-navy-ink)", background: "var(--fin-paper)" }}
+    >
+      <FileDown className="size-4" aria-hidden />
+      {gerando ? "Gerando relatório…" : "Relatório executivo (PDF)"}
+    </button>
   );
 }

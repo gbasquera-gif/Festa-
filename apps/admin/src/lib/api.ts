@@ -97,6 +97,26 @@ export async function baixarArquivo(path: string, nomeDoArquivo: string): Promis
   }
 
   const blob = await res.blob();
+
+  // Painel instalado na tela inicial (PWA): o iPhone não baixa blob por
+  // link nesse modo. A folha de compartilhamento entrega o arquivo — salvar
+  // em Arquivos, imprimir, mandar por WhatsApp. No navegador, nada muda.
+  const instalado =
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (instalado && typeof navigator.canShare === "function") {
+    const arquivo = new File([blob], nomeDoArquivo, { type: blob.type || "application/octet-stream" });
+    if (navigator.canShare({ files: [arquivo] })) {
+      try {
+        await navigator.share({ files: [arquivo], title: nomeDoArquivo });
+        return;
+      } catch (erro) {
+        // Fechar a folha sem escolher nada não é erro; outra falha cai no download comum.
+        if (erro instanceof DOMException && erro.name === "AbortError") return;
+      }
+    }
+  }
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

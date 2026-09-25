@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
   NATUREZAS_DO_GASTO,
@@ -47,10 +48,35 @@ export class FinanceiroController {
    */
   @Get("panorama")
   panorama(@Query("mes") mes?: string, @Query("ano") ano?: string) {
-    const corrente = new Date().toISOString().slice(0, 7);
-    const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes ?? "") ? (mes as string) : corrente;
-    const anoValido = /^\d{4}$/.test(ano ?? "") ? Number(ano) : Number(mesValido.slice(0, 4));
-    return this.financeiro.panorama(anoValido, mesValido);
+    const periodo = periodoDoPanorama(mes, ano);
+    return this.financeiro.panorama(periodo.ano, periodo.mes);
+  }
+
+  /**
+   * O Relatório Executivo Financeiro: os números (JSON) e o PDF.
+   *
+   * Mesmo `ano`/`mes` do filtro da Visão Geral, lidos pela mesma regra do
+   * `panorama` — o relatório fala sempre do período que a tela mostrava.
+   * O PDF é gerado a cada pedido e devolvido direto: não há arquivo salvo
+   * nem link público, e a rota exige ADMIN como todo o Financeiro.
+   */
+  @Get("relatorio")
+  relatorio(@Query("mes") mes?: string, @Query("ano") ano?: string) {
+    const periodo = periodoDoPanorama(mes, ano);
+    return this.financeiro.relatorioExecutivo(periodo.ano, periodo.mes);
+  }
+
+  @Get("relatorio.pdf")
+  async relatorioPdf(@Res() resposta: Response, @Query("mes") mes?: string, @Query("ano") ano?: string) {
+    const periodo = periodoDoPanorama(mes, ano);
+    const { pdf, nome } = await this.financeiro.relatorioExecutivoPdf(periodo.ano, periodo.mes);
+    resposta.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${nome}"`,
+      "Content-Length": String(pdf.length),
+      "Cache-Control": "no-store",
+    });
+    resposta.end(pdf);
   }
 
   /**
@@ -137,4 +163,16 @@ export class FinanceiroController {
   definirMeta(@Body(new ZodValidationPipe(definirMetaSchema)) body: DefinirMetaInput) {
     return this.financeiro.definirMeta(body.competencia, body.lucroAlvo);
   }
+}
+
+/**
+ * O período da Visão Geral: `mes` "AAAA-MM" e `ano` "AAAA". Sem mês válido,
+ * o mês corrente. Uma função só para o panorama e o relatório — os dois têm
+ * de ler o mesmo período a partir dos mesmos parâmetros.
+ */
+export function periodoDoPanorama(mes?: string, ano?: string): { ano: number; mes: string } {
+  const corrente = new Date().toISOString().slice(0, 7);
+  const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes ?? "") ? (mes as string) : corrente;
+  const anoValido = /^\d{4}$/.test(ano ?? "") ? Number(ano) : Number(mesValido.slice(0, 4));
+  return { ano: anoValido, mes: mesValido };
 }

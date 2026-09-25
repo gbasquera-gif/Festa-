@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import { lerCarteiraCrua } from "./carteira";
+import { montarRelatorioExecutivo } from "./relatorio";
+import { gerarRelatorioPdf, nomeDoArquivo } from "./relatorio-pdf";
 import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
   detalhar,
@@ -220,6 +222,35 @@ export class FinanceiroService {
         futuro: m.mes > mesEmChapeco(new Date()),
       })),
     };
+  }
+
+  /**
+   * Os números do Relatório Executivo: as mesmas leituras do `panorama`
+   * (contratos e gastos) mais a carteira da Visão Geral Comercial, para a
+   * carteira futura. Nada é recalculado por outra regra.
+   */
+  async relatorioExecutivo(ano: number, mes: string) {
+    const agora = new Date();
+    const [contratos, gastos, reservas] = await Promise.all([
+      this.contratos(),
+      this.gastos(),
+      this.carteiraCrua(),
+    ]);
+    return montarRelatorioExecutivo({
+      contratos,
+      gastos,
+      carteira: reservas.map((reserva) => montarLinha(reserva, agora)),
+      ano,
+      mes,
+      agora,
+    });
+  }
+
+  /** O relatório em PDF, gerado agora e devolvido — nada é guardado. */
+  async relatorioExecutivoPdf(ano: number, mes: string) {
+    const dados = await this.relatorioExecutivo(ano, mes);
+    const { pdf } = await gerarRelatorioPdf(dados);
+    return { pdf, nome: nomeDoArquivo(mes) };
   }
 
   /** A linha de ritmo do mês, reaproveitando a mesma função da Sprint 1. */
