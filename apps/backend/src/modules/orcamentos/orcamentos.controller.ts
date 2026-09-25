@@ -55,6 +55,16 @@ export class OrcamentosController {
     return this.orcamentos.criar(body, user.userId);
   }
 
+  /**
+   * Proposta nova a partir desta, em RASCUNHO, para usar como modelo.
+   * Mesma permissão de criar proposta (ADMIN e OPS). A original não muda.
+   */
+  @ApiOperation({ summary: "Duplica a proposta como rascunho novo" })
+  @Post(":id/duplicar")
+  duplicar(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.orcamentos.duplicar(id, user.userId);
+  }
+
   @ApiOperation({
     summary: "Atualiza a proposta",
     description:

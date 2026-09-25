@@ -373,3 +373,11 @@ export {
   somarDias,
 } from "./acervo-performance";
 export type { JanelaDoAcervo, OrigemNoPedido } from "./acervo-performance";
+export {
+  PECAS_EM_UMA_LINHA,
+  composicaoParaExibir,
+  lerComposicaoCongelada,
+  montarComposicaoDoKit,
+  textoDaComposicao,
+} from "./composicao-do-kit";
+export type { ComposicaoDoKit, ItemDaComposicao, OrigemDaComposicao } from "./composicao-do-kit";

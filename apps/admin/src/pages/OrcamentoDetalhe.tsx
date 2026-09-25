@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useVoltar } from "@/lib/voltar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, ExternalLink, Trash2 } from "lucide-react";
+import { Copy, CopyPlus, ExternalLink, Trash2 } from "lucide-react";
 import {
   CATEGORIAS_DA_PERDA,
   CATEGORIA_DA_PERDA_LABEL,
@@ -28,6 +28,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { urlDaProposta } from "@/lib/site";
 import { brl } from "@/components/financeiro/formato";
+import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
 
 /**
  * A proposta vista por dentro.
@@ -124,6 +125,21 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
       await copiar(mensagem, "Proposta enviada. Mensagem copiada!");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao enviar. Nada foi copiado."),
+  });
+
+  /**
+   * Proposta nova a partir desta, feita no servidor. Nasce rascunho e abre
+   * direto na edição — é para trocar cliente, data e o que mais mudar antes
+   * de enviar. Esta proposta não é alterada.
+   */
+  const duplicar = useMutation({
+    mutationFn: () => api<{ id: string }>(`/orcamentos/${id}/duplicar`, { method: "POST" }),
+    onSuccess: (nova) => {
+      queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
+      toast.success("Orçamento duplicado. Revise os dados antes de enviar.");
+      navegar(`/comercial/orcamentos/${nova.id}/editar`);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível duplicar."),
   });
 
   const excluir = useMutation({
@@ -229,6 +245,10 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="min-h-11" asChild>
             <Link href={`/comercial/orcamentos/${id}/editar`}>Editar</Link>
+          </Button>
+          <Button variant="ghost" className="min-h-11" onClick={() => duplicar.mutate()} disabled={duplicar.isPending}>
+            <CopyPlus className="mr-1.5 size-4" aria-hidden />
+            {duplicar.isPending ? "Duplicando…" : "Duplicar orçamento"}
           </Button>
           {situacao !== "APROVADO" && (
             <Button className="min-h-11" onClick={() => enviar.mutate()} disabled={enviar.isPending}>
@@ -417,6 +437,21 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               : "a cliente vê só o investimento total"}
           </span>
         </div>
+        {o.composicaoDoKit && (
+          <div className="px-4 pt-3">
+            <ComposicaoDoKit
+              kitNome={o.composicaoDoKit.kitNome}
+              itens={o.composicaoDoKit.itens}
+              nota={
+                o.composicaoDoKit.origem === "ENVIADA"
+                  ? "Como foi enviada à cliente. Alterar o kit no catálogo não muda esta proposta."
+                  : o.composicaoDoKit.semRegistro
+                    ? "Composição atual do catálogo. Esta proposta saiu antes de a composição passar a ser registrada, então a cliente não a vê na página dela."
+                    : "Composição atual do catálogo. Fica registrada na proposta quando ela for enviada."
+              }
+            />
+          </div>
+        )}
         {/* Cinco colunas não cabem em 390px: no celular cada item vira uma
             linha vertical, com a mesma informação — descrição, tipo,
             quantidade, unitário e total. Nenhum dado sai da tela. */}

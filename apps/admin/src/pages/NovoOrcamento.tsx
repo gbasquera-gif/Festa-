@@ -14,8 +14,10 @@ import {
   toCentsInt,
   totalDaLinha,
   type TipoDaLinha,
+  montarComposicaoDoKit,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
+import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useVoltar } from "@/lib/voltar";
@@ -39,6 +41,7 @@ type Tema = { id: string; name: string; coverImageUrl: string | null };
 type Kit = {
   id: string; name: string; basePrice: string;
   coverImageUrl: string | null; images: string[]; themeId: string | null;
+  products?: { quantity: number; product: { id: string; name: string; active: boolean } }[];
 };
 type Produto = { id: string; name: string; unitPrice: string; imageUrl: string | null; category: string };
 
@@ -194,6 +197,11 @@ export default function NovoOrcamento({ id }: { id?: string }) {
       setEmail(c.email ?? "");
     }
   }
+
+  // A composição do kit escolhido, do catálogo — só para ver. Não vira linha
+  // nem muda valor: o kit continua cobrado pela linha KIT.
+  const kitDoCatalogo = kits.data?.find((k) => k.id === kitId);
+  const kitSelecionado = kitDoCatalogo ? montarComposicaoDoKit({ ...kitDoCatalogo, products: kitDoCatalogo.products ?? [] }) : null;
 
   function adicionarKit(valor: string) {
     setKitId(valor);
@@ -430,6 +438,15 @@ export default function NovoOrcamento({ id }: { id?: string }) {
               ))}
             </select>
           </div>
+          {kitSelecionado && (
+            <div className="sm:col-span-2">
+              <ComposicaoDoKit
+                kitNome={kitSelecionado.kitNome}
+                itens={kitSelecionado.itens}
+                nota="Composição atual do catálogo. Ela fica registrada na proposta quando for enviada e não muda depois, mesmo que o kit seja alterado."
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-2 pt-1">

@@ -6,6 +6,8 @@ import {
   formatarDataDaFesta,
   isEventType,
   type TipoDaLinha,
+  PECAS_EM_UMA_LINHA,
+  textoDaComposicao,
 } from "@festae/shared";
 
 /**
@@ -35,6 +37,8 @@ type PropostaPublica = {
   festa: { em: string; tipo: string; cidade: string; local: string | null; convidados: number | null };
   tema: string | null;
   kit: string | null;
+  /** O que vem no kit, como a proposta foi enviada. Nulo quando não há registro. */
+  composicaoDoKit: { productId: string; nome: string; quantidade: number }[] | null;
   imagens: string[];
   observacoes: string | null;
   mostrarValores: boolean;
@@ -235,6 +239,11 @@ export default function Proposta({ token }: { token: string }) {
                   <span className="proposta-item-tipo">
                     {TIPO_DA_LINHA_LABEL[i.tipo as TipoDaLinha] ?? i.tipo}
                   </span>
+                  {/* O que vem dentro do kit, junto da linha do kit. Só para
+                      ler: não tem preço, o kit é o que está sendo cobrado. */}
+                  {i.tipo === "KIT" && n === p.itens.findIndex((x) => x.tipo === "KIT") && p.composicaoDoKit && p.composicaoDoKit.length > 0 && (
+                    <ComposicaoNaProposta itens={p.composicaoDoKit} />
+                  )}
                 </span>
                 {i.total !== null && <span className="proposta-item-valor">{brl(i.total)}</span>}
               </li>
@@ -461,5 +470,25 @@ function Centro({ children }: { children: React.ReactNode }) {
     <div className="proposta">
       <div className="proposta-centro">{children}</div>
     </div>
+  );
+}
+
+/** "Inclui: 1 Painel · 2 Cilindros", ou lista quando o kit tem muitas peças. */
+function ComposicaoNaProposta({ itens }: { itens: { productId: string; nome: string; quantidade: number }[] }) {
+  return (
+    <span className="proposta-kit-composicao">
+      <span className="proposta-kit-composicao-rotulo">Inclui</span>
+      {itens.length <= PECAS_EM_UMA_LINHA ? (
+        <span className="proposta-kit-composicao-linha">{textoDaComposicao(itens)}</span>
+      ) : (
+        <span className="proposta-kit-composicao-lista">
+          {itens.map((i) => (
+            <span key={i.productId}>
+              {i.quantidade} {i.nome}
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }

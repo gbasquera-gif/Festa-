@@ -859,6 +859,13 @@ model Orcamento {
   /// escolhida pelo sistema.
   canal SaleChannel?
 
+  /// A composição do kit como a cliente a recebeu: nome do kit e cada peça
+  /// com a quantidade, congelados no envio. Informativa — não é item, não
+  /// tem preço, não compromete estoque. Nula em rascunho (a tela lê o
+  /// catálogo ao vivo) e em proposta enviada antes deste campo existir
+  /// (aí a composição não é mostrada: o que ela era na época não se sabe).
+  composicaoDoKit Json?
+
   /// O primeiro envio, que nunca muda.
   ///
   /// `enviadoEm` é o envio da versão atual: editar uma proposta enviada a

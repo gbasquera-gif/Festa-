@@ -1150,6 +1150,21 @@ button.painel-cartao:focus-visible .painel-abre {
 }
 .proposta-item-valor { font-family: "IBM Plex Mono", monospace; font-size: 0.95rem; white-space: nowrap; }
 
+/* O que vem dentro do kit: texto de apoio, sem preço, sob a linha do kit. */
+.proposta-kit-composicao { display: block; margin-top: 0.5rem; font-size: 0.86rem; line-height: 1.45; color: #6f6659; }
+.proposta-kit-composicao-rotulo {
+  display: block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #b08a4a;
+  margin-bottom: 0.15rem;
+}
+.proposta-kit-composicao-linha { display: block; overflow-wrap: anywhere; }
+.proposta-kit-composicao-lista { display: grid; gap: 0.1rem 1.25rem; }
+@media (min-width: 560px) { .proposta-kit-composicao-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 .proposta-investimento dl { margin: 0 0 1rem; }
 .proposta-investimento dl > div {
   display: flex;

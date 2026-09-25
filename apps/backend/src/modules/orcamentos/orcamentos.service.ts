@@ -5,10 +5,13 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { prisma } from "@festae/database";
+import { Prisma, prisma } from "@festae/database";
 import {
   calcularOrcamento,
   calcularSinal,
+  composicaoParaExibir,
+  lerComposicaoCongelada,
+  montarComposicaoDoKit,
   fromCentsInt,
   toCentsInt,
   exigeNovaVersao,
@@ -25,6 +28,7 @@ import {
 } from "@festae/shared";
 import { ManualReservationService } from "../reservations/manual-reservation.service";
 import { ReservationsService } from "../reservations/reservations.service";
+import { dadosDaDuplicata } from "./duplicacao";
 
 /** Decimal do Prisma vira número uma vez, aqui. */
 const num = (v: unknown) => Number(v);
@@ -73,7 +77,12 @@ export class OrcamentosService {
     });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
     const conteudo = await this.conteudo();
-    return { ...this.detalhar(o, new Date()), sinal: await this.sinalDa(o, conteudo) };
+    const composicaoDoKit = composicaoParaExibir({
+      status: o.status,
+      congelada: o.composicaoDoKit,
+      catalogo: o.kitId ? await this.composicaoDoCatalogo(o.kitId) : null,
+    });
+    return { ...this.detalhar(o, new Date()), composicaoDoKit, sinal: await this.sinalDa(o, conteudo) };
   }
 
   async criar(input: OrcamentoInput, criadoPorId: string) {
@@ -168,6 +177,10 @@ export class OrcamentosService {
           ...totais,
           versao: precisaVersionar ? atual.versao + 1 : atual.versao,
           status: "RASCUNHO",
+          // De volta a rascunho, a composição volta a ser a do catálogo; o
+          // próximo envio congela a desta versão. A da versão anterior fica
+          // na fotografia de `OrcamentoVersao`.
+          composicaoDoKit: Prisma.DbNull,
           enviadoEm: precisaVersionar ? null : atual.enviadoEm,
           itens: { create: this.linhasParaBanco(input.itens) },
         },
@@ -193,12 +206,20 @@ export class OrcamentosService {
     // data verdadeira não existe em lugar nenhum, e a de hoje mentiria.
     const ePrimeiroEnvio = o.primeiroEnvioEm === null && o.enviadoEm === null && o.versao === 1;
 
+    // A composição do kit congela no primeiro envio desta versão e não muda
+    // mais: reenviar o mesmo link não pode trocar o que a cliente já viu.
+    // Mudar a proposta é editar, e editar gera versão nova.
+    const jaCongelada = lerComposicaoCongelada(o.composicaoDoKit) !== null;
+    const composicao =
+      o.kitId && !jaCongelada ? await this.composicaoDoCatalogo(o.kitId) : null;
+
     await prisma.orcamento.update({
       where: { id },
       data: {
         status: "ENVIADO",
         enviadoEm: agora,
         ...(ePrimeiroEnvio ? { primeiroEnvioEm: agora } : {}),
+        ...(composicao ? { composicaoDoKit: composicao } : {}),
         recusadoEm: null,
         motivoDaPerda: null,
         categoriaDaPerda: null,
@@ -323,7 +344,10 @@ export class OrcamentosService {
         convidados: o.convidados,
       },
       tema: o.theme?.name ?? null,
-      kit: o.kit?.name ?? null,
+      // Só a composição congelada: é o que a cliente recebeu. Proposta que
+      // saiu antes do congelamento existir não mostra composição nenhuma.
+      kit: lerComposicaoCongelada(o.composicaoDoKit)?.kitNome ?? o.kit?.name ?? null,
+      composicaoDoKit: lerComposicaoCongelada(o.composicaoDoKit)?.itens ?? null,
       imagens: this.imagensDa(o),
       observacoes: o.observacoes,
       mostrarValores: o.mostrarValoresIndividuais,
@@ -615,7 +639,42 @@ export class OrcamentosService {
     return this.conteudo();
   }
 
+  /**
+   * Uma proposta nova a partir de outra, para usar como modelo.
+   *
+   * Nasce RASCUNHO, com id, número e token novos, na versão 1, sem envio,
+   * aceite, perda, reserva nem pagamento — de qualquer situação que a
+   * original esteja, inclusive aprovada ou convertida. A original não é
+   * tocada: é só lida.
+   *
+   * Um `create` com os itens aninhados: o banco grava a proposta e as linhas
+   * juntas ou não grava nada.
+   */
+  async duplicar(id: string, criadoPorId: string) {
+    const original = await prisma.orcamento.findUnique({ where: { id }, include: { itens: true } });
+    if (!original) throw new NotFoundException("Orçamento não encontrado.");
+
+    const nova = await prisma.orcamento.create({
+      data: dadosDaDuplicata(original, { token: novoToken(), criadoPorId, agora: new Date() }) as never,
+      select: { id: true, numero: true },
+    });
+    return { id: nova.id, numero: nova.numero, origem: original.numero };
+  }
+
   // ---------------------------------------------------------------- privados
+
+  /** A composição de hoje de um kit do catálogo; nula se o kit não existe mais. */
+  private async composicaoDoCatalogo(kitId: string) {
+    const kit = await prisma.kit.findUnique({
+      where: { id: kitId },
+      select: {
+        id: true,
+        name: true,
+        products: { select: { quantity: true, product: { select: { id: true, name: true, active: true } } } },
+      },
+    });
+    return kit ? montarComposicaoDoKit(kit) : null;
+  }
 
   /**
    * O financeiro do pedido que nasce da proposta.
