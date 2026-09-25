@@ -29,6 +29,7 @@ import {
 import { ManualReservationService } from "../reservations/manual-reservation.service";
 import { ReservationsService } from "../reservations/reservations.service";
 import { dadosDaDuplicata } from "./duplicacao";
+import { kitDaConversao } from "./kit-da-conversao";
 
 /** Decimal do Prisma vira número uma vez, aqui. */
 const num = (v: unknown) => Number(v);
@@ -501,6 +502,12 @@ export class OrcamentosService {
       .filter((i) => i.productId)
       .map((i) => ({ productId: i.productId as string, quantity: i.quantidade }));
 
+    // Proposta enviada com a composição congelada: é ela que a cliente
+    // aceitou, e é ela que vira reserva — conferida no estoque e congelada no
+    // pedido. O kit atual do catálogo só é lido para proposta antiga, que
+    // saiu antes de a composição ser registrada.
+    const kitCombinado = kitDaConversao(o);
+
     const reserva = await this.reservas.criar(
       {
         cliente: {
@@ -528,6 +535,7 @@ export class OrcamentosService {
       } as never,
       criadoPorId,
       { tipo: "CONVERSAO_DE_PROPOSTA", referencia: o.id },
+      kitCombinado ?? undefined,
     );
 
     await prisma.orcamento.update({

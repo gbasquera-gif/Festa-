@@ -70,6 +70,14 @@ export class ManualReservationService {
      * distinguir uma venda de balcão de uma proposta convertida.
      */
     contexto: { tipo: ContextoDoConflito; referencia?: string } = { tipo: "VENDA_MANUAL" },
+    /**
+     * A composição do kit já combinada com a cliente — a de uma proposta
+     * enviada. Quando vem, ela é o kit desta venda: é conferida no estoque e
+     * congelada no pedido exatamente como está, e o cadastro atual do kit não
+     * é lido para isso. Só a conversão de proposta passa este parâmetro; a
+     * rota de venda manual não o expõe.
+     */
+    kitCombinado?: { itens: { productId: string; nome: string; quantity: number }[] },
   ) {
     // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
     // segunda regra de fuso à espera de divergir da primeira.
@@ -90,12 +98,34 @@ export class ManualReservationService {
         })
       : null;
 
-    if (input.produtos.kitId && !kit) {
+    if (input.produtos.kitId && !kit && !kitCombinado) {
       throw new BadRequestException("O kit escolhido não existe mais.");
     }
 
+    // Com composição combinada, ela manda — inclusive peça que depois foi
+    // desativada no catálogo: a obrigação com a cliente continua, e o estoque
+    // decide se dá para cumprir. O que não dá é peça que não existe mais:
+    // trocar por outra seria vender o que a cliente não aceitou.
+    if (kitCombinado) {
+      const ids = kitCombinado.itens.map((i) => i.productId);
+      const existentes = new Set(
+        (await prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((p) => p.id),
+      );
+      const faltando = kitCombinado.itens.filter((i) => !existentes.has(i.productId));
+      if (faltando.length > 0) {
+        throw new ConflictException(
+          `A proposta foi aceita com peças que não existem mais no catálogo: ${faltando.map((i) => i.nome).join(", ")}. ` +
+            "A reserva não foi criada. Combine a troca com a cliente e envie uma versão nova da proposta.",
+        );
+      }
+    }
+
+    const itensDoKit = kitCombinado
+      ? kitCombinado.itens.map((i) => ({ productId: i.productId, quantity: i.quantity }))
+      : (kit?.products ?? []);
+
     const pedido = {
-      itensDoKit: kit?.products ?? [],
+      itensDoKit,
       itensAvulsos: input.produtos.itens,
     };
 
@@ -148,7 +178,7 @@ export class ManualReservationService {
           // mesmo que o kit mude no cadastro. Vazio quando não há kit.
           kitCongeladoEm: new Date(),
           kitItems: {
-            create: (kit?.products ?? []).map((item) => ({
+            create: itensDoKit.map((item) => ({
               productId: item.productId,
               quantity: item.quantity,
             })),
