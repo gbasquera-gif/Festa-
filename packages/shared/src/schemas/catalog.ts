@@ -35,19 +35,37 @@ export type CreateThemeInput = z.infer<typeof createThemeSchema>;
 export const updateThemeSchema = createThemeSchema.partial();
 export type UpdateThemeInput = z.infer<typeof updateThemeSchema>;
 
-export const createProductSchema = z.object({
+/** Os campos de um produto, sem valor padrão nenhum. */
+const camposDoProduto = {
   name: z.string().min(2).max(160),
   slug: slugOpcional(),
   description: optionalText(1000),
-  category: z.enum(PRODUCT_CATEGORIES).default("OUTRO"),
+  category: z.enum(PRODUCT_CATEGORIES),
   unitPrice: z.coerce.number().min(0),
-  stockQuantity: z.coerce.number().int().min(0).default(0),
+  stockQuantity: z.coerce.number().int().min(0),
   imageUrl: optionalUrl(),
   partnerId: optionalId(),
-  active: z.boolean().default(true),
+  active: z.boolean(),
+};
+
+/** Criação: o que não vier recebe o padrão de um produto novo. */
+export const createProductSchema = z.object({
+  ...camposDoProduto,
+  category: camposDoProduto.category.default("OUTRO"),
+  stockQuantity: camposDoProduto.stockQuantity.default(0),
+  active: camposDoProduto.active.default(true),
 });
 export type CreateProductInput = z.infer<typeof createProductSchema>;
-export const updateProductSchema = createProductSchema.partial();
+
+/**
+ * Atualização: campo ausente fica como está no banco.
+ *
+ * Não pode derivar da criação com `.partial()`: os `.default()` continuam
+ * valendo dentro dele, e desativar um produto mandando só `active` zerava o
+ * estoque e voltava a categoria para "OUTRO". Aqui os campos são os mesmos,
+ * sem padrão — só muda o que foi enviado, e `0` e `false` enviados valem.
+ */
+export const updateProductSchema = z.object(camposDoProduto).partial();
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 
 export const kitProductInputSchema = z.object({
