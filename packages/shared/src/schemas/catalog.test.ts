@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createProductSchema, updateProductSchema } from "./catalog";
+import {
+  createKitSchema,
+  createProductSchema,
+  createThemeSchema,
+  updateKitSchema,
+  updateProductSchema,
+  updateThemeSchema,
+} from "./catalog";
 
 describe("atualização de produto", () => {
   it("campo ausente não recebe padrão", () => {
@@ -34,5 +41,39 @@ describe("atualização de produto", () => {
 describe("criação de produto", () => {
   it("continua com os padrões de um produto novo", () => {
     expect(createProductSchema.parse({ name: "Peça", unitPrice: 10 })).toMatchObject({ category: "OUTRO", stockQuantity: 0, active: true });
+  });
+});
+
+describe("atualização de kit", () => {
+  it("campo ausente não recebe padrão — sobretudo a composição", () => {
+    expect(updateKitSchema.parse({ active: false })).toEqual({ active: false });
+    expect(updateKitSchema.parse({ name: "Kit Novo" })).toEqual({ name: "Kit Novo" });
+    expect(updateKitSchema.parse({ minGuests: 20 })).toEqual({ minGuests: 20 });
+  });
+
+  it("lista vazia, 0 e false enviados valem", () => {
+    expect(updateKitSchema.parse({ products: [], images: [] })).toEqual({ products: [], images: [] });
+    expect(updateKitSchema.parse({ minGuests: 0, active: false })).toEqual({ minGuests: 0, active: false });
+  });
+
+  it("criação continua com os padrões de um kit novo", () => {
+    expect(createKitSchema.parse({ name: "Kit", basePrice: 10 })).toMatchObject({
+      images: [], minGuests: 0, maxGuests: 9999, active: true, products: [],
+    });
+  });
+});
+
+describe("atualização de tema", () => {
+  it("campo ausente não recebe padrão", () => {
+    expect(updateThemeSchema.parse({ name: "Safari" })).toEqual({ name: "Safari" });
+    expect(updateThemeSchema.parse({ active: false })).toEqual({ active: false });
+  });
+
+  it("lista vazia enviada limpa de propósito", () => {
+    expect(updateThemeSchema.parse({ colorPalette: [], suggestedEventTypes: [] })).toEqual({ colorPalette: [], suggestedEventTypes: [] });
+  });
+
+  it("criação continua com os padrões de um tema novo", () => {
+    expect(createThemeSchema.parse({ name: "Tema" })).toMatchObject({ colorPalette: [], suggestedEventTypes: [], active: true });
   });
 });
