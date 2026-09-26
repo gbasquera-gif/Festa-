@@ -35,6 +35,11 @@ export const manualReservationSchema = z.object({
     themeId: z.string().cuid().optional().or(z.literal("")),
     guestCount: z.coerce.number().int().min(1).max(2000).optional(),
     observacoes: z.string().max(2000).optional(),
+    /**
+     * Para quem é a festa, quando não é a própria cliente. Vem da proposta na
+     * conversão; ausente numa edição, fica como estava.
+     */
+    nomeDoFestejado: z.string().trim().max(120).optional(),
   }),
 
   produtos: z.object({

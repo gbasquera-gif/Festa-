@@ -36,6 +36,6 @@ export class PropostaController {
     @Ip() ip: string,
     @Headers("user-agent") agente: string,
   ) {
-    return this.orcamentos.aprovarPorToken(token, body.nome, ip, agente);
+    return this.orcamentos.aprovarPorToken(token, body.nome, body.opcaoId, ip, agente);
   }
 }

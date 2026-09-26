@@ -186,6 +186,41 @@ export const linhaDoOrcamentoSchema = z.object({
   imagemUrl: z.string().max(500).optional().or(z.literal("")),
 });
 
+/**
+ * Uma opção de festa dentro da proposta: kit, linhas, imagens e valores
+ * próprios. A cliente escolhe uma — e só ela vira reserva.
+ */
+export const opcaoDoOrcamentoSchema = z.object({
+  /** Nome comercial, editável: "Essencial", "Completa", "Opção 1". */
+  nome: z.string().trim().min(1, "Dê um nome à opção.").max(80),
+  descricao: z.string().max(1000).optional().or(z.literal("")),
+  kitId: z.string().cuid().optional().or(z.literal("")),
+  imagens: z.array(z.string().max(500)).max(12).default([]),
+  itens: z.array(linhaDoOrcamentoSchema).min(1, "Cada opção precisa de ao menos um item."),
+  valores: z.object({
+    desconto: z.coerce.number().min(0).default(0),
+    entrega: z.coerce.number().min(0).default(0),
+    montagem: z.coerce.number().min(0).default(0),
+    /**
+     * O valor final negociado desta opção. Nulo ou ausente acompanha a
+     * composição.
+     *
+     * Validado aqui, e não só na tela: o valor oficial da opção escolhida é
+     * o que vira pedido e recebimento, e uma tela é só uma das portas da API.
+     */
+    valorFinal: z.coerce
+      .number()
+      .min(0, "O valor final não pode ser negativo.")
+      .max(1_000_000)
+      .nullable()
+      .optional(),
+  }),
+});
+export type OpcaoDoOrcamentoInput = z.infer<typeof opcaoDoOrcamentoSchema>;
+
+/** Teto técnico, não comercial: uma proposta com mais que isto é engano de clique. */
+export const MAXIMO_DE_OPCOES = 30;
+
 export const orcamentoSchema = z.object({
   cliente: z.object({
     userId: z.string().cuid().optional().or(z.literal("")),
@@ -196,6 +231,11 @@ export const orcamentoSchema = z.object({
   festa: z.object({
     data: dataDaFestaSchema,
     tipo: z.enum(EVENT_TYPES).default("ANIVERSARIO"),
+    /**
+     * Para quem é a festa — a criança, o aniversariante, a homenageada. Não
+     * é a cliente: a mãe contrata, a festa é da Mariah.
+     */
+    nomeDoFestejado: z.string().trim().max(120).optional().or(z.literal("")),
     cidade: z.string().max(120).default("Chapecó"),
     local: z.string().max(200).optional().or(z.literal("")),
     convidados: z.coerce.number().int().min(1).max(2000).optional(),
@@ -203,8 +243,6 @@ export const orcamentoSchema = z.object({
   }),
   proposta: z.object({
     themeId: z.string().cuid().optional().or(z.literal("")),
-    kitId: z.string().cuid().optional().or(z.literal("")),
-    imagens: z.array(z.string().max(500)).max(12).default([]),
     /** Dias de validade a partir de hoje. */
     validadeEmDias: z.coerce.number().int().min(1).max(180).default(15),
     /**
@@ -216,9 +254,9 @@ export const orcamentoSchema = z.object({
      */
     mostrarValoresIndividuais: z.coerce.boolean().default(false),
     /**
-     * Percentual do sinal desta proposta. Vazio usa o padrão do painel —
-     * gravar a taxa em toda proposta faria a mudança do padrão não alcançar
-     * nenhuma delas.
+     * Percentual do sinal desta proposta, aplicado sobre a opção escolhida.
+     * Vazio usa o padrão do painel — gravar a taxa em toda proposta faria a
+     * mudança do padrão não alcançar nenhuma delas.
      */
     percentualDoSinal: z.coerce.number().min(0).max(100).optional(),
     /**
@@ -228,24 +266,11 @@ export const orcamentoSchema = z.object({
      */
     canal: z.enum(SALE_CHANNELS).nullable().optional(),
   }),
-  itens: z.array(linhaDoOrcamentoSchema).min(1, "A proposta precisa de ao menos um item."),
-  valores: z.object({
-    desconto: z.coerce.number().min(0).default(0),
-    entrega: z.coerce.number().min(0).default(0),
-    montagem: z.coerce.number().min(0).default(0),
-    /**
-     * O valor final negociado. Nulo ou ausente acompanha a composição.
-     *
-     * Validado aqui, e não só na tela: o valor oficial da proposta é o que
-     * vira pedido e recebimento, e uma tela é só uma das portas da API.
-     */
-    valorFinal: z.coerce
-      .number()
-      .min(0, "O valor final não pode ser negativo.")
-      .max(1_000_000)
-      .nullable()
-      .optional(),
-  }),
+  /** As alternativas de festa, na ordem em que a cliente vê. Ao menos uma. */
+  opcoes: z
+    .array(opcaoDoOrcamentoSchema)
+    .min(1, "A proposta precisa de ao menos uma opção de festa.")
+    .max(MAXIMO_DE_OPCOES),
 });
 export type OrcamentoInput = z.infer<typeof orcamentoSchema>;
 
@@ -269,6 +294,11 @@ export type ConverterOrcamentoInput = z.infer<typeof converterOrcamentoSchema>;
  */
 export const aprovarPropostaSchema = z.object({
   nome: z.string().min(2, "Diga seu nome para confirmar.").max(160),
+  /**
+   * A opção escolhida. Obrigatória quando a proposta tem mais de uma; com
+   * uma só, ausente quer dizer ela.
+   */
+  opcaoId: z.string().min(1).max(64).optional(),
 });
 export type AprovarPropostaInput = z.infer<typeof aprovarPropostaSchema>;
 

@@ -16,11 +16,39 @@ const DIA = 86_400_000;
 
 type Decimalish = unknown;
 
+type LinhaOriginal = {
+  tipo: string;
+  productId: string | null;
+  descricao: string;
+  quantidade: number;
+  valorUnitario: Decimalish;
+  total: Decimalish;
+  imagemUrl: string | null;
+  ordem: number;
+};
+
+export type OpcaoOriginal = {
+  ordem: number;
+  nome: string;
+  descricao: string | null;
+  kitId: string | null;
+  imagens: string[];
+  subtotal: Decimalish;
+  desconto: Decimalish;
+  entrega: Decimalish;
+  montagem: Decimalish;
+  total: Decimalish;
+  totalCalculado: Decimalish;
+  valorFinalManual: boolean;
+  itens: LinhaOriginal[];
+};
+
 export type PropostaOriginal = {
   userId: string | null;
   clienteNome: string;
   clienteTelefone: string;
   clienteEmail: string | null;
+  nomeDoFestejado: string | null;
   festaEm: Date;
   tipoDeFesta: string;
   cidade: string;
@@ -30,33 +58,23 @@ export type PropostaOriginal = {
   validoAte: Date;
   createdAt: Date;
   themeId: string | null;
-  kitId: string | null;
   mostrarValoresIndividuais: boolean;
   percentualDoSinal: Decimalish | null;
-  imagens: string[];
-  subtotal: Decimalish;
-  desconto: Decimalish;
-  entrega: Decimalish;
-  montagem: Decimalish;
-  total: Decimalish;
-  totalCalculado: Decimalish;
-  valorFinalManual: boolean;
   canal: string | null;
-  itens: {
-    tipo: string;
-    productId: string | null;
-    descricao: string;
-    quantidade: number;
-    valorUnitario: Decimalish;
-    total: Decimalish;
-    imagemUrl: string | null;
-    ordem: number;
-  }[];
+  opcoes: OpcaoOriginal[];
 };
 
+const porOrdem = <T extends { ordem: number }>(lista: readonly T[]) =>
+  [...lista].sort((a, b) => a.ordem - b.ordem);
+
 /**
- * Os dados da proposta nova, prontos para um `create` só (com os itens
- * aninhados — o banco grava tudo ou nada).
+ * Os dados da proposta nova: a proposta em si e as opções, cada uma com as
+ * suas linhas. O serviço grava tudo numa transação — tudo ou nada.
+ *
+ * Toda opção vem junto, com nome, kit, linhas, imagens e valores. A
+ * composição congelada de cada uma NÃO vem: ela é o registro do que a
+ * cliente da original recebeu, e a cópia é um rascunho que ninguém viu —
+ * congela de novo, com o catálogo do dia, no envio dela.
  *
  * A validade repete o prazo que a original deu à cliente, contado de hoje:
  * uma proposta de 2025 duplicada hoje não pode nascer vencida.
@@ -67,7 +85,34 @@ export function dadosDaDuplicata(
 ) {
   const prazoEmDias = Math.max(1, Math.round((original.validoAte.getTime() - original.createdAt.getTime()) / DIA));
 
-  return {
+  const opcoes = porOrdem(original.opcoes).map((o, ordem) => ({
+    ordem,
+    nome: o.nome,
+    descricao: o.descricao,
+    kitId: o.kitId,
+    // As mesmas URLs: são referências ao que já está no storage, e a
+    // exclusão de proposta nunca apaga arquivo — nada precisa ser copiado.
+    imagens: [...o.imagens],
+    subtotal: o.subtotal,
+    desconto: o.desconto,
+    entrega: o.entrega,
+    montagem: o.montagem,
+    total: o.total,
+    totalCalculado: o.totalCalculado,
+    valorFinalManual: o.valorFinalManual,
+    itens: porOrdem(o.itens).map((i, ordemDaLinha) => ({
+      tipo: i.tipo,
+      productId: i.productId,
+      descricao: i.descricao,
+      quantidade: i.quantidade,
+      valorUnitario: i.valorUnitario,
+      total: i.total,
+      imagemUrl: i.imagemUrl,
+      ordem: ordemDaLinha,
+    })),
+  }));
+
+  const proposta = {
     token: novo.token,
     criadoPorId: novo.criadoPorId,
     validoAte: new Date(novo.agora.getTime() + prazoEmDias * DIA),
@@ -76,6 +121,7 @@ export function dadosDaDuplicata(
     clienteNome: original.clienteNome,
     clienteTelefone: original.clienteTelefone,
     clienteEmail: original.clienteEmail,
+    nomeDoFestejado: original.nomeDoFestejado,
 
     festaEm: original.festaEm,
     tipoDeFesta: original.tipoDeFesta,
@@ -85,37 +131,12 @@ export function dadosDaDuplicata(
     observacoes: original.observacoes,
 
     themeId: original.themeId,
-    kitId: original.kitId,
     mostrarValoresIndividuais: original.mostrarValoresIndividuais,
     percentualDoSinal: original.percentualDoSinal,
-    // As mesmas URLs: são referências ao que já está no storage, e a
-    // exclusão de proposta nunca apaga arquivo — nada precisa ser copiado.
-    imagens: [...original.imagens],
     canal: original.canal,
-
-    subtotal: original.subtotal,
-    desconto: original.desconto,
-    entrega: original.entrega,
-    montagem: original.montagem,
-    total: original.total,
-    totalCalculado: original.totalCalculado,
-    valorFinalManual: original.valorFinalManual,
-
-    itens: {
-      create: [...original.itens]
-        .sort((a, b) => a.ordem - b.ordem)
-        .map((i, ordem) => ({
-          tipo: i.tipo,
-          productId: i.productId,
-          descricao: i.descricao,
-          quantidade: i.quantidade,
-          valorUnitario: i.valorUnitario,
-          total: i.total,
-          imagemUrl: i.imagemUrl,
-          ordem,
-        })),
-    },
   };
+
+  return { proposta, opcoes };
 }
 
 /** Os campos que NUNCA passam para a cópia — conferidos no teste. */
@@ -137,6 +158,8 @@ export const CAMPOS_DE_ESTADO = [
   "valorAprovado",
   "reservationId",
   "composicaoDoKit",
+  "opcaoAprovadaId",
+  "opcaoAprovadaNome",
   "createdAt",
   "updatedAt",
 ] as const;

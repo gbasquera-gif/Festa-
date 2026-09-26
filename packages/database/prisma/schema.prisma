@@ -245,6 +245,10 @@ model Event {
   /// fechada no WhatsApp — são duas perguntas, e o painel responde as duas.
   saleChannel SaleChannel @default(WEB)
 
+  /// Para quem é a festa — a criança, o aniversariante, a pessoa homenageada.
+  /// Não é a cliente: quem contrata é o `user`. Vem da proposta na conversão.
+  nomeDoFestejado String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -271,7 +275,7 @@ model Product {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  partner    Partner?     @relation(fields: [partnerId], references: [id])
+  partner        Partner?        @relation(fields: [partnerId], references: [id])
   kitLinks       KitProduct[]
   orderItems     OrderItem[]
   orderKitItems  OrderKitItem[]
@@ -296,10 +300,11 @@ model Kit {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  theme      Theme?       @relation(fields: [themeId], references: [id])
+  theme      Theme?           @relation(fields: [themeId], references: [id])
   products   KitProduct[]
   orders     Order[]
   orcamentos Orcamento[]
+  opcoes     OrcamentoOpcao[]
 
   @@index([themeId])
   @@map("kits")
@@ -370,7 +375,7 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event       Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   kit         Kit?           @relation(fields: [kitId], references: [id])
   items       OrderItem[]
   kitItems    OrderKitItem[]
@@ -793,6 +798,11 @@ model Orcamento {
   clienteTelefone String
   clienteEmail    String?
 
+  /// Para quem é a festa ("Uma festa pensada para Mariah"). Quem contrata
+  /// continua sendo a cliente acima; nulo em proposta antiga, que usa o nome
+  /// da cliente.
+  nomeDoFestejado String?
+
   festaEm     DateTime
   tipoDeFesta EventType @default(ANIVERSARIO)
   cidade      String    @default("Chapecó")
@@ -895,6 +905,12 @@ model Orcamento {
   aprovadoPorAgente String?
   valorAprovado     Decimal? @db.Decimal(10, 2)
 
+  /// A opção que a cliente escolheu no aceite, e o nome dela naquele
+  /// momento (registro do aceite). Nulo em proposta aprovada antes das
+  /// opções existirem — ela tem uma opção só, e é essa que vale.
+  opcaoAprovadaId   String?
+  opcaoAprovadaNome String?
+
   /// A reserva que nasceu desta proposta. Um para um: proposta aprovada vira
   /// uma venda, não várias.
   reservationId String? @unique
@@ -903,11 +919,12 @@ model Orcamento {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  theme       Theme?             @relation(fields: [themeId], references: [id])
-  kit         Kit?               @relation(fields: [kitId], references: [id])
-  reservation Reservation?       @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  theme       Theme?            @relation(fields: [themeId], references: [id])
+  kit         Kit?              @relation(fields: [kitId], references: [id])
+  reservation Reservation?      @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   itens       OrcamentoItem[]
+  opcoes      OrcamentoOpcao[]
   versoes     OrcamentoVersao[]
 
   @@index([status])
@@ -934,12 +951,55 @@ model OrcamentoItem {
   imagemUrl     String?
   ordem         Int     @default(0)
 
-  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
-  product   Product?  @relation(fields: [productId], references: [id])
+  /// A opção de festa a que a linha pertence. Nula só antes do backfill.
+  opcaoId String?
+
+  orcamento Orcamento       @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  opcao     OrcamentoOpcao? @relation(fields: [opcaoId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id])
 
   @@index([orcamentoId])
+  @@index([opcaoId])
   @@index([productId])
   @@map("orcamento_itens")
+}
+
+/// Uma alternativa de festa dentro da mesma proposta ("Essencial",
+/// "Completa", "Premium"). Cada opção tem kit, linhas, imagens e valores
+/// próprios; a cliente escolhe uma, e só ela vira reserva. O que é da
+/// festa em si — cliente, data, local, validade, sinal — fica no orçamento.
+model OrcamentoOpcao {
+  id          String  @id @default(cuid())
+  orcamentoId String
+  ordem       Int     @default(0)
+  nome        String
+  descricao   String?
+
+  kitId           String?
+  /// As fotos desta opção, na ordem; a primeira é a capa dela.
+  imagens         String[] @default([])
+  /// A composição do kit desta opção, congelada no envio (mesmo formato de
+  /// `Orcamento.composicaoDoKit`, que fica como legado).
+  composicaoDoKit Json?
+
+  subtotal         Decimal @default(0) @db.Decimal(10, 2)
+  desconto         Decimal @default(0) @db.Decimal(10, 2)
+  entrega          Decimal @default(0) @db.Decimal(10, 2)
+  montagem         Decimal @default(0) @db.Decimal(10, 2)
+  /// O oficial desta opção: o que a cliente vê, aprova e paga se a escolher.
+  total            Decimal @default(0) @db.Decimal(10, 2)
+  totalCalculado   Decimal @default(0) @db.Decimal(10, 2)
+  valorFinalManual Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orcamento Orcamento       @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  kit       Kit?            @relation(fields: [kitId], references: [id])
+  itens     OrcamentoItem[]
+
+  @@index([orcamentoId])
+  @@map("orcamento_opcoes")
 }
 
 /// A fotografia de uma versão que já saiu para a cliente.
@@ -969,10 +1029,10 @@ model OrcamentoVersao {
 /// problema. Deixar no código obrigaria um deploy para trocar a foto da Maria
 /// Luiza.
 model ConteudoInstitucional {
-  chave       String   @id
-  titulo      String?
-  texto       String?
-  imagemUrl   String?
+  chave        String   @id
+  titulo       String?
+  texto        String?
+  imagemUrl    String?
   atualizadoEm DateTime @updatedAt
 
   @@map("conteudo_institucional")

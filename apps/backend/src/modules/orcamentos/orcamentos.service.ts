@@ -7,7 +7,6 @@ import {
 } from "@nestjs/common";
 import { Prisma, prisma } from "@festae/database";
 import {
-  calcularOrcamento,
   calcularSinal,
   composicaoParaExibir,
   lerComposicaoCongelada,
@@ -18,10 +17,7 @@ import {
   normalizarTelefone,
   podeSerAprovada,
   situacaoDoOrcamento,
-  totalDaLinha,
-  valorOficialDoOrcamento,
   type CategoriaDaPerda,
-  type LinhaDoOrcamento,
   type OrcamentoInput,
   type SaleChannel,
   type StatusDoOrcamento,
@@ -30,6 +26,31 @@ import { ManualReservationService } from "../reservations/manual-reservation.ser
 import { ReservationsService } from "../reservations/reservations.service";
 import { dadosDaDuplicata } from "./duplicacao";
 import { kitDaConversao } from "./kit-da-conversao";
+import {
+  dadosDasOpcoes,
+  espelhoDaOpcao,
+  opcaoDeReferencia,
+  opcaoEscolhida,
+  opcaoParaConverter,
+  type DadosDaOpcao,
+} from "./opcoes";
+
+type Tx = Prisma.TransactionClient;
+
+/** As opções de uma proposta, na ordem, com as linhas de cada uma. */
+const OPCOES_COM_ITENS = {
+  orderBy: { ordem: "asc" },
+  include: { itens: { orderBy: { ordem: "asc" } } },
+} as const;
+
+/** O mesmo, com o que a tela precisa do kit de cada opção. */
+const OPCOES_PARA_MOSTRAR = {
+  orderBy: { ordem: "asc" },
+  include: {
+    itens: { orderBy: { ordem: "asc" } },
+    kit: { select: { id: true, name: true, coverImageUrl: true, images: true } },
+  },
+} as const;
 
 /** Decimal do Prisma vira número uma vez, aqui. */
 const num = (v: unknown) => Number(v);
@@ -57,7 +78,10 @@ export class OrcamentosService {
     const agora = new Date();
     const orcamentos = await prisma.orcamento.findMany({
       orderBy: [{ createdAt: "desc" }],
-      include: { itens: { orderBy: { ordem: "asc" } }, theme: { select: { name: true } } },
+      include: {
+        theme: { select: { name: true } },
+        opcoes: { orderBy: { ordem: "asc" }, select: { id: true, ordem: true, _count: { select: { itens: true } } } },
+      },
     });
 
     return {
@@ -70,33 +94,69 @@ export class OrcamentosService {
     const o = await prisma.orcamento.findUnique({
       where: { id },
       include: {
-        itens: { orderBy: { ordem: "asc" } },
         theme: { select: { id: true, name: true, coverImageUrl: true } },
-        kit: { select: { id: true, name: true, coverImageUrl: true, images: true } },
+        opcoes: OPCOES_PARA_MOSTRAR,
         versoes: { orderBy: { versao: "desc" }, select: { versao: true, total: true, criadoEm: true } },
       },
     });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
     const conteudo = await this.conteudo();
-    const composicaoDoKit = composicaoParaExibir({
-      status: o.status,
-      congelada: o.composicaoDoKit,
-      catalogo: o.kitId ? await this.composicaoDoCatalogo(o.kitId) : null,
-    });
-    return { ...this.detalhar(o, new Date()), composicaoDoKit, sinal: await this.sinalDa(o, conteudo) };
+    const percentual = this.percentualDoSinal(o, conteudo);
+
+    const opcoes = await Promise.all(
+      o.opcoes.map(async (op) => ({
+        id: op.id,
+        ordem: op.ordem,
+        nome: op.nome,
+        descricao: op.descricao,
+        kitId: op.kitId,
+        kit: op.kit ? { id: op.kit.id, nome: op.kit.name } : null,
+        imagens: op.imagens,
+        aprovada: op.id === o.opcaoAprovadaId,
+        composicaoDoKit: composicaoParaExibir({
+          status: o.status,
+          congelada: op.composicaoDoKit,
+          catalogo: op.kitId ? await this.composicaoDoCatalogo(op.kitId) : null,
+        }),
+        valores: this.valoresDe(op),
+        sinal: calcularSinal(num(op.total), percentual),
+        linhas: op.itens.map((i) => this.linhaDetalhada(i)),
+      })),
+    );
+
+    // O que o detalhe mostra "da proposta" é o da opção de referência: a
+    // aprovada, ou a primeira enquanto nada foi aprovado.
+    const referencia = opcaoDeReferencia(o);
+    const daReferencia = opcoes.find((x) => x.id === referencia?.id) ?? null;
+    return {
+      ...this.detalhar(o, new Date()),
+      linhas: daReferencia?.linhas ?? [],
+      composicaoDoKit: daReferencia?.composicaoDoKit ?? null,
+      opcoes,
+      sinal: await this.sinalDa(o, conteudo),
+    };
   }
 
+  /**
+   * Cria a proposta com as suas opções.
+   *
+   * Uma transação: a proposta, cada opção e as linhas de cada opção são
+   * gravadas juntas ou não são gravadas. As colunas de valor da proposta
+   * espelham a primeira opção (ver `opcoes.ts`).
+   */
   async criar(input: OrcamentoInput, criadoPorId: string) {
-    const totais = this.totaisDe(input);
+    const opcoes = dadosDasOpcoes(input.opcoes);
     const validoAte = new Date(Date.now() + input.proposta.validadeEmDias * 86_400_000);
 
-    const criado = await prisma.orcamento.create({
+    const criado = await prisma.$transaction(async (tx) => {
+      const orcamento = await tx.orcamento.create({
       data: {
         token: novoToken(),
         userId: input.cliente.userId || undefined,
         clienteNome: input.cliente.nome.trim(),
         clienteTelefone: normalizarTelefone(input.cliente.telefone),
         clienteEmail: input.cliente.email?.trim() || undefined,
+        nomeDoFestejado: input.festa.nomeDoFestejado?.trim() || undefined,
         festaEm: input.festa.data,
         tipoDeFesta: input.festa.tipo as never,
         cidade: input.festa.cidade || "Chapecó",
@@ -105,16 +165,15 @@ export class OrcamentosService {
         observacoes: input.festa.observacoes || undefined,
         validoAte,
         themeId: input.proposta.themeId || undefined,
-        kitId: input.proposta.kitId || undefined,
         percentualDoSinal: input.proposta.percentualDoSinal ?? null,
         mostrarValoresIndividuais: input.proposta.mostrarValoresIndividuais ?? false,
-        imagens: input.proposta.imagens,
         canal: input.proposta.canal ?? null,
-        ...totais,
+        ...espelhoDaOpcao(opcoes[0]),
         criadoPorId,
-        itens: { create: this.linhasParaBanco(input.itens) },
       },
-      include: { itens: true },
+      });
+      await this.gravarOpcoes(tx, orcamento.id, opcoes);
+      return orcamento;
     });
 
     return { id: criado.id, numero: criado.numero, token: criado.token };
@@ -130,7 +189,10 @@ export class OrcamentosService {
    * cobrar depois.
    */
   async atualizar(id: string, input: OrcamentoInput) {
-    const atual = await prisma.orcamento.findUnique({ where: { id }, include: { itens: true } });
+    const atual = await prisma.orcamento.findUnique({
+      where: { id },
+      include: { itens: true, opcoes: OPCOES_COM_ITENS },
+    });
     if (!atual) throw new NotFoundException("Orçamento não encontrado.");
     if (atual.status === "APROVADO") {
       throw new ConflictException(
@@ -139,11 +201,13 @@ export class OrcamentosService {
     }
 
     const precisaVersionar = exigeNovaVersao(atual.status as StatusDoOrcamento);
-    const totais = this.totaisDe(input);
+    const opcoes = dadosDasOpcoes(input.opcoes);
     const validoAte = new Date(Date.now() + input.proposta.validadeEmDias * 86_400_000);
 
     await prisma.$transaction(async (tx) => {
       if (precisaVersionar) {
+        // A fotografia leva a proposta inteira: todas as opções, com kit,
+        // composição congelada, imagens, linhas e valores de cada uma.
         await tx.orcamentoVersao.create({
           data: {
             orcamentoId: atual.id,
@@ -154,7 +218,11 @@ export class OrcamentosService {
         });
       }
 
+      // As opções são regravadas inteiras. Rascunho e proposta enviada podem
+      // ser editados; aprovada, não (acima) — então nenhuma opção aprovada
+      // é apagada aqui.
       await tx.orcamentoItem.deleteMany({ where: { orcamentoId: atual.id } });
+      await tx.orcamentoOpcao.deleteMany({ where: { orcamentoId: atual.id } });
       await tx.orcamento.update({
         where: { id: atual.id },
         data: {
@@ -162,6 +230,7 @@ export class OrcamentosService {
           clienteTelefone: normalizarTelefone(input.cliente.telefone),
           clienteEmail: input.cliente.email?.trim() || null,
           userId: input.cliente.userId || null,
+          nomeDoFestejado: input.festa.nomeDoFestejado?.trim() || null,
           festaEm: input.festa.data,
           tipoDeFesta: input.festa.tipo as never,
           cidade: input.festa.cidade || "Chapecó",
@@ -170,12 +239,10 @@ export class OrcamentosService {
           observacoes: input.festa.observacoes || null,
           validoAte,
           themeId: input.proposta.themeId || null,
-          kitId: input.proposta.kitId || null,
           percentualDoSinal: input.proposta.percentualDoSinal ?? null,
           mostrarValoresIndividuais: input.proposta.mostrarValoresIndividuais ?? false,
-          imagens: input.proposta.imagens,
           canal: input.proposta.canal ?? null,
-          ...totais,
+          ...espelhoDaOpcao(opcoes[0]),
           versao: precisaVersionar ? atual.versao + 1 : atual.versao,
           status: "RASCUNHO",
           // De volta a rascunho, a composição volta a ser a do catálogo; o
@@ -183,9 +250,9 @@ export class OrcamentosService {
           // na fotografia de `OrcamentoVersao`.
           composicaoDoKit: Prisma.DbNull,
           enviadoEm: precisaVersionar ? null : atual.enviadoEm,
-          itens: { create: this.linhasParaBanco(input.itens) },
         },
       });
+      await this.gravarOpcoes(tx, atual.id, opcoes);
     });
 
     return { versionada: precisaVersionar };
@@ -193,11 +260,17 @@ export class OrcamentosService {
 
   /** Marca como enviada e devolve o link. O envio em si é a Maria Luiza. */
   async enviar(id: string) {
-    const o = await prisma.orcamento.findUnique({ where: { id }, include: { itens: true } });
+    const o = await prisma.orcamento.findUnique({ where: { id }, include: { opcoes: OPCOES_COM_ITENS } });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
     if (o.status === "APROVADO") throw new ConflictException("Esta proposta já foi aprovada.");
-    if (o.itens.length === 0) {
-      throw new BadRequestException("A proposta precisa de ao menos um item antes de ser enviada.");
+    if (o.opcoes.length === 0) {
+      throw new BadRequestException("A proposta precisa de ao menos uma opção de festa antes de ser enviada.");
+    }
+    const vazia = o.opcoes.find((op) => op.itens.length === 0);
+    if (vazia) {
+      throw new BadRequestException(
+        `A opção “${vazia.nome}” precisa de ao menos um item antes de a proposta ser enviada.`,
+      );
     }
 
     const agora = new Date();
@@ -207,24 +280,37 @@ export class OrcamentosService {
     // data verdadeira não existe em lugar nenhum, e a de hoje mentiria.
     const ePrimeiroEnvio = o.primeiroEnvioEm === null && o.enviadoEm === null && o.versao === 1;
 
-    // A composição do kit congela no primeiro envio desta versão e não muda
-    // mais: reenviar o mesmo link não pode trocar o que a cliente já viu.
-    // Mudar a proposta é editar, e editar gera versão nova.
-    const jaCongelada = lerComposicaoCongelada(o.composicaoDoKit) !== null;
-    const composicao =
-      o.kitId && !jaCongelada ? await this.composicaoDoCatalogo(o.kitId) : null;
+    // A composição do kit de cada opção congela no primeiro envio desta
+    // versão e não muda mais: reenviar o mesmo link não pode trocar o que a
+    // cliente já viu. Mudar a proposta é editar, e editar gera versão nova.
+    const congelar: { id: string; composicao: object }[] = [];
+    for (const op of o.opcoes) {
+      if (!op.kitId || lerComposicaoCongelada(op.composicaoDoKit) !== null) continue;
+      const composicao = await this.composicaoDoCatalogo(op.kitId);
+      if (composicao) congelar.push({ id: op.id, composicao });
+    }
+    // A coluna antiga da proposta acompanha a opção de referência.
+    const referencia = opcaoDeReferencia(o);
+    const daReferencia =
+      congelar.find((c) => c.id === referencia?.id)?.composicao ??
+      (lerComposicaoCongelada(referencia?.composicaoDoKit) ? referencia?.composicaoDoKit : null);
 
-    await prisma.orcamento.update({
-      where: { id },
-      data: {
-        status: "ENVIADO",
-        enviadoEm: agora,
-        ...(ePrimeiroEnvio ? { primeiroEnvioEm: agora } : {}),
-        ...(composicao ? { composicaoDoKit: composicao } : {}),
-        recusadoEm: null,
-        motivoDaPerda: null,
-        categoriaDaPerda: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      for (const c of congelar) {
+        await tx.orcamentoOpcao.update({ where: { id: c.id }, data: { composicaoDoKit: c.composicao } });
+      }
+      await tx.orcamento.update({
+        where: { id },
+        data: {
+          status: "ENVIADO",
+          enviadoEm: agora,
+          ...(ePrimeiroEnvio ? { primeiroEnvioEm: agora } : {}),
+          ...(daReferencia ? { composicaoDoKit: daReferencia as object } : {}),
+          recusadoEm: null,
+          motivoDaPerda: null,
+          categoriaDaPerda: null,
+        },
+      });
     });
     return { token: o.token };
   }
@@ -315,9 +401,8 @@ export class OrcamentosService {
     const o = await prisma.orcamento.findUnique({
       where: { token },
       include: {
-        itens: { orderBy: { ordem: "asc" } },
         theme: { select: { name: true, coverImageUrl: true } },
-        kit: { select: { name: true, coverImageUrl: true, images: true } },
+        opcoes: OPCOES_PARA_MOSTRAR,
       },
     });
     if (!o || o.status === "RASCUNHO") {
@@ -329,7 +414,48 @@ export class OrcamentosService {
     const agora = new Date();
     const situacao = situacaoDoOrcamento(o.status as StatusDoOrcamento, o.validoAte, agora);
     const conteudo = await this.conteudo();
-    const sinal = await this.sinalDa(o, conteudo);
+    const percentual = this.percentualDoSinal(o, conteudo);
+    const mostrar = o.mostrarValoresIndividuais;
+
+    const opcoes = o.opcoes.map((op) => {
+      const congelada = lerComposicaoCongelada(op.composicaoDoKit);
+      return {
+        id: op.id,
+        nome: op.nome,
+        descricao: op.descricao,
+        // Só a composição congelada: é o que a cliente recebeu. Opção que
+        // saiu antes do congelamento existir não mostra composição nenhuma.
+        kit: congelada?.kitNome ?? op.kit?.name ?? null,
+        composicaoDoKit: congelada?.itens ?? null,
+        imagens: this.imagensDa({ imagens: op.imagens, kit: op.kit, theme: o.theme }),
+        itens: op.itens.map((i) => ({
+          tipo: i.tipo,
+          descricao: i.descricao,
+          quantidade: i.quantidade,
+          // Sem valor quando a proposta não mostra preço por linha. Esconder
+          // no CSS deixaria o número no HTML, ao alcance de quem abre o código
+          // da página — e o ponto não é estético, é comercial.
+          valorUnitario: mostrar ? num(i.valorUnitario) : null,
+          total: mostrar ? num(i.total) : null,
+          imagemUrl: i.imagemUrl,
+        })),
+        valores: {
+          subtotal: mostrar ? num(op.subtotal) : null,
+          desconto: num(op.desconto),
+          entrega: mostrar ? num(op.entrega) : null,
+          montagem: mostrar ? num(op.montagem) : null,
+          total: num(op.total),
+        },
+        /** O sinal se a cliente escolher esta opção. */
+        sinal: calcularSinal(num(op.total), percentual),
+      };
+    });
+
+    // O topo do documento fala da opção de referência: a aprovada, ou a
+    // primeira. É o que a página mostrava antes das opções, e é o que uma
+    // proposta de uma opção só continua mostrando.
+    const referencia = opcaoDeReferencia(o);
+    const daReferencia = opcoes.find((x) => x.id === referencia?.id) ?? opcoes[0] ?? null;
 
     return {
       numero: o.numero,
@@ -337,6 +463,8 @@ export class OrcamentosService {
       situacao,
       podeAprovar: podeSerAprovada(o.status as StatusDoOrcamento, o.validoAte, agora),
       cliente: { nome: o.clienteNome },
+      /** Para quem é a festa: o festejado, ou a cliente quando ele não foi informado. */
+      festaPara: o.nomeDoFestejado?.trim() || o.clienteNome,
       festa: {
         em: o.festaEm.toISOString(),
         tipo: o.tipoDeFesta,
@@ -345,35 +473,21 @@ export class OrcamentosService {
         convidados: o.convidados,
       },
       tema: o.theme?.name ?? null,
-      // Só a composição congelada: é o que a cliente recebeu. Proposta que
-      // saiu antes do congelamento existir não mostra composição nenhuma.
-      kit: lerComposicaoCongelada(o.composicaoDoKit)?.kitNome ?? o.kit?.name ?? null,
-      composicaoDoKit: lerComposicaoCongelada(o.composicaoDoKit)?.itens ?? null,
-      imagens: this.imagensDa(o),
+      opcoes,
+      opcaoAprovadaId: o.status === "APROVADO" ? (o.opcaoAprovadaId ?? (opcoes.length === 1 ? opcoes[0].id : null)) : null,
+      opcaoAprovadaNome: o.opcaoAprovadaNome,
+      kit: daReferencia?.kit ?? null,
+      composicaoDoKit: daReferencia?.composicaoDoKit ?? null,
+      imagens: daReferencia?.imagens ?? [],
       observacoes: o.observacoes,
-      mostrarValores: o.mostrarValoresIndividuais,
-      itens: o.itens.map((i) => ({
-        tipo: i.tipo,
-        descricao: i.descricao,
-        quantidade: i.quantidade,
-        // Sem valor quando a proposta não mostra preço por linha. Esconder
-        // no CSS deixaria o número no HTML, ao alcance de quem abre o código
-        // da página — e o ponto não é estético, é comercial.
-        valorUnitario: o.mostrarValoresIndividuais ? num(i.valorUnitario) : null,
-        total: o.mostrarValoresIndividuais ? num(i.total) : null,
-        imagemUrl: i.imagemUrl,
-      })),
-      valores: {
-        subtotal: o.mostrarValoresIndividuais ? num(o.subtotal) : null,
-        desconto: num(o.desconto),
-        entrega: o.mostrarValoresIndividuais ? num(o.entrega) : null,
-        montagem: o.mostrarValoresIndividuais ? num(o.montagem) : null,
-        total: num(o.total),
-      },
+      mostrarValores: mostrar,
+      itens: daReferencia?.itens ?? [],
+      valores: daReferencia?.valores ?? { subtotal: null, desconto: 0, entrega: null, montagem: null, total: 0 },
       validoAte: o.validoAte.toISOString(),
       aprovadoEm: o.aprovadoEm?.toISOString() ?? null,
       aprovadoPorNome: o.aprovadoPorNome,
-      sinal,
+      valorAprovado: o.valorAprovado === null ? null : num(o.valorAprovado),
+      sinal: await this.sinalDa(o, conteudo),
       conteudo,
     };
   }
@@ -393,15 +507,9 @@ export class OrcamentosService {
     o: { total: unknown; percentualDoSinal: unknown; reservationId: string | null },
     conteudo: Record<string, { titulo: string | null; texto: string | null }>,
   ) {
-    const padrao = Number(conteudo.sinal_percentual?.texto);
-    const percentual =
-      o.percentualDoSinal !== null && o.percentualDoSinal !== undefined
-        ? num(o.percentualDoSinal)
-        : Number.isFinite(padrao) && conteudo.sinal_percentual?.texto
-          ? padrao
-          : null;
-
-    const conta = calcularSinal(num(o.total), percentual);
+    // `total` é o espelho da opção de referência: depois do aceite, a opção
+    // escolhida. O sinal nunca soma opções.
+    const conta = calcularSinal(num(o.total), this.percentualDoSinal(o, conteudo));
 
     let recebido = 0;
     if (o.reservationId) {
@@ -426,6 +534,19 @@ export class OrcamentosService {
     };
   }
 
+  /** O percentual do sinal: o da proposta, ou o padrão do painel. */
+  private percentualDoSinal(
+    o: { percentualDoSinal: unknown },
+    conteudo: Record<string, { titulo: string | null; texto: string | null }>,
+  ): number | null {
+    const padrao = Number(conteudo.sinal_percentual?.texto);
+    return o.percentualDoSinal !== null && o.percentualDoSinal !== undefined
+      ? num(o.percentualDoSinal)
+      : Number.isFinite(padrao) && conteudo.sinal_percentual?.texto
+        ? padrao
+        : null;
+  }
+
   /**
    * O aceite da cliente.
    *
@@ -434,13 +555,21 @@ export class OrcamentosService {
    * e disponibilidade não pode ser decidida por um clique de quem não vê o
    * estoque. Entre a proposta e o aceite, o balão pode ter acabado.
    */
-  async aprovarPorToken(token: string, nome: string, ip?: string, agente?: string) {
-    const o = await prisma.orcamento.findUnique({ where: { token } });
+  async aprovarPorToken(token: string, nome: string, opcaoId?: string, ip?: string, agente?: string) {
+    const o = await prisma.orcamento.findUnique({
+      where: { token },
+      include: { opcoes: { orderBy: { ordem: "asc" } } },
+    });
     if (!o || o.status === "RASCUNHO") throw new NotFoundException("Proposta não encontrada.");
 
     const agora = new Date();
     if (o.status === "APROVADO") {
-      return { jaAprovada: true, aprovadoEm: o.aprovadoEm?.toISOString() ?? null };
+      return {
+        jaAprovada: true,
+        aprovadoEm: o.aprovadoEm?.toISOString() ?? null,
+        opcaoAprovadaId: o.opcaoAprovadaId,
+        opcaoAprovadaNome: o.opcaoAprovadaNome,
+      };
     }
     if (!podeSerAprovada(o.status as StatusDoOrcamento, o.validoAte, agora)) {
       throw new ConflictException(
@@ -448,19 +577,56 @@ export class OrcamentosService {
       );
     }
 
-    await prisma.orcamento.update({
-      where: { id: o.id },
+    // A opção tem de ser desta proposta, e explícita quando há mais de uma.
+    const escolhida = opcaoEscolhida(o.opcoes, opcaoId);
+
+    // O aceite registra a opção, o nome dela naquele momento e o valor dela.
+    // As colunas de resumo passam a espelhar a escolhida, e é assim que as
+    // outras opções ficam fora de todo número que lê a proposta.
+    //
+    // A condição de status vai no próprio UPDATE: dois cliques (ou duas
+    // abas) não aprovam duas opções.
+    const { count } = await prisma.orcamento.updateMany({
+      where: { id: o.id, status: "ENVIADO", versao: o.versao },
       data: {
         status: "APROVADO",
         aprovadoEm: agora,
         aprovadoPorNome: nome.trim(),
         aprovadoPorIp: ip?.slice(0, 60),
         aprovadoPorAgente: agente?.slice(0, 300),
-        valorAprovado: o.total,
+        valorAprovado: escolhida.total,
+        opcaoAprovadaId: escolhida.id,
+        opcaoAprovadaNome: escolhida.nome,
+        ...espelhoDaOpcao(escolhida),
+        composicaoDoKit: lerComposicaoCongelada(escolhida.composicaoDoKit)
+          ? (escolhida.composicaoDoKit as object)
+          : Prisma.DbNull,
       },
     });
+    if (count === 0) {
+      const agoraEsta = await prisma.orcamento.findUnique({
+        where: { id: o.id },
+        select: { status: true, aprovadoEm: true, opcaoAprovadaId: true, opcaoAprovadaNome: true },
+      });
+      if (agoraEsta?.status === "APROVADO") {
+        return {
+          jaAprovada: true,
+          aprovadoEm: agoraEsta.aprovadoEm?.toISOString() ?? null,
+          opcaoAprovadaId: agoraEsta.opcaoAprovadaId,
+          opcaoAprovadaNome: agoraEsta.opcaoAprovadaNome,
+        };
+      }
+      throw new ConflictException(
+        "Esta proposta mudou enquanto a página estava aberta. Recarregue para ver a versão atual.",
+      );
+    }
 
-    return { jaAprovada: false, aprovadoEm: agora.toISOString() };
+    return {
+      jaAprovada: false,
+      aprovadoEm: agora.toISOString(),
+      opcaoAprovadaId: escolhida.id,
+      opcaoAprovadaNome: escolhida.nome,
+    };
   }
 
   /**
@@ -474,9 +640,12 @@ export class OrcamentosService {
    * Linhas manuais e serviços entram no valor e não no estoque: elas não têm
    * `productId`, então não viram item de pedido — o dinheiro é registrado,
    * o acervo não é inventado.
+   *
+   * Só a opção aprovada vira reserva: os itens, o kit congelado, a entrega,
+   * a montagem e os valores são dela. As outras opções não entram em nada.
    */
   async converter(id: string, criadoPorId: string, canalInformado?: SaleChannel) {
-    const o = await prisma.orcamento.findUnique({ where: { id }, include: { itens: true } });
+    const o = await prisma.orcamento.findUnique({ where: { id }, include: { opcoes: OPCOES_COM_ITENS } });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
 
     // A venda nasce com a origem declarada: a da proposta, ou a que quem
@@ -498,7 +667,9 @@ export class OrcamentosService {
       throw new ConflictException("Esta proposta já virou a reserva desta festa.");
     }
 
-    const itensDeCatalogo = o.itens
+    const opcao = opcaoParaConverter(o);
+
+    const itensDeCatalogo = opcao.itens
       .filter((i) => i.productId)
       .map((i) => ({ productId: i.productId as string, quantity: i.quantidade }));
 
@@ -506,7 +677,11 @@ export class OrcamentosService {
     // aceitou, e é ela que vira reserva — conferida no estoque e congelada no
     // pedido. O kit atual do catálogo só é lido para proposta antiga, que
     // saiu antes de a composição ser registrada.
-    const kitCombinado = kitDaConversao(o);
+    const kitCombinado = kitDaConversao({
+      numero: o.numero,
+      kitId: opcao.kitId,
+      composicaoDoKit: opcao.composicaoDoKit,
+    });
 
     const reserva = await this.reservas.criar(
       {
@@ -521,17 +696,21 @@ export class OrcamentosService {
           themeId: o.themeId ?? undefined,
           guestCount: o.convidados ?? undefined,
           observacoes: o.observacoes ?? undefined,
+          nomeDoFestejado: o.nomeDoFestejado ?? undefined,
         },
-        produtos: { kitId: o.kitId ?? undefined, itens: itensDeCatalogo },
+        produtos: { kitId: opcao.kitId ?? undefined, itens: itensDeCatalogo },
         logistica: {
-          fulfillment: num(o.entrega) > 0 ? "DELIVERY" : "PICKUP",
-          assembly: num(o.montagem) > 0,
+          fulfillment: num(opcao.entrega) > 0 ? "DELIVERY" : "PICKUP",
+          assembly: num(opcao.montagem) > 0,
           endereco: o.local ?? undefined,
           cidade: o.cidade,
         },
-        financeiro: this.financeiroDaConversao(o),
+        financeiro: this.financeiroDaConversao({ ...opcao, valorAprovado: o.valorAprovado }),
         origem: canal,
-        observacoesInternas: `Nasceu da proposta nº ${o.numero} (versão ${o.versao}).`,
+        observacoesInternas:
+          o.opcoes.length > 1
+            ? `Nasceu da proposta nº ${o.numero} (versão ${o.versao}), opção “${opcao.nome}”.`
+            : `Nasceu da proposta nº ${o.numero} (versão ${o.versao}).`,
       } as never,
       criadoPorId,
       { tipo: "CONVERSAO_DE_PROPOSTA", referencia: o.id },
@@ -655,16 +834,24 @@ export class OrcamentosService {
    * original esteja, inclusive aprovada ou convertida. A original não é
    * tocada: é só lida.
    *
-   * Um `create` com os itens aninhados: o banco grava a proposta e as linhas
-   * juntas ou não grava nada.
+   * Uma transação: o banco grava a proposta, as opções e as linhas juntas
+   * ou não grava nada.
    */
   async duplicar(id: string, criadoPorId: string) {
-    const original = await prisma.orcamento.findUnique({ where: { id }, include: { itens: true } });
+    const original = await prisma.orcamento.findUnique({ where: { id }, include: { opcoes: OPCOES_COM_ITENS } });
     if (!original) throw new NotFoundException("Orçamento não encontrado.");
 
-    const nova = await prisma.orcamento.create({
-      data: dadosDaDuplicata(original, { token: novoToken(), criadoPorId, agora: new Date() }) as never,
-      select: { id: true, numero: true },
+    const { proposta, opcoes } = dadosDaDuplicata(original, { token: novoToken(), criadoPorId, agora: new Date() });
+    if (opcoes.length === 0) {
+      throw new ConflictException(`A proposta nº ${original.numero} não tem opção de festa para copiar.`);
+    }
+    const nova = await prisma.$transaction(async (tx) => {
+      const criada = await tx.orcamento.create({
+        data: { ...proposta, ...espelhoDaOpcao(opcoes[0]) } as never,
+        select: { id: true, numero: true },
+      });
+      await this.gravarOpcoes(tx, criada.id, opcoes);
+      return criada;
     });
     return { id: nova.id, numero: nova.numero, origem: original.numero };
   }
@@ -725,57 +912,69 @@ export class OrcamentosService {
   }
 
   /**
-   * Os valores gravados: as parcelas da composição, o total calculado e o
-   * total oficial.
+   * Grava as opções de uma proposta e as linhas de cada uma.
    *
-   * `total` é o oficial de propósito — é o campo que a proposta pública, o
-   * sinal, a aprovação, a conversão e os indicadores já leem. Guardar o
-   * negociado num campo novo e deixar `total` como a soma obrigaria cada um
-   * desses lugares a lembrar de preferir o outro, e o primeiro que esquecesse
-   * cobraria da cliente um valor que ela não aceitou.
+   * Cada linha leva os dois vínculos — a proposta e a opção —, para que o
+   * que já lia as linhas pela proposta (e a exclusão em cascata) continue
+   * valendo.
    */
-  private totaisDe(input: OrcamentoInput) {
-    const linhas: LinhaDoOrcamento[] = input.itens.map((i) => ({
-      tipo: i.tipo,
-      descricao: i.descricao,
-      quantidade: i.quantidade,
-      valorUnitario: i.valorUnitario,
-    }));
-    const composicao = calcularOrcamento(
-      linhas,
-      input.valores.desconto,
-      input.valores.entrega,
-      input.valores.montagem,
-    );
-    const oficial = valorOficialDoOrcamento(composicao.total, input.valores.valorFinal);
+  private async gravarOpcoes(tx: Tx, orcamentoId: string, opcoes: readonly DadosDaOpcao[]) {
+    for (const { itens, ...opcao } of opcoes) {
+      const criada = await tx.orcamentoOpcao.create({
+        data: { ...opcao, orcamentoId } as never,
+        select: { id: true },
+      });
+      if (itens.length > 0) {
+        await tx.orcamentoItem.createMany({
+          data: itens.map((i) => ({ ...i, orcamentoId, opcaoId: criada.id })) as never,
+        });
+      }
+    }
+  }
 
+  /** Os valores de uma opção, como o painel mostra. */
+  private valoresDe(o: {
+    subtotal: unknown;
+    desconto: unknown;
+    entrega: unknown;
+    montagem: unknown;
+    total: unknown;
+    totalCalculado: unknown;
+    valorFinalManual: boolean;
+  }) {
     return {
-      subtotal: composicao.subtotal,
-      desconto: composicao.desconto,
-      entrega: composicao.entrega,
-      montagem: composicao.montagem,
-      total: oficial.total,
-      totalCalculado: oficial.totalCalculado,
-      valorFinalManual: oficial.manual,
+      subtotal: num(o.subtotal),
+      desconto: num(o.desconto),
+      entrega: num(o.entrega),
+      montagem: num(o.montagem),
+      /** O oficial: o que a cliente vê, aprova e paga. */
+      total: num(o.total),
+      /** A soma da composição, para o painel mostrar a negociação. */
+      totalCalculado: num(o.totalCalculado),
+      valorFinalManual: o.valorFinalManual === true,
     };
   }
 
-  private linhasParaBanco(itens: OrcamentoInput["itens"]) {
-    return itens.map((i, ordem) => ({
-      tipo: i.tipo as never,
-      productId: i.productId || undefined,
-      descricao: i.descricao.trim(),
+  private linhaDetalhada(i: {
+    id: string;
+    tipo: string;
+    productId: string | null;
+    descricao: string;
+    quantidade: number;
+    valorUnitario: unknown;
+    total: unknown;
+    imagemUrl: string | null;
+  }) {
+    return {
+      id: i.id,
+      tipo: i.tipo,
+      productId: i.productId,
+      descricao: i.descricao,
       quantidade: i.quantidade,
-      valorUnitario: i.valorUnitario,
-      total: totalDaLinha({
-        tipo: i.tipo,
-        descricao: i.descricao,
-        quantidade: i.quantidade,
-        valorUnitario: i.valorUnitario,
-      }),
-      imagemUrl: i.imagemUrl || undefined,
-      ordem,
-    }));
+      valorUnitario: num(i.valorUnitario),
+      total: num(i.total),
+      imagemUrl: i.imagemUrl,
+    };
   }
 
   /** As imagens escolhidas; sem escolha, a capa do kit ou do tema. */
@@ -802,7 +1001,11 @@ export class OrcamentosService {
       tipoDeFesta: o.tipoDeFesta,
       cidade: o.cidade,
       tema: o.theme?.name ?? null,
-      itens: o.itens.length,
+      festejado: o.nomeDoFestejado ?? null,
+      /** Quantas opções de festa a proposta oferece. Três opções são uma proposta. */
+      opcoes: Array.isArray(o.opcoes) ? o.opcoes.length : 1,
+      /** As linhas da opção de referência (a aprovada, ou a primeira). */
+      itens: this.linhasDaReferencia(o),
       total: num(o.total),
       validoAte: o.validoAte.toISOString(),
       criadoEm: o.createdAt.toISOString(),
@@ -817,11 +1020,20 @@ export class OrcamentosService {
     };
   }
 
+  private linhasDaReferencia(o: any): number {
+    const referencia = opcaoDeReferencia<any>({ opcaoAprovadaId: o.opcaoAprovadaId ?? null, opcoes: o.opcoes ?? [] });
+    if (!referencia) return 0;
+    return referencia._count?.itens ?? referencia.itens?.length ?? 0;
+  }
+
   private detalhar(o: any, agora: Date) {
     return {
       ...this.resumir(o, agora),
       clienteId: o.userId,
       clienteEmail: o.clienteEmail,
+      nomeDoFestejado: o.nomeDoFestejado ?? null,
+      opcaoAprovadaId: o.opcaoAprovadaId ?? null,
+      opcaoAprovadaNome: o.opcaoAprovadaNome ?? null,
       // A evidência do aceite viaja junto com o detalhe: é ela que a tela
       // mostra para quem precisa saber quem aprovou, quando e por quanto.
       aprovadoPorNome: o.aprovadoPorNome,
@@ -834,27 +1046,7 @@ export class OrcamentosService {
       percentualDoSinal: o.percentualDoSinal === null ? null : num(o.percentualDoSinal),
       mostrarValoresIndividuais: o.mostrarValoresIndividuais,
       imagens: o.imagens,
-      valores: {
-        subtotal: num(o.subtotal),
-        desconto: num(o.desconto),
-        entrega: num(o.entrega),
-        montagem: num(o.montagem),
-        /** O oficial: o que a cliente vê, aprova e paga. */
-        total: num(o.total),
-        /** A soma da composição, para o painel mostrar a negociação. */
-        totalCalculado: num(o.totalCalculado),
-        valorFinalManual: o.valorFinalManual === true,
-      },
-      linhas: o.itens.map((i: any) => ({
-        id: i.id,
-        tipo: i.tipo,
-        productId: i.productId,
-        descricao: i.descricao,
-        quantidade: i.quantidade,
-        valorUnitario: num(i.valorUnitario),
-        total: num(i.total),
-        imagemUrl: i.imagemUrl,
-      })),
+      valores: this.valoresDe(o),
       versoes: (o.versoes ?? []).map((v: any) => ({
         versao: v.versao,
         total: num(v.total),

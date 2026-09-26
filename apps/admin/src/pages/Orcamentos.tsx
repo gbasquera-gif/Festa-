@@ -32,6 +32,9 @@ export type OrcamentoResumo = {
   cidade: string;
   tema: string | null;
   itens: number;
+  /** Quantas opções de festa a proposta oferece. */
+  opcoes: number;
+  festejado: string | null;
   total: number;
   validoAte: string;
   criadoEm: string;
@@ -95,7 +98,7 @@ export default function Orcamentos() {
     const daAba = aba === "TODOS" ? linhas : linhas.filter((o) => o.situacao === aba);
     const filtradas = termo
       ? daAba.filter((o) =>
-          [o.cliente, o.telefone, String(o.numero), o.cidade].join(" ").toLowerCase().includes(termo),
+          [o.cliente, o.festejado ?? "", o.telefone, String(o.numero), o.cidade].join(" ").toLowerCase().includes(termo),
         )
       : daAba;
 
@@ -206,11 +209,24 @@ export default function Orcamentos() {
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   nº {o.numero}
-                  {o.versao > 1 ? ` · versão ${o.versao}` : ""} · festa em {formatarDataDaFesta(o.festaEm)} ·{" "}
-                  {o.itens} {o.itens === 1 ? "item" : "itens"}
+                  {o.versao > 1 ? ` · versão ${o.versao}` : ""}
+                  {o.festejado ? ` · festa de ${o.festejado}` : ""} · festa em {formatarDataDaFesta(o.festaEm)} ·{" "}
+                  {o.opcoes > 1
+                    ? `${o.opcoes} opções`
+                    : `${o.itens} ${o.itens === 1 ? "item" : "itens"}`}
                 </span>
               </span>
-              <span className="fin-numero shrink-0 text-base">{brl(o.total)}</span>
+              {/* Com várias opções, o valor da linha é o de uma delas: a
+                  escolhida depois do aceite, a primeira antes. A legenda diz
+                  qual — somar opções não daria o valor de proposta nenhuma. */}
+              <span className="shrink-0 text-right">
+                <span className="fin-numero block text-base">{brl(o.total)}</span>
+                {o.opcoes > 1 && (
+                  <span className="painel-periodo block">
+                    {o.situacao === "APROVADO" ? "opção escolhida" : "1ª opção"}
+                  </span>
+                )}
+              </span>
             </Link>
           );
         })}

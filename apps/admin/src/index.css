@@ -1439,3 +1439,113 @@ button.painel-cartao:focus-visible .painel-abre {
 .proposta-capa-marca .proposta-capa-texto .proposta-eyebrow { color: var(--p-gold); }
 .proposta-capa-marca h1 { color: var(--p-navy); }
 .proposta-capa-marca .proposta-data { color: #7a7266; }
+
+/* ----------------------------------------------------------------------
+ * Várias opções de festa na mesma proposta
+ *
+ * Cards empilhados, cada um uma festa inteira. A escolhida ganha a borda
+ * coral — a mesma cor do botão que a leva à aprovação.
+ * -------------------------------------------------------------------- */
+.proposta-opcoes { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+.proposta-opcao {
+  background: #fff;
+  border: 1px solid var(--p-linha);
+  border-radius: 18px;
+  overflow: hidden;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.proposta-opcao-escolhida { border-color: var(--p-coral); box-shadow: 0 0 0 2px var(--p-coral); }
+.proposta-opcao-imagens { padding: 0.75rem 0.75rem 0; }
+.proposta-opcao-imagens .proposta-inspiracao-capa { margin: 0; border-radius: 12px; aspect-ratio: 4 / 3; object-fit: cover; }
+.proposta-opcao-corpo { padding: 1.25rem 1.25rem 1.5rem; }
+@media (min-width: 640px) { .proposta-opcao-corpo { padding: 1.5rem 1.75rem 1.75rem; } }
+.proposta-opcao h3 {
+  font-size: clamp(1.3rem, 4.5vw, 1.65rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+.proposta-opcao .proposta-investimento-dl,
+.proposta-opcao dl { margin: 0.75rem 0 0; }
+.proposta-opcao dl > div { display: flex; justify-content: space-between; padding: 0.3rem 0; color: #6f6659; font-size: 0.92rem; }
+.proposta-opcao dd { font-family: "IBM Plex Mono", monospace; margin: 0; }
+.proposta-opcao-investimento {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--p-linha);
+}
+.proposta-opcao-investimento span { font-size: 0.9rem; color: #6f6659; }
+.proposta-opcao-investimento strong {
+  font-size: clamp(1.7rem, 7vw, 2.2rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--p-navy);
+  font-variant-numeric: tabular-nums;
+}
+.proposta-opcao-sinal { margin: 0.25rem 0 0; font-size: 0.85rem; color: #6f6659; text-align: right; }
+.proposta-opcao .proposta-botao { max-width: none; }
+.proposta-botao-marcado { background: var(--p-navy); }
+.proposta-botao-marcado:hover:not(:disabled) { background: #0d1a2c; }
+
+.proposta-escolhida {
+  max-width: 22rem;
+  margin: 1rem auto 0;
+  padding: 1rem 1.1rem;
+  background: #fff;
+  border: 2px solid var(--p-coral);
+  border-radius: 14px;
+}
+.proposta-escolhida-nome { margin: 0; font-size: 1.05rem; font-weight: 500; overflow-wrap: anywhere; }
+.proposta-escolhida-valor { margin: 0.2rem 0 0; font-size: 1.6rem; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.proposta-link {
+  margin-top: 0.4rem;
+  min-height: 44px;
+  padding: 0 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--p-coral);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* A barra da escolha, presa embaixo. A página ganha folga para ela não
+ * cobrir o rodapé. */
+.proposta-com-barra { padding-bottom: 5.5rem; }
+.proposta-barra {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem max(1rem, calc((100vw - 44rem) / 2)) calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--p-navy);
+  color: #fff;
+  box-shadow: 0 -6px 20px rgba(19, 34, 56, 0.18);
+}
+.proposta-barra-texto { min-width: 0; display: grid; }
+.proposta-barra-texto span { font-size: 0.72rem; opacity: 0.75; }
+.proposta-barra-texto strong { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proposta-barra button {
+  flex-shrink: 0;
+  min-height: 46px;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--p-coral);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) { .proposta-opcao { transition: none; } }

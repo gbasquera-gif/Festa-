@@ -152,6 +152,7 @@ export class ManualReservationService {
           date: dataDaFesta,
           guestCount: input.evento.guestCount,
           themeId: input.evento.themeId || undefined,
+          nomeDoFestejado: input.evento.nomeDoFestejado || undefined,
           address: input.logistica.endereco || undefined,
           neighborhood: input.logistica.bairro || undefined,
           city: input.logistica.cidade || "Chapecó",
@@ -367,6 +368,9 @@ export class ManualReservationService {
           date: dataDaFesta,
           guestCount: input.evento.guestCount ?? null,
           themeId: input.evento.themeId || null,
+          ...(input.evento.nomeDoFestejado !== undefined
+            ? { nomeDoFestejado: input.evento.nomeDoFestejado || null }
+            : {}),
           address: input.logistica.endereco?.trim() || null,
           neighborhood: input.logistica.bairro?.trim() || null,
           city: input.logistica.cidade?.trim() || "Chapecó",

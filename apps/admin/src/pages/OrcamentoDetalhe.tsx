@@ -235,6 +235,11 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           <h1 className="text-[1.65rem] font-semibold" style={{ color: "var(--color-navy)" }}>
             {o.cliente}
           </h1>
+          {o.nomeDoFestejado && (
+            <p className="text-sm" style={{ color: "var(--color-navy)" }}>
+              Festa de <strong>{o.nomeDoFestejado}</strong>
+            </p>
+          )}
           <p className="mt-0.5 text-sm text-muted-foreground">
             {tipoDeFesta} em {formatarDataDaFesta(o.festaEm)} · {o.cidade}
             {o.local ? ` · ${o.local}` : ""} · válida até {formatarDataDaFesta(o.validoAte)}
@@ -313,8 +318,11 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         <div className="painel-cartao p-4" style={{ background: "rgba(46,155,107,0.06)" }}>
           <p className="text-sm" style={{ color: "#2e9b6b" }}>
             Aprovada por <strong>{o.aprovadoPorNome ?? "—"}</strong> em{" "}
-            {o.aprovadoEm ? new Date(o.aprovadoEm).toLocaleString("pt-BR") : "—"} · valor aprovado{" "}
-            {brl(o.valores.total)}
+            {o.aprovadoEm ? new Date(o.aprovadoEm).toLocaleString("pt-BR") : "—"}
+            {o.opcaoAprovadaNome && o.opcoes.length > 1 ? (
+              <> · opção escolhida: <strong>{o.opcaoAprovadaNome}</strong></>
+            ) : null}
+            {" · "}valor aprovado {brl(o.valorAprovado ?? o.valores.total)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {o.reservaId
@@ -425,88 +433,34 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </p>
       </section>
 
-      {/* COMPOSIÇÃO */}
-      <section className="painel-cartao p-0">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
-          <h2 className="text-[0.95rem] font-medium" style={{ color: "var(--color-navy)" }}>
-            Composição
+      {/* AS OPÇÕES
+        *
+        * Uma seção por opção de festa, cada uma com a composição, as linhas e
+        * o valor dela. Depois do aceite, a escolhida fica marcada e as outras
+        * esmaecidas: continuam aqui como registro do que foi oferecido, mas
+        * não entram em reserva, sinal nem financeiro. */}
+      {o.opcoes.length > 1 && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[1.05rem] font-semibold" style={{ color: "var(--color-navy)" }}>
+            {o.opcoes.length} opções de festa
           </h2>
           <span className="painel-periodo">
             {o.mostrarValoresIndividuais
               ? "a cliente vê o valor de cada item"
-              : "a cliente vê só o investimento total"}
+              : "a cliente vê o investimento de cada opção"}
           </span>
         </div>
-        {o.composicaoDoKit && (
-          <div className="px-4 pt-3">
-            <ComposicaoDoKit
-              kitNome={o.composicaoDoKit.kitNome}
-              itens={o.composicaoDoKit.itens}
-              nota={
-                o.composicaoDoKit.origem === "ENVIADA"
-                  ? "Como foi enviada à cliente. Alterar o kit no catálogo não muda esta proposta."
-                  : o.composicaoDoKit.semRegistro
-                    ? "Composição atual do catálogo. Esta proposta saiu antes de a composição passar a ser registrada, então a cliente não a vê na página dela."
-                    : "Composição atual do catálogo. Fica registrada na proposta quando ela for enviada."
-              }
-            />
-          </div>
-        )}
-        {/* Cinco colunas não cabem em 390px: no celular cada item vira uma
-            linha vertical, com a mesma informação — descrição, tipo,
-            quantidade, unitário e total. Nenhum dado sai da tela. */}
-        <table className="fin-tabela mt-3 hidden md:table">
-          <thead>
-            <tr><th>Item</th><th>Tipo</th><th className="num">Qtd</th><th className="num">Unitário</th><th className="num">Total</th></tr>
-          </thead>
-          <tbody>
-            {o.linhas.map((l: any) => (
-              <tr key={l.id}>
-                <td style={{ color: "var(--fin-navy-ink)" }}>{l.descricao}</td>
-                <td style={{ color: "var(--fin-muted)" }}>{TIPO_DA_LINHA_LABEL[l.tipo as TipoDaLinha]}</td>
-                <td className="num">{l.quantidade}</td>
-                <td className="num">{brl(l.valorUnitario)}</td>
-                <td className="num">{brl(l.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <ul className="mt-3 md:hidden">
-          {o.linhas.map((l: any) => (
-            <li key={l.id} className="flex items-start justify-between gap-3 border-t px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm" style={{ color: "var(--fin-navy-ink)" }}>{l.descricao}</p>
-                <p className="painel-periodo mt-0.5">
-                  {TIPO_DA_LINHA_LABEL[l.tipo as TipoDaLinha]} · {l.quantidade} × {brl(l.valorUnitario)}
-                </p>
-              </div>
-              <span className="fin-numero shrink-0 text-sm">{brl(l.total)}</span>
-            </li>
-          ))}
-        </ul>
-        <dl className="space-y-1 border-t p-4 text-sm">
-          <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd className="fin-numero">{brl(o.valores.subtotal)}</dd></div>
-          {o.valores.desconto > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Desconto</dt><dd className="fin-numero" style={{ color: "#c0614a" }}>− {brl(o.valores.desconto)}</dd></div>}
-          {o.valores.entrega > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Entrega</dt><dd className="fin-numero">{brl(o.valores.entrega)}</dd></div>}
-          {o.valores.montagem > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Montagem</dt><dd className="fin-numero">{brl(o.valores.montagem)}</dd></div>}
-          {/* A negociação aparece aqui, e só aqui.
-            *
-            * A cliente vê um número — o que ela vai pagar. Quem monta o preço
-            * precisa dos dois: como foi somado e no que fechou. Sem chamar a
-            * diferença de desconto, porque ela também pode ser para cima. */}
-          {o.valores.valorFinalManual &&
-            o.valores.totalCalculado !== o.valores.total && (
-              <div className="flex justify-between pt-1 text-xs text-muted-foreground">
-                <dt>Composição: {brl(o.valores.totalCalculado)}</dt>
-                <dd>→ Valor final: {brl(o.valores.total)}</dd>
-              </div>
-            )}
-          <div className="flex items-baseline justify-between border-t pt-2">
-            <dt className="font-medium" style={{ color: "var(--color-navy)" }}>Investimento total</dt>
-            <dd className="fin-numero text-xl" style={{ color: "var(--color-navy)" }}>{brl(o.valores.total)}</dd>
-          </div>
-        </dl>
-      </section>
+      )}
+      {o.opcoes.map((op: any) => (
+        <OpcaoNoDetalhe
+          key={op.id}
+          op={op}
+          unica={o.opcoes.length === 1}
+          aprovada={situacao === "APROVADO" && (op.aprovada || o.opcoes.length === 1)}
+          esmaecida={situacao === "APROVADO" && o.opcoes.length > 1 && !op.aprovada}
+          mostrarValoresIndividuais={o.mostrarValoresIndividuais}
+        />
+      ))}
 
       {o.versoes?.length > 0 && (
         <section className="painel-cartao p-4">
@@ -634,5 +588,134 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+/** Uma opção de festa no detalhe da proposta: composição, linhas e valores dela. */
+function OpcaoNoDetalhe({
+  op,
+  unica,
+  aprovada,
+  esmaecida,
+  mostrarValoresIndividuais,
+}: {
+  op: any;
+  unica: boolean;
+  aprovada: boolean;
+  esmaecida: boolean;
+  mostrarValoresIndividuais: boolean;
+}) {
+  return (
+    <section
+      className="painel-cartao p-0"
+      data-opcao-detalhe={op.nome}
+      style={{
+        ...(aprovada && !unica ? { borderColor: "#2e9b6b", boxShadow: "0 0 0 1px #2e9b6b" } : {}),
+        ...(esmaecida ? { opacity: 0.62 } : {}),
+      }}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
+        <h2 className="min-w-0 text-[0.95rem] font-medium [overflow-wrap:anywhere]" style={{ color: "var(--color-navy)" }}>
+          {unica ? "Composição" : op.nome}
+        </h2>
+        {aprovada && !unica ? (
+          <span className="rounded px-2 py-0.5 text-[0.6rem] font-medium uppercase tracking-wider" style={{ background: "rgba(46,155,107,0.12)", color: "#2e9b6b" }}>
+            escolhida pela cliente
+          </span>
+        ) : esmaecida ? (
+          <span className="painel-periodo">não escolhida</span>
+        ) : unica ? (
+          <span className="painel-periodo">
+            {mostrarValoresIndividuais
+              ? "a cliente vê o valor de cada item"
+              : "a cliente vê só o investimento total"}
+          </span>
+        ) : null}
+      </div>
+      {op.descricao && <p className="px-4 pt-1 text-sm text-muted-foreground">{op.descricao}</p>}
+      {op.imagens.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto px-4 pt-3">
+          {op.imagens.map((url: string, i: number) => (
+            <img key={url} src={url} alt="" title={i === 0 ? "Capa da opção" : undefined}
+              className="h-16 w-24 shrink-0 rounded-md object-cover" />
+          ))}
+        </div>
+      )}
+      {op.composicaoDoKit && (
+        <div className="px-4 pt-3">
+          <ComposicaoDoKit
+            kitNome={op.composicaoDoKit.kitNome}
+            itens={op.composicaoDoKit.itens}
+            nota={
+              op.composicaoDoKit.origem === "ENVIADA"
+                ? "Como foi enviada à cliente. Alterar o kit no catálogo não muda esta opção."
+                : op.composicaoDoKit.semRegistro
+                  ? "Composição atual do catálogo. Esta proposta saiu antes de a composição passar a ser registrada, então a cliente não a vê na página dela."
+                  : "Composição atual do catálogo. Fica registrada na proposta quando ela for enviada."
+            }
+          />
+        </div>
+      )}
+      {/* Cinco colunas não cabem em 390px: no celular cada item vira uma
+          linha vertical, com a mesma informação — descrição, tipo,
+          quantidade, unitário e total. Nenhum dado sai da tela. */}
+      <table className="fin-tabela mt-3 hidden md:table">
+        <thead>
+          <tr><th>Item</th><th>Tipo</th><th className="num">Qtd</th><th className="num">Unitário</th><th className="num">Total</th></tr>
+        </thead>
+        <tbody>
+          {op.linhas.map((l: any) => (
+            <tr key={l.id}>
+              <td style={{ color: "var(--fin-navy-ink)" }}>{l.descricao}</td>
+              <td style={{ color: "var(--fin-muted)" }}>{TIPO_DA_LINHA_LABEL[l.tipo as TipoDaLinha]}</td>
+              <td className="num">{l.quantidade}</td>
+              <td className="num">{brl(l.valorUnitario)}</td>
+              <td className="num">{brl(l.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ul className="mt-3 md:hidden">
+        {op.linhas.map((l: any) => (
+          <li key={l.id} className="flex items-start justify-between gap-3 border-t px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm" style={{ color: "var(--fin-navy-ink)" }}>{l.descricao}</p>
+              <p className="painel-periodo mt-0.5">
+                {TIPO_DA_LINHA_LABEL[l.tipo as TipoDaLinha]} · {l.quantidade} × {brl(l.valorUnitario)}
+              </p>
+            </div>
+            <span className="fin-numero shrink-0 text-sm">{brl(l.total)}</span>
+          </li>
+        ))}
+      </ul>
+      <dl className="space-y-1 border-t p-4 text-sm">
+        <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd className="fin-numero">{brl(op.valores.subtotal)}</dd></div>
+        {op.valores.desconto > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Desconto</dt><dd className="fin-numero" style={{ color: "#c0614a" }}>− {brl(op.valores.desconto)}</dd></div>}
+        {op.valores.entrega > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Entrega</dt><dd className="fin-numero">{brl(op.valores.entrega)}</dd></div>}
+        {op.valores.montagem > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Montagem</dt><dd className="fin-numero">{brl(op.valores.montagem)}</dd></div>}
+        {/* A negociação aparece aqui, e só aqui.
+          *
+          * A cliente vê um número — o que ela vai pagar. Quem monta o preço
+          * precisa dos dois: como foi somado e no que fechou. Sem chamar a
+          * diferença de desconto, porque ela também pode ser para cima. */}
+        {op.valores.valorFinalManual &&
+          op.valores.totalCalculado !== op.valores.total && (
+            <div className="flex justify-between pt-1 text-xs text-muted-foreground">
+              <dt>Composição: {brl(op.valores.totalCalculado)}</dt>
+              <dd>→ Valor final: {brl(op.valores.total)}</dd>
+            </div>
+          )}
+        <div className="flex items-baseline justify-between border-t pt-2">
+          <dt className="font-medium" style={{ color: "var(--color-navy)" }}>{unica ? "Investimento total" : "Investimento desta opção"}</dt>
+          <dd className="fin-numero text-xl" style={{ color: "var(--color-navy)" }}>{brl(op.valores.total)}</dd>
+        </div>
+        {!unica && op.sinal && (
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <dt>Sinal se escolhida ({op.sinal.percentual.toLocaleString("pt-BR")}%)</dt>
+            <dd className="fin-numero">{brl(op.sinal.valor)}</dd>
+          </div>
+        )}
+      </dl>
+    </section>
   );
 }
