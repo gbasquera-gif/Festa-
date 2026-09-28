@@ -384,3 +384,12 @@ export {
   textoDaComposicao,
 } from "./composicao-do-kit";
 export type { ComposicaoDoKit, ItemDaComposicao, OrigemDaComposicao } from "./composicao-do-kit";
+export {
+  PERDA_NAO_INFORMADA,
+  mesDeReferenciaDaProposta,
+  mesesAte,
+  panoramaDeOrcamentos,
+  type BlocoDoPanorama,
+  type PanoramaDeOrcamentos,
+  type PropostaDoPanorama,
+} from "./panorama-de-orcamentos";

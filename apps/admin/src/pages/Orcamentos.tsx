@@ -6,11 +6,13 @@ import { Plus, Search } from "lucide-react";
 import {
   STATUS_DO_ORCAMENTO_LABEL,
   formatarDataDaFesta,
+  mesDeReferenciaDaProposta,
   type StatusDoOrcamento,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { brl } from "@/components/financeiro/formato";
+import { MESES, anosDisponiveis, brl, nomeDoMes } from "@/components/financeiro/formato";
+import { PanoramaDeOrcamentos } from "@/components/orcamento/PanoramaDeOrcamentos";
 
 /**
  * A carteira de propostas.
@@ -38,6 +40,7 @@ export type OrcamentoResumo = {
   total: number;
   validoAte: string;
   criadoEm: string;
+  primeiroEnvioEm: string | null;
   enviadoEm: string | null;
   aprovadoEm: string | null;
   motivoDaPerda: string | null;
@@ -77,13 +80,33 @@ const COR: Record<StatusDoOrcamento, string> = {
 export default function Orcamentos() {
   const [aba, setAba] = useFiltroNaUrl<Aba>("situacao", "TODOS", ABAS);
   const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
+  /**
+   * O período, na URL como os outros filtros. "todos" é a base inteira — o
+   * padrão, para a lista abrir como sempre abriu.
+   *
+   * Uma proposta pertence ao mês do primeiro envio; rascunho (ou antiga sem
+   * esse registro), ao mês da criação. É a mesma regra do panorama acima
+   * (`mesDeReferenciaDaProposta`), e por isso o card e a aba contam as mesmas
+   * propostas.
+   */
+  const anos = useMemo(() => anosDisponiveis().map(String), []);
+  const [ano, setAno] = useFiltroNaUrl<string>("ano", "todos", ["todos", ...anos]);
+  const [mesNumero, setMesNumero] = useFiltroNaUrl<string>("mes", "todos", ["todos", ...MESES]);
+  const mes = ano === "todos" || mesNumero === "todos" ? "todos" : `${ano}-${mesNumero}`;
 
   const { data, isLoading } = useQuery<{ orcamentos: OrcamentoResumo[] }>({
     queryKey: ["orcamentos"],
     queryFn: () => api("/orcamentos"),
   });
 
-  const linhas = data?.orcamentos ?? [];
+  const todas = data?.orcamentos ?? [];
+  const linhas = useMemo(() => {
+    if (ano === "todos") return todas;
+    return todas.filter((o) => {
+      const referencia = mesDeReferenciaDaProposta({ primeiroEnvioEm: o.primeiroEnvioEm, createdAt: o.criadoEm });
+      return mes === "todos" ? referencia.startsWith(`${ano}-`) : referencia === mes;
+    });
+  }, [todas, ano, mes]);
 
   const contadores = useMemo(() => {
     const mapa = { TODOS: linhas.length } as Record<Aba, number>;
@@ -121,16 +144,62 @@ export default function Orcamentos() {
           Cada proposta vira um link para a cliente abrir no celular. Aprovada, ela não cria reserva
           sozinha: a conversão passa pela conferência de disponibilidade, como toda venda.
         </p>
-        <Button asChild className="h-11 w-full sm:h-9 sm:w-auto">
-          <Link href="/comercial/orcamentos/novo">
-            <Plus className="mr-1 size-4" />
-            Novo orçamento
-          </Link>
-        </Button>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <span className="painel-periodo">Período</span>
+          <select
+            id="orcamentos-ano"
+            aria-label="Ano"
+            value={ano}
+            onChange={(e) => {
+              setAno(e.target.value);
+              if (e.target.value === "todos") setMesNumero("todos");
+            }}
+            className="h-11 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm sm:h-9 sm:flex-none"
+          >
+            <option value="todos">Todos os anos</option>
+            {anos.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select
+            id="orcamentos-mes"
+            aria-label="Mês"
+            value={mesNumero}
+            disabled={ano === "todos"}
+            onChange={(e) => setMesNumero(e.target.value)}
+            className="h-11 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm disabled:opacity-50 sm:h-9 sm:flex-none"
+          >
+            <option value="todos">Todos os meses</option>
+            {MESES.map((m) => (
+              <option key={m} value={m}>
+                {nomeDoMes(`2026-${m}`).replace(" de 2026", "")}
+              </option>
+            ))}
+          </select>
+          <Button asChild className="h-11 w-full sm:h-9 sm:w-auto">
+            <Link href="/comercial/orcamentos/novo">
+              <Plus className="mr-1 size-4" />
+              Novo orçamento
+            </Link>
+          </Button>
+        </div>
       </div>
 
+      <PanoramaDeOrcamentos
+        ano={ano}
+        mes={mes}
+        aba={aba}
+        aoEscolherAba={(a) => {
+          setAba(a);
+          // Só rola quando a lista está fora da tela (no celular): no
+          // computador ela já aparece logo abaixo do panorama.
+          const lista = document.getElementById("orcamentos-lista");
+          if (lista && lista.getBoundingClientRect().top > window.innerHeight - 160) {
+            lista.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }}
+      />
+
       <div>
-        <nav className="painel-abas flex flex-wrap gap-1 border-b" aria-label="Situação das propostas">
+        <nav id="orcamentos-lista" className="painel-abas flex flex-wrap gap-1 border-b scroll-mt-4" aria-label="Situação das propostas">
           {ABAS.map((a) => (
             <button
               key={a}
@@ -175,6 +244,8 @@ export default function Orcamentos() {
           <p className="text-sm text-muted-foreground">
             {busca.trim()
               ? `Nenhuma proposta para “${busca.trim()}”.`
+              : aba === "TODOS" && ano !== "todos"
+                ? "Nenhuma proposta neste período."
               : aba === "TODOS"
                 ? "Nenhuma proposta ainda. O primeiro orçamento começa no botão acima."
                 : "Nenhuma proposta nesta aba."}

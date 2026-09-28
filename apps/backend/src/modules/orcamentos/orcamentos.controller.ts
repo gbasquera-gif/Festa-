@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   converterOrcamentoSchema,
@@ -15,6 +15,8 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { CurrentUser, type AuthUser } from "../../common/decorators/current-user.decorator";
 import { OrcamentosService } from "./orcamentos.service";
+import { PanoramaDeOrcamentosService, type RecorteDoPanorama } from "./panorama.service";
+import { lerPeriodo } from "../comercial/comercial.controller";
 
 /** O painel de propostas. Operação e administração montam e acompanham. */
 @ApiTags("orcamentos")
@@ -23,7 +25,10 @@ import { OrcamentosService } from "./orcamentos.service";
 @Roles("ADMIN", "OPS")
 @Controller("orcamentos")
 export class OrcamentosController {
-  constructor(private readonly orcamentos: OrcamentosService) {}
+  constructor(
+    private readonly orcamentos: OrcamentosService,
+    private readonly panoramas: PanoramaDeOrcamentosService,
+  ) {}
 
   @Get()
   listar() {
@@ -40,6 +45,19 @@ export class OrcamentosController {
     @Body() body: { blocos: { chave: string; titulo?: string; texto?: string; imagemUrl?: string }[] },
   ) {
     return this.orcamentos.salvarConteudo(body.blocos ?? []);
+  }
+
+  /**
+   * O resumo do topo da aba Orçamentos, no recorte do filtro da tela.
+   * `ano` AAAA ou "todos" (padrão: todos); `mes` AAAA-MM ou "todos". A
+   * conversão usa a coorte da Visão Geral (primeiro envio no período).
+   *
+   * Declarada antes de `:id`, senão "panorama" seria lido como um id.
+   */
+  @ApiOperation({ summary: "Panorama das propostas do período" })
+  @Get("panorama")
+  panorama(@Query("ano") ano?: string, @Query("mes") mes?: string) {
+    return this.panoramas.panorama(lerRecorte(ano, mes));
   }
 
   @Get(":id")
@@ -134,4 +152,16 @@ export class OrcamentosController {
   ) {
     return this.orcamentos.converter(id, user.userId, body?.canal);
   }
+}
+
+/** "todos" (ou nada) no ano é a base inteira; o resto segue o filtro da Visão Geral. */
+export function lerRecorte(ano?: string, mes?: string): RecorteDoPanorama {
+  if (ano === undefined || ano === "todos") {
+    if (mes !== undefined && mes !== "todos") {
+      throw new BadRequestException("Escolha o ano antes do mês.");
+    }
+    return { ano: null, mes: null };
+  }
+  const periodo = lerPeriodo(ano, mes ?? "todos");
+  return { ano: periodo.ano, mes: periodo.mes };
 }

@@ -1549,3 +1549,173 @@ button.painel-cartao:focus-visible .painel-abre {
   cursor: pointer;
 }
 @media (prefers-reduced-motion: reduce) { .proposta-opcao { transition: none; } }
+
+/* ----------------------------------------------------------------------
+ * Panorama da aba Orçamentos
+ *
+ * Um resumo, não um painel: seis números em cima, o funil numa linha e os
+ * detalhes recolhíveis. Mesmos tokens do Financeiro e da Visão Geral.
+ * -------------------------------------------------------------------- */
+.orc-panorama {
+  --orc-enviadas: #3a6ea5;
+  --orc-aprovadas: var(--fin-coral);
+  display: grid;
+  gap: 10px;
+}
+.orc-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (min-width: 768px) { .orc-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1180px) { .orc-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.orc-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 12px 14px 11px;
+  background: var(--fin-paper);
+  border: 1px solid var(--fin-line);
+  border-radius: 10px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+button.orc-kpi { cursor: pointer; }
+button.orc-kpi:hover { border-color: color-mix(in srgb, var(--fin-navy) 35%, var(--fin-line)); }
+button.orc-kpi:focus-visible,
+.orc-link:focus-visible,
+.orc-funil-toggle:focus-visible { outline: 2px solid var(--fin-coral); outline-offset: 2px; }
+.orc-kpi[aria-pressed="true"] { border-color: var(--fin-coral); box-shadow: inset 0 -3px 0 var(--fin-coral); }
+.orc-kpi-fixo { background: color-mix(in srgb, var(--fin-cream) 70%, var(--fin-paper)); }
+.orc-kpi-numero { font-size: 1.45rem; line-height: 1.15; margin-top: 4px; }
+.orc-kpi-valor {
+  font-family: var(--fin-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  color: var(--fin-navy-ink);
+  margin-top: 1px;
+}
+.orc-kpi-nota { font-size: 0.72rem; line-height: 1.3; color: var(--fin-muted); margin-top: 3px; }
+
+.orc-funil {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 2px 2px 0;
+}
+.orc-funil-linha { margin: 0; font-size: 0.86rem; color: var(--fin-muted); }
+.orc-funil-linha strong {
+  font-family: var(--fin-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--fin-navy-ink);
+}
+.orc-funil-linha span { color: var(--fin-gold); padding: 0 2px; }
+.orc-funil-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font-size: 0.8rem;
+  color: var(--fin-navy-ink);
+  cursor: pointer;
+}
+
+.orc-detalhes {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--fin-paper);
+  border: 1px solid var(--fin-line);
+  border-radius: 10px;
+}
+.orc-secundarios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+@media (min-width: 900px) { .orc-secundarios { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.orc-secundarios dt {
+  font-family: var(--fin-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fin-muted);
+}
+.orc-secundarios dd {
+  margin: 2px 0 0;
+  font-family: var(--fin-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fin-navy-ink);
+}
+.orc-secundarios dd small {
+  display: block;
+  font-family: var(--fin-sans);
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--fin-muted);
+  line-height: 1.3;
+}
+.orc-link {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--fin-line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.orc-link[aria-pressed="true"] { color: var(--fin-coral); text-decoration-color: var(--fin-coral); }
+
+.orc-blocos {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fin-line);
+}
+@media (min-width: 900px) { .orc-blocos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; } }
+.orc-bloco { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.orc-bloco .fin-rotulo { margin: 0; }
+.orc-motivos { gap: 7px; }
+.orc-vazio { margin: 0; font-size: 0.82rem; color: var(--fin-muted); }
+
+.orc-evolucao-cabeca { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.orc-legenda { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--fin-muted); }
+.orc-legenda i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-left: 6px; }
+.orc-evolucao {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.orc-evolucao li { display: grid; gap: 4px; justify-items: center; min-width: 0; }
+.orc-evolucao-barras {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 64px;
+  border-bottom: 1px solid var(--fin-line);
+}
+.orc-evolucao-barras i { display: block; width: min(10px, 40%); min-height: 0; border-radius: 4px 4px 0 0; }
+.orc-evolucao-mes { font-size: 0.62rem; color: var(--fin-muted); white-space: nowrap; }
+.orc-rodape { margin: 0; font-size: 0.72rem; line-height: 1.45; color: var(--fin-muted); max-width: 72ch; }
+@media (prefers-reduced-motion: reduce) { .orc-kpi { transition: none; } }
