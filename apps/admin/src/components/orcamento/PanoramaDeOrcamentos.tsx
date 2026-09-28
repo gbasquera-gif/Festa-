@@ -100,7 +100,7 @@ export function PanoramaDeOrcamentos({
       )}
 
       <div className="orc-kpis">
-        {cartao("TODOS", "Propostas", p.propostas, null, "no período")}
+        {cartao("TODOS", "Propostas do período", p.propostas, null, "todas as situações")}
         {cartao("ENVIADO", "Em negociação", p.emNegociacao.quantidade, brl(p.emNegociacao.valor), "enviadas, aguardando resposta")}
         {cartao(
           "APROVADO",

@@ -48,6 +48,10 @@ export type OrcamentoResumo = {
   reservaId: string | null;
 };
 
+/** Como uma proposta entra num período — dito na tela, junto do filtro. */
+const NOTA_DO_PERIODO =
+  "Período comercial considera o primeiro envio da proposta. Rascunhos usam a data de criação.";
+
 const ABAS = ["TODOS", "RASCUNHO", "ENVIADO", "APROVADO", "RECUSADO", "EXPIRADO"] as const;
 type Aba = (typeof ABAS)[number];
 
@@ -144,7 +148,7 @@ export default function Orcamentos() {
           Cada proposta vira um link para a cliente abrir no celular. Aprovada, ela não cria reserva
           sozinha: a conversão passa pela conferência de disponibilidade, como toda venda.
         </p>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto" title={NOTA_DO_PERIODO}>
           <span className="painel-periodo">Período</span>
           <select
             id="orcamentos-ano"
@@ -182,6 +186,8 @@ export default function Orcamentos() {
           </Button>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground" data-nota-periodo>{NOTA_DO_PERIODO}</p>
 
       <PanoramaDeOrcamentos
         ano={ano}
