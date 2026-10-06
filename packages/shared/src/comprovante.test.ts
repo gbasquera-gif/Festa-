@@ -130,3 +130,39 @@ describe("montarComprovante", () => {
     expect(aMais.valores.saldo).toBe(0);
   });
 });
+
+describe("datas do comprovante no dia de Chapecó", () => {
+  // 21h34 de 05/10 em Chapecó = 00h34 de 06/10 em UTC: o caso real.
+  const noite = "2026-10-06T00:34:00.000Z";
+
+  it("Pix recebido à noite sai com o dia de Chapecó, não o de UTC", () => {
+    const c = montarComprovante({
+      ...base,
+      requestedAt: noite,
+      pagamentos: [{ valor: 270, forma: "PIX", pagoEm: noite, recebido: true }],
+      emitidoEm: new Date(noite),
+    });
+    expect(c.emitidoEm).toBe("05/10/2026");
+    expect(c.reservadoEm).toBe("05/10/2026");
+    expect(c.pagamentos[0].quando).toBe("05/10/2026");
+  });
+
+  it("recebimento com data informada (gravado ao meio-dia UTC) continua no mesmo dia", () => {
+    const c = montarComprovante({
+      ...base,
+      pagamentos: [{ valor: 270, forma: "PIX", pagoEm: "2026-10-05T12:00:00.000Z", recebido: true }],
+    });
+    expect(c.pagamentos[0].quando).toBe("05/10/2026");
+  });
+
+  it("às 2h59 UTC ainda é o dia anterior em Chapecó; às 3h já é o dia", () => {
+    expect(montarComprovante({ ...base, emitidoEm: new Date("2026-10-06T02:59:00.000Z") }).emitidoEm).toBe("05/10/2026");
+    expect(montarComprovante({ ...base, emitidoEm: new Date("2026-10-06T03:00:00.000Z") }).emitidoEm).toBe("06/10/2026");
+  });
+
+  it("a data da festa é dia de calendário e não muda", () => {
+    const c = montarComprovante({ ...base, eventDate: "2026-11-21T12:00:00.000Z" });
+    expect(c.dataDaFesta).toBe("21/11/2026");
+  });
+});
+

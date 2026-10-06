@@ -1,5 +1,5 @@
 import { COMPANY } from "./legal";
-import { formatarDataDaFesta } from "./data-da-festa";
+import { diaEmChapeco, formatarDataDaFesta } from "./data-da-festa";
 import { saldoAPagar } from "./pricing";
 
 /**
@@ -66,9 +66,20 @@ export interface DadosDoComprovante {
   observacoes: string | null;
 }
 
-/** ISO curto (AAAA-MM-DD) ou instante → 25/09/2026. */
+/** O dia da festa → 25/09/2026. É um dia do calendário, gravado como tal. */
 function dia(valor: string | Date): string {
   return formatarDataDaFesta(valor);
+}
+
+/**
+ * Um momento — emissão, pedido da reserva, recebimento — no dia de Chapecó.
+ *
+ * Lido em UTC, um Pix das 21h30 de 05/10 virava 06/10 no papel: às 21h de
+ * Chapecó já é o dia seguinte em UTC. Pagamento com data informada à mão é
+ * gravado ao meio-dia UTC, que em Chapecó continua sendo o mesmo dia.
+ */
+function diaDoMomento(valor: string | Date): string {
+  return diaEmChapeco(valor instanceof Date ? valor : new Date(valor)).split("-").reverse().join("/");
 }
 
 export interface EntradaDoComprovante {
@@ -117,8 +128,8 @@ export function montarComprovante(entrada: EntradaDoComprovante): DadosDoComprov
 
   return {
     contrato: numeroDoContrato(entrada.contractSeq),
-    emitidoEm: dia(entrada.emitidoEm ?? new Date()),
-    reservadoEm: dia(entrada.requestedAt),
+    emitidoEm: diaDoMomento(entrada.emitidoEm ?? new Date()),
+    reservadoEm: diaDoMomento(entrada.requestedAt),
     dataDaFesta: dia(entrada.eventDate),
     cliente: {
       nome: entrada.cliente.nome,
@@ -153,7 +164,7 @@ export function montarComprovante(entrada: EntradaDoComprovante): DadosDoComprov
       .map((p) => ({
         valor: p.valor,
         forma: p.forma,
-        quando: p.pagoEm ? dia(p.pagoEm) : null,
+        quando: p.pagoEm ? diaDoMomento(p.pagoEm) : null,
         recebido: p.recebido,
       })),
     temPagamento: pago > 0,
