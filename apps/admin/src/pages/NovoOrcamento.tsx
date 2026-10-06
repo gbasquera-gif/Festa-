@@ -73,6 +73,12 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   const [email, setEmail] = useState("");
   const [festejado, setFestejado] = useState("");
   const [data, setData] = useState(hoje());
+  /**
+   * A cliente ainda não sabe a data. A proposta sai assim mesmo — ela vê
+   * as opções e os valores —, mas só pode ser aprovada depois que a data for
+   * preenchida aqui e a proposta reenviada.
+   */
+  const [dataADefinir, setDataADefinir] = useState(false);
   const [tipo, setTipo] = useState<string>("ANIVERSARIO");
   const [cidade, setCidade] = useState("Chapecó");
   const [local, setLocal] = useState("");
@@ -104,7 +110,8 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     setTelefone(o.telefone);
     setEmail(o.clienteEmail ?? "");
     setFestejado(o.nomeDoFestejado ?? "");
-    setData(o.festaEm);
+    setData(o.festaEm ?? hoje());
+    setDataADefinir(o.festaEm === null);
     setTipo(o.tipoDeFesta);
     setCidade(o.cidade);
     setLocal(o.local ?? "");
@@ -174,7 +181,8 @@ export default function NovoOrcamento({ id }: { id?: string }) {
       const corpo = {
         cliente: { userId: userId || undefined, nome, telefone, email: email || undefined },
         festa: {
-          data,
+          // null explícito é "ainda não definida"; a API recusa o campo ausente.
+          data: dataADefinir ? null : data,
           tipo,
           nomeDoFestejado: festejado.trim() || undefined,
           cidade,
@@ -215,7 +223,12 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   const problemas = opcoes
     .map((o) => ({ o, problema: problemaDaOpcao(o) }))
     .filter((x) => x.problema !== null);
-  const podeSalvar = nome.trim().length >= 2 && telefone.trim().length >= 8 && opcoes.length > 0 && problemas.length === 0;
+  const podeSalvar =
+    nome.trim().length >= 2 &&
+    telefone.trim().length >= 8 &&
+    (dataADefinir || Boolean(data)) &&
+    opcoes.length > 0 &&
+    problemas.length === 0;
   const capaDoTema = temas.data?.find((t) => t.id === themeId)?.coverImageUrl ?? null;
 
   return (
@@ -299,7 +312,29 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="data">Data</Label>
-            <Input id="data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+            <Input
+              id="data"
+              type="date"
+              value={dataADefinir ? "" : data}
+              disabled={dataADefinir}
+              onChange={(e) => setData(e.target.value)}
+            />
+            <label className="flex min-h-9 items-center gap-2 text-sm" htmlFor="data-a-definir">
+              <input
+                id="data-a-definir"
+                type="checkbox"
+                checked={dataADefinir}
+                onChange={(e) => setDataADefinir(e.target.checked)}
+                className="size-4"
+              />
+              Data ainda não definida
+            </label>
+            {dataADefinir && (
+              <p className="text-xs text-muted-foreground">
+                A cliente vê a proposta, mas só consegue aprovar depois que a data for preenchida aqui e a
+                proposta, reenviada.
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="tipo">Tipo</Label>

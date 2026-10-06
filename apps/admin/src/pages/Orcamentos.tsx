@@ -30,7 +30,8 @@ export type OrcamentoResumo = {
   status: StatusDoOrcamento;
   cliente: string;
   telefone: string;
-  festaEm: string;
+  /** Nula quando a data ainda não foi definida. */
+  festaEm: string | null;
   cidade: string;
   tema: string | null;
   itens: number;
@@ -287,7 +288,7 @@ export default function Orcamentos() {
                 <span className="block truncate text-xs text-muted-foreground">
                   nº {o.numero}
                   {o.versao > 1 ? ` · versão ${o.versao}` : ""}
-                  {o.festejado ? ` · festa de ${o.festejado}` : ""} · festa em {formatarDataDaFesta(o.festaEm)} ·{" "}
+                  {o.festejado ? ` · festa de ${o.festejado}` : ""} · {o.festaEm ? `festa em ${formatarDataDaFesta(o.festaEm)}` : "data a definir"} ·{" "}
                   {o.opcoes > 1
                     ? `${o.opcoes} opções`
                     : `${o.itens} ${o.itens === 1 ? "item" : "itens"}`}

@@ -7,8 +7,10 @@ import {
 } from "@nestjs/common";
 import { Prisma, prisma } from "@festae/database";
 import {
+  MENSAGEM_DATA_A_DEFINIR,
   calcularSinal,
   composicaoParaExibir,
+  diaDaFesta,
   lerComposicaoCongelada,
   montarComposicaoDoKit,
   fromCentsInt,
@@ -22,10 +24,18 @@ import {
   type SaleChannel,
   type StatusDoOrcamento,
 } from "@festae/shared";
+import { AvailabilityService } from "../availability/availability.service";
+import type { Conflito } from "../availability/item-commitment";
 import { ManualReservationService } from "../reservations/manual-reservation.service";
 import { ReservationsService } from "../reservations/reservations.service";
 import { dadosDaDuplicata } from "./duplicacao";
 import { kitDaConversao } from "./kit-da-conversao";
+import {
+  compromissoDasAprovadas,
+  demandaDaOpcao,
+  mensagemDeFaltaNaAprovacao,
+  type OpcaoComMaterial,
+} from "./disponibilidade-da-proposta";
 import {
   dadosDasOpcoes,
   espelhoDaOpcao,
@@ -72,6 +82,7 @@ export class OrcamentosService {
   constructor(
     private readonly reservas: ManualReservationService,
     private readonly pagamentos: ReservationsService,
+    private readonly disponibilidade: AvailabilityService,
   ) {}
 
   async listar() {
@@ -315,14 +326,23 @@ export class OrcamentosService {
     return { token: o.token };
   }
 
+  /**
+   * Marca a proposta como perdida.
+   *
+   * Vale também para a aprovada que não virou reserva — a cliente aceitou e
+   * não seguiu (não pagou o sinal, desistiu). É assim que os itens que ela
+   * segurava provisoriamente voltam a ficar livres para outra cliente. O
+   * registro do aceite (quem, quando, por quanto) continua na proposta.
+   *
+   * A que virou reserva, não: a venda existe, e desfazê-la é cancelar a
+   * reserva. A condição vai no próprio UPDATE, para uma conversão que chegue
+   * no mesmo instante não ser apagada por este clique.
+   */
   async recusar(id: string, categoria: CategoriaDaPerda, motivo?: string) {
-    const o = await prisma.orcamento.findUnique({ where: { id } });
+    const o = await prisma.orcamento.findUnique({ where: { id }, select: { id: true } });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
-    if (o.status === "APROVADO") {
-      throw new ConflictException("Esta proposta já foi aprovada — não dá para marcá-la como perdida.");
-    }
-    await prisma.orcamento.update({
-      where: { id },
+    const { count } = await prisma.orcamento.updateMany({
+      where: { id, reservationId: null },
       data: {
         status: "RECUSADO",
         recusadoEm: new Date(),
@@ -330,6 +350,11 @@ export class OrcamentosService {
         motivoDaPerda: motivo?.trim() || null,
       },
     });
+    if (count === 0) {
+      throw new ConflictException(
+        "Esta proposta já virou reserva — não dá para marcá-la como perdida. Para desfazer a venda, cancele a reserva na tela de Reservas.",
+      );
+    }
     return { ok: true };
   }
 
@@ -417,6 +442,21 @@ export class OrcamentosService {
     const percentual = this.percentualDoSinal(o, conteudo);
     const mostrar = o.mostrarValoresIndividuais;
 
+    const podeAprovar = podeSerAprovada(o.status as StatusDoOrcamento, o.validoAte, agora);
+    // Só quem ainda pode aprovar precisa saber se cada opção cabe na data:
+    // é o que permite avisar antes do clique, e não só depois. O servidor
+    // confere de novo na aprovação — entre abrir a página e aprovar, outra
+    // cliente pode ter aprovado a mesma peça.
+    const cabe =
+      podeAprovar && o.festaEm
+        ? new Map(
+            (await this.faltasPorOpcao({ id: o.id, festaEm: o.festaEm, opcoes: o.opcoes })).resultado.map((r) => [
+              r.id,
+              r.conflitos.length === 0,
+            ]),
+          )
+        : null;
+
     const opcoes = o.opcoes.map((op) => {
       const congelada = lerComposicaoCongelada(op.composicaoDoKit);
       return {
@@ -448,6 +488,8 @@ export class OrcamentosService {
         },
         /** O sinal se a cliente escolher esta opção. */
         sinal: calcularSinal(num(op.total), percentual),
+        /** Se a opção cabe na data agora; nulo quando não há o que conferir. */
+        disponivel: cabe ? (cabe.get(op.id) ?? true) : null,
       };
     });
 
@@ -461,12 +503,14 @@ export class OrcamentosService {
       numero: o.numero,
       versao: o.versao,
       situacao,
-      podeAprovar: podeSerAprovada(o.status as StatusDoOrcamento, o.validoAte, agora),
+      podeAprovar,
+      /** Falso quando a cliente ainda não definiu a data: a página mostra o aviso em vez do aceite. */
+      dataDefinida: o.festaEm !== null,
       cliente: { nome: o.clienteNome },
       /** Para quem é a festa: o festejado, ou a cliente quando ele não foi informado. */
       festaPara: o.nomeDoFestejado?.trim() || o.clienteNome,
       festa: {
-        em: o.festaEm.toISOString(),
+        em: o.festaEm?.toISOString() ?? null,
         tipo: o.tipoDeFesta,
         cidade: o.cidade,
         local: o.local,
@@ -558,7 +602,7 @@ export class OrcamentosService {
   async aprovarPorToken(token: string, nome: string, opcaoId?: string, ip?: string, agente?: string) {
     const o = await prisma.orcamento.findUnique({
       where: { token },
-      include: { opcoes: { orderBy: { ordem: "asc" } } },
+      include: { opcoes: { orderBy: { ordem: "asc" }, include: { itens: { select: { productId: true, quantidade: true } } } } },
     });
     if (!o || o.status === "RASCUNHO") throw new NotFoundException("Proposta não encontrada.");
 
@@ -577,6 +621,11 @@ export class OrcamentosService {
       );
     }
 
+    // Sem data não há o que aprovar: a disponibilidade depende do dia, e o
+    // sinal reserva uma data que ainda não existe.
+    const festaEm = o.festaEm;
+    if (!festaEm) throw new ConflictException(MENSAGEM_DATA_A_DEFINIR);
+
     // A opção tem de ser desta proposta, e explícita quando há mais de uma.
     const escolhida = opcaoEscolhida(o.opcoes, opcaoId);
 
@@ -586,7 +635,21 @@ export class OrcamentosService {
     //
     // A condição de status vai no próprio UPDATE: dois cliques (ou duas
     // abas) não aprovam duas opções.
-    const { count } = await prisma.orcamento.updateMany({
+    //
+    // E a opção tem de caber na data. A conferência é a da reserva, contando
+    // também o que outras propostas aprovadas e ainda sem reserva seguram —
+    // senão duas clientes aprovam a mesma peça, as duas veem o Pix, e a
+    // segunda só descobre que faltou depois de pagar. Aprovações da mesma
+    // data passam uma de cada vez (trava da transação), para duas clientes
+    // clicando no mesmo segundo não passarem juntas pela conferência.
+    const { count } = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`aprovacao-de-proposta:${diaDaFesta(festaEm)}`}))`;
+      const { resultado } = await this.faltasPorOpcao({ id: o.id, festaEm, opcoes: [escolhida] }, tx);
+      const conflitos = resultado[0]?.conflitos ?? [];
+      if (conflitos.length > 0) {
+        throw new ConflictException({ message: mensagemDeFaltaNaAprovacao(conflitos), codigo: "FALTA_DE_MATERIAL" });
+      }
+      return tx.orcamento.updateMany({
       where: { id: o.id, status: "ENVIADO", versao: o.versao },
       data: {
         status: "APROVADO",
@@ -602,7 +665,8 @@ export class OrcamentosService {
           ? (escolhida.composicaoDoKit as object)
           : Prisma.DbNull,
       },
-    });
+      });
+    }, { timeout: 15_000 });
     if (count === 0) {
       const agoraEsta = await prisma.orcamento.findUnique({
         where: { id: o.id },
@@ -666,6 +730,10 @@ export class OrcamentosService {
     if (o.reservationId) {
       throw new ConflictException("Esta proposta já virou a reserva desta festa.");
     }
+    if (!o.festaEm) {
+      throw new ConflictException("Defina a data da festa antes de converter a proposta em reserva.");
+    }
+    const festaEm = o.festaEm;
 
     const opcao = opcaoParaConverter(o);
 
@@ -691,7 +759,7 @@ export class OrcamentosService {
           email: o.clienteEmail ?? undefined,
         },
         evento: {
-          data: o.festaEm,
+          data: festaEm,
           tipo: o.tipoDeFesta as never,
           themeId: o.themeId ?? undefined,
           guestCount: o.convidados ?? undefined,
@@ -856,7 +924,188 @@ export class OrcamentosService {
     return { id: nova.id, numero: nova.numero, origem: original.numero };
   }
 
+  /**
+   * A disponibilidade de cada opção na data da proposta, para o painel.
+   *
+   * Conta as reservas do dia e o que outras propostas aprovadas, ainda sem
+   * reserva, seguram provisoriamente — a mesma conta que a aprovação faz.
+   * Sem data, ou já convertida em reserva, não há o que conferir aqui.
+   */
+  async disponibilidadeDaProposta(id: string) {
+    const o = await prisma.orcamento.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        festaEm: true,
+        reservationId: true,
+        opcaoAprovadaId: true,
+        opcoes: {
+          orderBy: { ordem: "asc" },
+          select: {
+            id: true,
+            ordem: true,
+            nome: true,
+            kitId: true,
+            composicaoDoKit: true,
+            itens: { select: { productId: true, quantidade: true } },
+          },
+        },
+      },
+    });
+    if (!o) throw new NotFoundException("Orçamento não encontrado.");
+    if (!o.festaEm) return { data: null, situacao: "SEM_DATA" as const, opcoes: [], seguradoPor: [] };
+    if (o.reservationId) {
+      return { data: diaDaFesta(o.festaEm), situacao: "RESERVADA" as const, opcoes: [], seguradoPor: [] };
+    }
+
+    const { resultado, segurado } = await this.faltasPorOpcao({ id: o.id, festaEm: o.festaEm, opcoes: o.opcoes });
+    const pecasDaProposta = new Set(resultado.flatMap((r) => r.produtos));
+    const unica = o.opcoes.length === 1;
+    return {
+      data: diaDaFesta(o.festaEm),
+      /** Aprovada sem reserva: esta proposta é que segura os itens da opção escolhida. */
+      situacao: o.status === "APROVADO" ? ("SEGURA_ITENS" as const) : ("A_CONFERIR" as const),
+      opcoes: resultado.map((r) => ({
+        id: r.id,
+        nome: r.nome,
+        aprovada: o.status === "APROVADO" && (r.id === o.opcaoAprovadaId || (unica && !o.opcaoAprovadaId)),
+        disponivel: r.conflitos.length === 0,
+        faltas: r.conflitos.map((c) => ({
+          productId: c.productId,
+          nome: c.nome,
+          estoque: c.estoque,
+          pedido: c.pedido,
+          comprometido: c.jaComprometido,
+          seguradoPorPropostas: segurado.total.get(c.productId) ?? 0,
+        })),
+      })),
+      /**
+       * Outras propostas aprovadas, ainda sem reserva, na mesma data, que
+       * seguram alguma peça desta proposta — as que disputam o material.
+       */
+      seguradoPor: segurado.propostas
+        .filter((p) => p.produtos.some((id) => pecasDaProposta.has(id)))
+        .map(({ produtos: _produtos, ...p }) => p),
+    };
+  }
+
   // ---------------------------------------------------------------- privados
+
+  /**
+   * Cada opção cabe na data? A conferência da reserva, somando o que as
+   * outras propostas aprovadas e ainda sem reserva seguram nesse dia.
+   */
+  private async faltasPorOpcao(
+    o: {
+      id: string;
+      festaEm: Date;
+      opcoes: (OpcaoComMaterial & { id: string; nome: string })[];
+    },
+    db: Tx = prisma,
+  ): Promise<{
+    resultado: { id: string; nome: string; conflitos: Conflito[]; produtos: string[] }[];
+    segurado: Awaited<ReturnType<OrcamentosService["seguradoPorAprovadas"]>>;
+  }> {
+    const segurado = await this.seguradoPorAprovadas(o.festaEm, o.id, db);
+    const kits = await this.kitsDoCatalogo(o.opcoes, db);
+    const resultado: { id: string; nome: string; conflitos: Conflito[]; produtos: string[] }[] = [];
+    for (const opcao of o.opcoes) {
+      const pedido = demandaDaOpcao(opcao, (kitId) => kits.get(kitId));
+      const conflitos = await this.disponibilidade.conflitosDeItens(o.festaEm, pedido, undefined, segurado.total, db);
+      const produtos = [...new Set([...pedido.itensDoKit, ...pedido.itensAvulsos].map((i) => i.productId))];
+      resultado.push({ id: opcao.id, nome: opcao.nome, conflitos, produtos });
+    }
+    return { resultado, segurado };
+  }
+
+  /**
+   * O que as propostas aprovadas e ainda sem reserva seguram no dia — a
+   * reserva provisória. Cada uma segura só a opção que a cliente escolheu.
+   */
+  private async seguradoPorAprovadas(festaEm: Date, ignorarId?: string, db: Tx = prisma) {
+    const inicio = new Date(`${diaDaFesta(festaEm)}T00:00:00.000Z`);
+    const fim = new Date(inicio.getTime() + 86_400_000);
+    const aprovadas = await db.orcamento.findMany({
+      where: {
+        status: "APROVADO",
+        reservationId: null,
+        festaEm: { gte: inicio, lt: fim },
+        ...(ignorarId ? { id: { not: ignorarId } } : {}),
+      },
+      select: {
+        id: true,
+        numero: true,
+        clienteNome: true,
+        opcaoAprovadaId: true,
+        opcoes: {
+          orderBy: { ordem: "asc" },
+          select: {
+            id: true,
+            ordem: true,
+            nome: true,
+            kitId: true,
+            composicaoDoKit: true,
+            itens: { select: { productId: true, quantidade: true } },
+          },
+        },
+      },
+    });
+    const seguradas = aprovadas.flatMap((a) => {
+      const opcao = this.opcaoQueSegura(a);
+      return opcao ? [{ a, opcao }] : [];
+    });
+    const kits = await this.kitsDoCatalogo(seguradas.map((x) => x.opcao), db);
+    const demandas = seguradas.map((x) => demandaDaOpcao(x.opcao, (kitId) => kits.get(kitId)));
+    return {
+      total: compromissoDasAprovadas(demandas),
+      propostas: seguradas.map(({ a, opcao }, i) => ({
+        id: a.id,
+        numero: a.numero,
+        cliente: a.clienteNome,
+        opcao: opcao.nome,
+        produtos: [...demandas[i].itensDoKit, ...demandas[i].itensAvulsos].map((x) => x.productId),
+      })),
+    };
+  }
+
+  /** A opção que uma aprovada segura: a que viraria reserva. */
+  private opcaoQueSegura<T extends { id: string; ordem: number }>(a: {
+    numero: number;
+    opcaoAprovadaId: string | null;
+    opcoes: T[];
+  }): T | null {
+    try {
+      return opcaoParaConverter(a);
+    } catch {
+      // Sem registro de qual opção foi aprovada (não deveria existir), a de
+      // referência — a mesma que o resumo da proposta mostra.
+      return opcaoDeReferencia(a);
+    }
+  }
+
+  /**
+   * As peças ativas dos kits que ainda não têm composição congelada — as
+   * mesmas que a conversão leria do catálogo.
+   */
+  private async kitsDoCatalogo(opcoes: readonly OpcaoComMaterial[], db: Tx = prisma) {
+    const ids = [
+      ...new Set(
+        opcoes
+          .filter((op) => op.kitId && !lerComposicaoCongelada(op.composicaoDoKit))
+          .map((op) => op.kitId as string),
+      ),
+    ];
+    if (ids.length === 0) return new Map<string, { productId: string; quantity: number }[]>();
+    const kits = await db.kit.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        products: { where: { product: { active: true } }, select: { productId: true, quantity: true } },
+      },
+    });
+    return new Map(kits.map((k) => [k.id, k.products]));
+  }
 
   /** A composição de hoje de um kit do catálogo; nula se o kit não existe mais. */
   private async composicaoDoCatalogo(kitId: string) {
@@ -997,7 +1246,8 @@ export class OrcamentosService {
       status: o.status,
       cliente: o.clienteNome,
       telefone: o.clienteTelefone,
-      festaEm: o.festaEm.toISOString().slice(0, 10),
+      /** Nulo quando a data ainda não foi definida. */
+      festaEm: o.festaEm ? o.festaEm.toISOString().slice(0, 10) : null,
       tipoDeFesta: o.tipoDeFesta,
       cidade: o.cidade,
       tema: o.theme?.name ?? null,

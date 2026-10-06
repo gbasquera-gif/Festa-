@@ -60,6 +60,12 @@ export class OrcamentosController {
     return this.panoramas.panorama(lerRecorte(ano, mes));
   }
 
+  /** Cada opção cabe na data? Contando reservas e propostas aprovadas sem reserva. */
+  @Get(":id/disponibilidade")
+  disponibilidade(@Param("id") id: string) {
+    return this.orcamentos.disponibilidadeDaProposta(id);
+  }
+
   @Get(":id")
   obter(@Param("id") id: string) {
     return this.orcamentos.obter(id);

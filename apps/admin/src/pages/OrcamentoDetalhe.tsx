@@ -29,6 +29,7 @@ import { api, ApiError } from "@/lib/api";
 import { urlDaProposta } from "@/lib/site";
 import { brl } from "@/components/financeiro/formato";
 import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
+import { DisponibilidadeDaProposta } from "@/components/orcamento/DisponibilidadeDaProposta";
 
 /**
  * A proposta vista por dentro.
@@ -219,6 +220,12 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
    * validade. Convertida e perdida não aparecem com o botão; o servidor
    * recusa de novo, mas oferecer o que será negado é convite a erro.
    */
+  /**
+   * Perdida pode ser marcada até virar reserva — inclusive depois do aceite:
+   * a cliente que aprovou e não pagou o sinal segura os itens da data, e
+   * marcar a proposta como perdida é o que os devolve para outra cliente.
+   */
+  const podeMarcarPerdida = situacao !== "RECUSADO" && !o.reservaId;
   const podeExcluir =
     !o.reservaId && ["RASCUNHO", "ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
   const tipoDeFesta = isEventType(String(o.tipoDeFesta))
@@ -241,7 +248,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             </p>
           )}
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {tipoDeFesta} em {formatarDataDaFesta(o.festaEm)} · {o.cidade}
+            {tipoDeFesta} {o.festaEm ? `em ${formatarDataDaFesta(o.festaEm)}` : "· data a definir"} · {o.cidade}
             {o.local ? ` · ${o.local}` : ""} · válida até {formatarDataDaFesta(o.validoAte)}
             {" · "}
             {o.canal ? `chegou por ${SALE_CHANNEL_LABELS[o.canal as SaleChannel]}` : "canal não informado"}
@@ -301,6 +308,19 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               <option key={c} value={c}>{SALE_CHANNEL_LABELS[c]}</option>
             ))}
           </select>
+        </div>
+      )}
+
+      {/* Data a definir: a proposta pode ir para a cliente, mas o aceite
+          espera a data. É aqui que a Festaê lembra o que falta. */}
+      {!o.festaEm && (
+        <div className="painel-cartao p-4" style={{ borderColor: "#c69654", background: "rgba(198,150,84,0.08)" }} data-data-a-definir>
+          <p className="text-sm font-medium" style={{ color: "var(--color-navy)" }}>Data ainda não definida</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A cliente vê a proposta, mas não consegue aprovar: a página pede que ela informe a data à
+            Festaê. Quando ela avisar, edite a proposta, preencha a data, confira a disponibilidade
+            abaixo e reenvie o link.
+          </p>
         </div>
       )}
 
@@ -433,6 +453,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </p>
       </section>
 
+      {o.festaEm && !o.reservaId && <DisponibilidadeDaProposta id={id} />}
+
       {/* AS OPÇÕES
         *
         * Uma seção por opção de festa, cada uma com a composição, as linhas e
@@ -481,9 +503,9 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         * Fica aqui embaixo, em tom apagado, longe dos botões que fazem a
         * venda andar. Excluir é permanente: não merece estar ao lado de
         * "Enviar" esperando um clique errado. */}
-      {(podeExcluir || (situacao !== "APROVADO" && situacao !== "RECUSADO")) && (
+      {(podeExcluir || podeMarcarPerdida) && (
         <div className="flex flex-wrap items-center justify-end gap-1 pb-4">
-          {situacao !== "APROVADO" && situacao !== "RECUSADO" && (
+          {podeMarcarPerdida && (
             <Button variant="ghost" className="min-h-11 text-muted-foreground" onClick={() => setPerdendo(true)}>
               Marcar como perdida
             </Button>
@@ -553,6 +575,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               Ela sai da lista de acompanhamento e fica no histórico. O motivo é o que, lá na
               frente, diz onde a Festaê está perdendo venda — por isso a categoria é obrigatória, e
               o comentário fica para o que ela não disser.
+              {situacao === "APROVADO" &&
+                " A cliente já tinha aprovado: o registro do aceite continua na proposta, e os itens que ela segurava para a data ficam livres para outra cliente."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label htmlFor="categoria-perda" className="text-sm" style={{ color: "var(--color-navy)" }}>

@@ -218,6 +218,15 @@ export const opcaoDoOrcamentoSchema = z.object({
 });
 export type OpcaoDoOrcamentoInput = z.infer<typeof opcaoDoOrcamentoSchema>;
 
+/**
+ * O que a cliente lê quando tenta aprovar uma proposta ainda sem data.
+ *
+ * O mesmo texto na página e na recusa do servidor: quem chega à API por
+ * outro caminho recebe a mesma orientação de quem clicou no botão.
+ */
+export const MENSAGEM_DATA_A_DEFINIR =
+  "Para aprovar sua festa, precisamos da data. Assim que você definir, informe a data à Festaê pelo WhatsApp: atualizamos sua proposta, conferimos a disponibilidade e você aprova por aqui.";
+
 /** Teto técnico, não comercial: uma proposta com mais que isto é engano de clique. */
 export const MAXIMO_DE_OPCOES = 30;
 
@@ -229,7 +238,12 @@ export const orcamentoSchema = z.object({
     email: z.string().email("E-mail inválido.").max(160).optional().or(z.literal("")),
   }),
   festa: z.object({
-    data: dataDaFestaSchema,
+    /**
+     * O dia da festa, ou `null` quando a cliente ainda não definiu a data.
+     * Nulo tem de vir explícito: um campo esquecido continua sendo erro, e
+     * não uma proposta sem data por acidente.
+     */
+    data: dataDaFestaSchema.nullable(),
     tipo: z.enum(EVENT_TYPES).default("ANIVERSARIO"),
     /**
      * Para quem é a festa — a criança, o aniversariante, a homenageada. Não

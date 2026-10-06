@@ -49,7 +49,8 @@ export type PropostaOriginal = {
   clienteTelefone: string;
   clienteEmail: string | null;
   nomeDoFestejado: string | null;
-  festaEm: Date;
+  /** Nula quando a data ainda não foi definida — a cópia nasce igual. */
+  festaEm: Date | null;
   tipoDeFesta: string;
   cidade: string;
   local: string | null;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EVENT_TYPE_META,
+  MENSAGEM_DATA_A_DEFINIR,
   TIPO_DA_LINHA_LABEL,
   formatarDataDaFesta,
   isEventType,
@@ -49,6 +50,8 @@ type Opcao = {
   };
   /** O sinal se a cliente escolher esta opção. */
   sinal: { percentual: number; valor: number; saldo: number };
+  /** Cabe na data agora? Nulo quando não há o que conferir (sem data, ou fora de aprovação). */
+  disponivel: boolean | null;
 };
 
 type PropostaPublica = {
@@ -56,10 +59,12 @@ type PropostaPublica = {
   versao: number;
   situacao: string;
   podeAprovar: boolean;
+  /** Falso enquanto a cliente não definiu a data: o aceite espera a data. */
+  dataDefinida: boolean;
   cliente: { nome: string };
   /** Para quem é a festa: o festejado, ou a cliente quando ele não foi informado. */
   festaPara: string;
-  festa: { em: string; tipo: string; cidade: string; local: string | null; convidados: number | null };
+  festa: { em: string | null; tipo: string; cidade: string; local: string | null; convidados: number | null };
   tema: string | null;
   opcoes: Opcao[];
   opcaoAprovadaId: string | null;
@@ -102,6 +107,8 @@ export default function Proposta({ token }: { token: string }) {
    * confirmar; depois do aceite, quem manda é o que o servidor registrou.
    */
   const [escolhidaId, setEscolhidaId] = useState<string | null>(null);
+  /** A cliente tentou aprovar uma proposta ainda sem data. */
+  const [avisoDaData, setAvisoDaData] = useState(false);
 
   const { data: p, isLoading, error } = useQuery<PropostaPublica>({
     queryKey: ["proposta", token],
@@ -189,8 +196,16 @@ export default function Proposta({ token }: { token: string }) {
     setEscolhidaId(o.id);
     setConfirmando(false);
   }
+  /**
+   * O pedido de aprovação. Sem data, em vez do formulário, o aviso: a
+   * aprovação espera a Festaê preencher a data e conferir a disponibilidade.
+   */
+  function tentarAprovar() {
+    if (p && !p.dataDefinida) setAvisoDaData(true);
+    else setConfirmando(true);
+  }
   function irParaAprovacao(abrir: boolean) {
-    if (abrir) setConfirmando(true);
+    if (abrir) tentarAprovar();
     document.getElementById("aprovar")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -213,7 +228,7 @@ export default function Proposta({ token }: { token: string }) {
               <strong>{p.festaPara}</strong>
             </h1>
             <p className="proposta-data">
-              {tipo} · {formatarDataDaFesta(p.festa.em)} · {p.festa.cidade}
+              {tipo} · {p.festa.em ? formatarDataDaFesta(p.festa.em) : "data a definir"} · {p.festa.cidade}
             </p>
           </div>
         </div>
@@ -330,7 +345,13 @@ export default function Proposta({ token }: { token: string }) {
                         <p className="proposta-opcao-sinal">
                           Sinal de {brl(o.sinal.valor)} para reservar a data
                         </p>
-                        {p.podeAprovar && (
+                        {p.podeAprovar && o.disponivel === false && (
+                          <p className="proposta-opcao-indisponivel">
+                            Esta opção não está mais disponível para a data da sua festa. Fale com a Festaê
+                            pelo WhatsApp se quiser ajustá-la.
+                          </p>
+                        )}
+                        {p.podeAprovar && o.disponivel !== false && (
                           <button
                             type="button"
                             className={`proposta-botao${esta ? " proposta-botao-marcado" : ""}`}
@@ -386,6 +407,14 @@ export default function Proposta({ token }: { token: string }) {
                 Ver as opções
               </button>
             </>
+          ) : p.podeAprovar && (escolhida ?? emFoco)?.disponivel === false ? (
+            <>
+              <h2>Vamos ajustar sua festa?</h2>
+              <p className="proposta-aviso" role="status">
+                Alguns itens desta proposta já foram reservados para esta data por outra festa, e ela não
+                pode ser aprovada assim. Fale com a Festaê pelo WhatsApp: ajustamos sua proposta com você.
+              </p>
+            </>
           ) : p.podeAprovar ? (
             <>
               <h2>Vamos deixar sua festa linda?</h2>
@@ -407,13 +436,20 @@ export default function Proposta({ token }: { token: string }) {
                 </p>
               )}
               {!confirmando ? (
-                <button type="button" className="proposta-botao" onClick={() => setConfirmando(true)}>
-                  {escolhida ? "Confirmar e aprovar esta opção" : "Quero aprovar minha festa"}
-                </button>
+                <>
+                  <button type="button" className="proposta-botao" onClick={tentarAprovar}>
+                    {escolhida ? "Confirmar e aprovar esta opção" : "Quero aprovar minha festa"}
+                  </button>
+                  {avisoDaData && !p.dataDefinida && (
+                    <p className="proposta-aviso" role="status" data-aviso-data>
+                      {MENSAGEM_DATA_A_DEFINIR}
+                    </p>
+                  )}
+                </>
               ) : (
                 <div className="proposta-confirmar">
                   <p className="proposta-resumo">
-                    <strong>{p.festaPara}</strong> · {formatarDataDaFesta(p.festa.em)} ·{" "}
+                    <strong>{p.festaPara}</strong> · {p.festa.em ? formatarDataDaFesta(p.festa.em) : "data a definir"} ·{" "}
                     {escolhida ? (
                       <>{escolhida.nome} · </>
                     ) : (

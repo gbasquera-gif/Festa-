@@ -1722,3 +1722,27 @@ button.orc-kpi:focus-visible,
 .orc-evolucao-mes { font-size: 0.62rem; color: var(--fin-muted); white-space: nowrap; }
 .orc-rodape { margin: 0; font-size: 0.72rem; line-height: 1.45; color: var(--fin-muted); max-width: 72ch; }
 @media (prefers-reduced-motion: reduce) { .orc-kpi { transition: none; } }
+
+/* Aviso na proposta pública: data a definir, ou opção que não cabe mais na
+ * data. Dourado, e não coral: não é erro da cliente, é um próximo passo. */
+.proposta-aviso {
+  max-width: 26rem;
+  margin: 1rem auto 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--p-gold);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--p-gold) 10%, #fff);
+  color: var(--p-navy);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  text-align: left;
+}
+.proposta-opcao-indisponivel {
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--p-gold) 12%, #fff);
+  color: var(--p-navy);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

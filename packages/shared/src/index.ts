@@ -305,6 +305,7 @@ export {
   linhaDoOrcamentoSchema,
   mensagemDaProposta,
   MAXIMO_DE_OPCOES,
+  MENSAGEM_DATA_A_DEFINIR,
   opcaoDoOrcamentoSchema,
   orcamentoSchema,
   podeSerAprovada,

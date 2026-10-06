@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { prisma } from "@festae/database";
+import { Prisma, prisma } from "@festae/database";
 import { RESERVATION_HOLD_MINUTES } from "@festae/shared";
 import {
   conflitosDoPedido,
@@ -195,10 +195,10 @@ export class AvailabilityService {
    * `ignorarOrderId` existe para a própria reserva não brigar consigo mesma
    * quando o pedido for reconferido depois de já existir.
    */
-  private async compromissoDoDia(date: Date, ignorarOrderId?: string) {
+  private async compromissoDoDia(date: Date, ignorarOrderId?: string, db: Prisma.TransactionClient = prisma) {
     const [inicio, fim] = this.limitesDoDia(date);
 
-    const reservas = await prisma.reservation.findMany({
+    const reservas = await db.reservation.findMany({
       where: {
         eventDate: { gte: inicio, lt: fim },
         status: { in: [...COUNTED_STATUSES] },
@@ -216,8 +216,8 @@ export class AvailabilityService {
   }
 
   /** Nome e estoque dos produtos citados, para conferir e para explicar. */
-  private async estoqueDe(productIds: string[]) {
-    const produtos = await prisma.product.findMany({
+  private async estoqueDe(productIds: string[], db: Prisma.TransactionClient = prisma) {
+    const produtos = await db.product.findMany({
       where: { id: { in: productIds } },
       select: { id: true, name: true, stockQuantity: true },
     });
@@ -237,14 +237,28 @@ export class AvailabilityService {
     date: Date,
     pedido: PedidoComprometido,
     ignorarOrderId?: string,
+    /**
+     * Material comprometido fora das reservas, somado ao do dia — hoje, o
+     * que propostas aprovadas e ainda não convertidas seguram. Ausente, a
+     * conta é exatamente a de sempre: loja, venda manual e conversão não o
+     * passam.
+     */
+    alemDasReservas?: ReadonlyMap<string, number>,
+    /**
+     * A conexão da transação de quem pergunta, quando há uma: quem confere
+     * dentro de uma transação travada lê pela mesma conexão, em vez de
+     * disputar outra do pool enquanto segura a sua.
+     */
+    db: Prisma.TransactionClient = prisma,
   ): Promise<Conflito[]> {
     const idsDoPedido = [...pedido.itensDoKit, ...pedido.itensAvulsos].map((i) => i.productId);
     if (idsDoPedido.length === 0) return [];
 
-    const [comprometido, estoque] = await Promise.all([
-      this.compromissoDoDia(date, ignorarOrderId),
-      this.estoqueDe(idsDoPedido),
-    ]);
+    const comprometido = await this.compromissoDoDia(date, ignorarOrderId, db);
+    const estoque = await this.estoqueDe(idsDoPedido, db);
+    for (const [productId, quantidade] of alemDasReservas ?? []) {
+      comprometido.set(productId, (comprometido.get(productId) ?? 0) + quantidade);
+    }
 
     return conflitosDoPedido(pedido, comprometido, estoque);
   }

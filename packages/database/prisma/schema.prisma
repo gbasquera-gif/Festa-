@@ -803,7 +803,10 @@ model Orcamento {
   /// da cliente.
   nomeDoFestejado String?
 
-  festaEm     DateTime
+  /// O dia da festa. Nulo quando a cliente ainda não definiu a data: a
+  /// proposta pode ser enviada e vista, mas só é aprovada depois que a
+  /// Festaê preencher a data e conferir a disponibilidade.
+  festaEm     DateTime?
   tipoDeFesta EventType @default(ANIVERSARIO)
   cidade      String    @default("Chapecó")
   local       String?
