@@ -173,6 +173,19 @@ export function recebidoSemData(contratos: readonly ContratoApurado[]): number {
   );
 }
 
+/**
+ * O mês de uma despesa: o do dia digitado no formulário.
+ *
+ * A data de uma despesa é um dia do calendário, gravado à meia-noite UTC
+ * ("2026-10-01" vira 2026-10-01T00:00Z). Lida no fuso de Chapecó, essa
+ * meia-noite é 30/09 às 21h — e toda despesa do dia 1º caía no mês
+ * anterior, enquanto a lista de despesas (que lê o dia gravado) a mostrava
+ * no mês certo. O dia gravado vale para os dois.
+ */
+export function mesDaDespesa(pagoEm: Date): string {
+  return pagoEm.toISOString().slice(0, 7);
+}
+
 /** Despesa do mês: consumo e custeio, pela data em que o dinheiro saiu. */
 export function despesaDoMes(gastos: readonly GastoApurado[], mes: string): number {
   return somar(
@@ -181,7 +194,7 @@ export function despesaDoMes(gastos: readonly GastoApurado[], mes: string): numb
         (gasto) =>
           NATUREZAS_DE_DESPESA.includes(gasto.natureza) &&
           gasto.pagoEm !== null &&
-          mesEmChapeco(gasto.pagoEm) === mes,
+          mesDaDespesa(gasto.pagoEm) === mes,
       )
       .map((gasto) => gasto.valor),
   );
@@ -193,7 +206,7 @@ export function acervoDoMes(gastos: readonly GastoApurado[], mes: string): numbe
     gastos
       .filter(
         (gasto) =>
-          gasto.natureza === "ACERVO" && gasto.pagoEm !== null && mesEmChapeco(gasto.pagoEm) === mes,
+          gasto.natureza === "ACERVO" && gasto.pagoEm !== null && mesDaDespesa(gasto.pagoEm) === mes,
       )
       .map((gasto) => gasto.valor),
   );

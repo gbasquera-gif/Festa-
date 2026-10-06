@@ -195,6 +195,7 @@ export {
   receitaPorCaixa,
   recebidoSemData,
   despesaDoMes,
+  mesDaDespesa,
   acervoDoMes,
   acervoAcumulado,
   gastoAcumulado,

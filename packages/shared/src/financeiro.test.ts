@@ -21,6 +21,8 @@ import {
   mesAnterior,
   type ContratoApurado,
   type GastoApurado,
+  acervoDoMes,
+  mesDaDespesa,
 } from "./financeiro";
 
 /**
@@ -505,5 +507,27 @@ describe("Sprint 4 — visão executiva", () => {
       expect(mesAnterior("2026-03")).toBe("2026-02");
       expect(mesAnterior("2026-10")).toBe("2026-09");
     });
+  });
+});
+
+describe("mês da despesa: o dia digitado no formulário", () => {
+  // O formulário manda "2026-10-01", e a API grava a meia-noite UTC desse dia.
+  const doDiaPrimeiro = (d: string) => new Date(d);
+
+  it("despesa paga no dia 1º conta no próprio mês, não no anterior", () => {
+    const gastos = [{ valor: 150, natureza: "CONSUMO" as const, pagoEm: doDiaPrimeiro("2026-10-01") }];
+    expect(despesaDoMes(gastos, "2026-10")).toBe(150);
+    expect(despesaDoMes(gastos, "2026-09")).toBe(0);
+  });
+
+  it("acervo comprado no dia 1º também", () => {
+    const gastos = [{ valor: 900, natureza: "ACERVO" as const, pagoEm: doDiaPrimeiro("2026-11-01") }];
+    expect(acervoDoMes(gastos, "2026-11")).toBe(900);
+    expect(acervoDoMes(gastos, "2026-10")).toBe(0);
+  });
+
+  it("datas já gravadas ao meio-dia continuam no mesmo mês", () => {
+    expect(mesDaDespesa(new Date("2026-10-01T12:00:00.000Z"))).toBe("2026-10");
+    expect(mesDaDespesa(new Date("2026-09-30T00:00:00.000Z"))).toBe("2026-09");
   });
 });
