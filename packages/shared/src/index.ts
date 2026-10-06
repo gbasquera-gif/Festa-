@@ -246,6 +246,7 @@ export {
   diaDaFesta,
   diaEmChapeco,
   formatarDataDaFesta,
+  formatarDiaDoMomento,
   normalizarDataDaFesta,
 } from "./data-da-festa";
 

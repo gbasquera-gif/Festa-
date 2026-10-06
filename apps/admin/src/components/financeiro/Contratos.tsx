@@ -9,6 +9,7 @@ import {
   saleChannelLabel,
   type SaleChannel,
   type SituacaoDePagamento,
+  formatarDiaDoMomento,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -388,7 +389,7 @@ function Detalhe({ contrato: c }: { contrato: ContratoComercial }) {
             {c.pagamentos.map((p) => (
               <li key={p.id} className="flex justify-between gap-3">
                 <span style={{ color: "var(--fin-muted)" }}>
-                  {p.recebidoEm ? dia(p.recebidoEm) : "sem data"} · {p.metodo}
+                  {p.recebidoEm ? formatarDiaDoMomento(p.recebidoEm) : "sem data"} · {p.metodo}
                   {p.tipo === "INDETERMINADO" ? " · sinal ou saldo, não se sabe" : ""}
                 </span>
                 <span className="fin-numero" style={{ fontSize: "0.85rem" }}>

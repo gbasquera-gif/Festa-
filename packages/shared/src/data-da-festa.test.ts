@@ -5,6 +5,7 @@ import {
   diaEmChapeco,
   formatarDataDaFesta,
   normalizarDataDaFesta,
+  formatarDiaDoMomento,
 } from "./data-da-festa";
 import { diasAteAFesta } from "./operacao";
 
@@ -172,3 +173,14 @@ describe("a régua lê o dia certo, venha a data de onde vier", () => {
     }
   });
 });
+
+describe("formatarDiaDoMomento", () => {
+  it("um Pix das 21h34 de 05/10 em Chapecó é de 05/10, embora em UTC já seja 06/10", () => {
+    expect(formatarDiaDoMomento("2026-10-06T00:34:00.000Z")).toBe("05/10/2026");
+  });
+  it("aceita Date e a virada exata da meia-noite de Chapecó", () => {
+    expect(formatarDiaDoMomento(new Date("2026-10-06T02:59:59.000Z"))).toBe("05/10/2026");
+    expect(formatarDiaDoMomento(new Date("2026-10-06T03:00:00.000Z"))).toBe("06/10/2026");
+  });
+});
+

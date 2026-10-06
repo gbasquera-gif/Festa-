@@ -1,5 +1,5 @@
 import { COMPANY } from "./legal";
-import { diaEmChapeco, formatarDataDaFesta } from "./data-da-festa";
+import { formatarDataDaFesta, formatarDiaDoMomento } from "./data-da-festa";
 import { saldoAPagar } from "./pricing";
 
 /**
@@ -79,7 +79,7 @@ function dia(valor: string | Date): string {
  * gravado ao meio-dia UTC, que em Chapecó continua sendo o mesmo dia.
  */
 function diaDoMomento(valor: string | Date): string {
-  return diaEmChapeco(valor instanceof Date ? valor : new Date(valor)).split("-").reverse().join("/");
+  return formatarDiaDoMomento(valor);
 }
 
 export interface EntradaDoComprovante {

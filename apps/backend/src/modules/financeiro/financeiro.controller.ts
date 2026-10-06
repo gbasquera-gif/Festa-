@@ -10,6 +10,7 @@ import {
   type CriarGastoInput,
   type DefinirMetaInput,
   type EditarGastoInput,
+  mesEmChapeco,
 } from "@festae/shared";
 import { FinanceiroService } from "./financeiro.service";
 import { ehSituacao } from "./contratos";
@@ -115,7 +116,7 @@ export class FinanceiroController {
     @Query("escopo") escopo?: string,
     @Query("mes") mes?: string,
   ) {
-    const corrente = new Date().toISOString().slice(0, 7);
+    const corrente = mesEmChapeco(new Date());
     const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes ?? "") ? (mes as string) : corrente;
     const tipoValido = ehTipoDeDetalhe((tipo ?? "").toUpperCase())
       ? ((tipo as string).toUpperCase() as TipoDeDetalhe)
@@ -171,7 +172,7 @@ export class FinanceiroController {
  * de ler o mesmo período a partir dos mesmos parâmetros.
  */
 export function periodoDoPanorama(mes?: string, ano?: string): { ano: number; mes: string } {
-  const corrente = new Date().toISOString().slice(0, 7);
+  const corrente = mesEmChapeco(new Date());
   const mesValido = /^\d{4}-(0[1-9]|1[0-2])$/.test(mes ?? "") ? (mes as string) : corrente;
   const anoValido = /^\d{4}$/.test(ano ?? "") ? Number(ano) : Number(mesValido.slice(0, 4));
   return { ano: anoValido, mes: mesValido };

@@ -8,6 +8,7 @@ import {
   type ContratoApurado,
   type ResumoDaCarteira,
   type SituacaoDePagamento,
+  diaEmChapeco,
 } from "@festae/shared";
 
 /**
@@ -168,7 +169,9 @@ export function montarContrato(reserva: ReservaCrua, agora: Date): ContratoComer
     status: reserva.status,
     vigente: ehVigente(reserva),
     festaEm: dia(reserva.eventDate),
-    fechadoEm: dia(reserva.requestedAt),
+    // A reserva foi feita num momento, não num dia de calendário: o dia é
+    // o de Chapecó, senão uma reserva das 22h aparece fechada no dia seguinte.
+    fechadoEm: diaEmChapeco(reserva.requestedAt),
     remarcadaDe: reserva.rescheduledFrom ? dia(reserva.rescheduledFrom) : null,
     migrado: reserva.origemDoRegistro === "MIGRACAO" || reserva.referenciaExterna !== null,
     cliente: {

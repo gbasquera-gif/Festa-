@@ -104,6 +104,18 @@ export function formatarDataDaFesta(data: string | Date): string {
 }
 
 /**
+ * Um momento — um Pix recebido, uma reserva feita — escrito como o dia em
+ * que aconteceu em Chapecó: 05/10/2026.
+ *
+ * Não serve para data de festa nem para data digitada num formulário: essas
+ * são dias do calendário (use `formatarDataDaFesta`). Lido em UTC, um Pix das
+ * 21h30 de 05/10 aparecia como 06/10.
+ */
+export function formatarDiaDoMomento(instante: string | Date): string {
+  return diaEmChapeco(instante instanceof Date ? instante : new Date(instante)).split("-").reverse().join("/");
+}
+
+/**
  * O campo "data da festa" de qualquer formulário da API.
  *
  * A normalização mora aqui, no limite de entrada, e não em cada serviço que
