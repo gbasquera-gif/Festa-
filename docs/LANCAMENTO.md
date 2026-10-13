@@ -235,7 +235,7 @@ código.
 
 | Assunto | Decisão |
 | --- | --- |
-| Identificação | 68.155.380 MARIA LUIZA POCAI · CNPJ 68.155.380/0001-77 · Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, Chapecó/SC |
+| Identificação | 68.155.380 MARIA LUIZA POCAI · CNPJ 68.155.380/0001-77 · Chapecó/SC |
 | Pagamento | 30% de sinal na reserva + 70% na retirada. Pix no lançamento; cartão em versão futura |
 | Cancelamento | +15 dias: 100% · 15 a 8 dias: 75% · 7 a 3 dias: 50% · menos de 72h: sem reembolso |
 | Entrega | Retirada na sede. Entrega conforme disponibilidade, com taxa de deslocamento aprovada antes da reserva |

@@ -25,15 +25,15 @@ da conta de desenvolvedor, senão a conta trava na verificação):
 | Razão social | 68.155.380 MARIA LUIZA POCAI |
 | Nome fantasia / nome do app | Festaê |
 | CNPJ | 68.155.380/0001-77 |
-| Endereço | Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, Chapecó/SC, CEP 89802-080 |
+| Endereço | O do cartão CNPJ. Não fica escrito aqui: este repositório é público. |
 | D-U-N-S | 583908127 |
 | E-mail de contato | contato@festaechapeco.com.br |
 
-> O endereço acima é residencial e **fica público** — aparece na política de
-> privacidade, que é exigida em URL aberta, e a Apple exibe o endereço do
-> desenvolvedor na ficha da App Store. É o preço de publicar como empresa
-> individual e é assim para todo MEI. Se isso incomodar, a saída é um
-> endereço comercial no cartão CNPJ — decisão de negócio, não de código.
+> O endereço do cartão CNPJ é residencial. Não o escreva neste repositório
+> nem em nada que vá para o código do app ou do painel: os dois são públicos.
+> A Apple exibe o endereço do desenvolvedor na ficha da App Store. Se isso
+> incomodar, a saída é um endereço comercial no cartão CNPJ — decisão de
+> negócio, não de código.
 
 ---
 
