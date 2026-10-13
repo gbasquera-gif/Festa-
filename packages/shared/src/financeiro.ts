@@ -79,9 +79,11 @@ export type RecebimentoApurado = {
  * antigo, sem tratamento, não tem esta informação e não ganha uma inventada.
  */
 export type TratamentoApurado = {
-  /** Devolvido à cliente: saída de caixa na data do reembolso. */
+  /**
+   * Destinado a voltar para a cliente. Não é saída de caixa: a saída é o
+   * reembolso realizado, com a sua própria data (ver `reembolsos`).
+   */
   reembolsado: number;
-  reembolsadoEm: Date | null;
   /** Ficou com a Festaê: receita de retenção no mês do tratamento. */
   retido: number;
   /** Quando o tratamento foi definido. */
@@ -107,6 +109,11 @@ export type ContratoApurado = {
   tratamento?: TratamentoApurado | null;
   /** O destino dos pagamentos recebidos depois do cancelamento. */
   tratamentosComplementares?: readonly TratamentoApurado[];
+  /**
+   * Devoluções que a Festaê já fez à cliente, cada uma no dia em que o
+   * dinheiro saiu. Reembolso ainda a realizar não aparece aqui.
+   */
+  reembolsos?: readonly { valor: number; realizadoEm: Date }[];
 };
 
 /** Um lançamento de saída. */
@@ -255,17 +262,33 @@ export function entradasNoCaixa(contratos: readonly ContratoApurado[], mes: stri
 }
 
 /**
- * O que foi devolvido a clientes no mês, pela data em que o reembolso saiu —
- * do tratamento do cancelamento e dos complementares.
+ * O que foi devolvido a clientes no mês, pela data em que o reembolso saiu.
+ *
+ * Só reembolso realizado: o que o cancelamento destinou à cliente e ainda
+ * não foi devolvido não mexe no caixa — o dinheiro continua lá.
  */
 export function reembolsosNoMes(contratos: readonly ContratoApurado[], mes: string): number {
   return somar(
     contratos.flatMap((contrato) =>
-      tratamentosDe(contrato)
-        .filter(
-          (t) => t.reembolsadoEm !== null && toCentsInt(t.reembolsado) > 0 && mesEmChapeco(t.reembolsadoEm) === mes,
-        )
-        .map((t) => t.reembolsado),
+      (contrato.reembolsos ?? []).filter((r) => mesEmChapeco(r.realizadoEm) === mes).map((r) => r.valor),
+    ),
+  );
+}
+
+/**
+ * Reembolsos a realizar: destinados à cliente nos tratamentos e ainda não
+ * devolvidos. Não é saída de caixa — é o que ainda vai sair.
+ */
+export function reembolsosARealizar(contratos: readonly ContratoApurado[]): number {
+  return somar(
+    contratos.map((contrato) =>
+      fromCentsInt(
+        Math.max(
+          0,
+          tratamentosDe(contrato).reduce((t, x) => t + toCentsInt(x.reembolsado), 0) -
+            (contrato.reembolsos ?? []).reduce((t, r) => t + toCentsInt(r.valor), 0),
+        ),
+      ),
     ),
   );
 }

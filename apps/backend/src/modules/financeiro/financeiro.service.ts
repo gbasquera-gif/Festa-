@@ -20,6 +20,7 @@ import {
 import {
   acumuladoNoAno,
   creditoAplicadoNaReserva,
+  reembolsosARealizar,
   gastoAcumulado,
   indicadoresDoMes,
   mesAnterior,
@@ -103,11 +104,13 @@ export class FinanceiroService {
         },
         creditosUtilizados: { select: { valor: true } },
         tratamentoDoCancelamento: {
-          select: { reembolsado: true, reembolsadoEm: true, retido: true, definidoEm: true },
+          select: { reembolsado: true, retido: true, definidoEm: true },
         },
         tratamentosComplementares: {
-          select: { reembolsado: true, reembolsadoEm: true, retido: true, definidoEm: true },
+          select: { reembolsado: true, retido: true, definidoEm: true },
         },
+        // A saída de caixa do reembolso: só o que já foi devolvido.
+        reembolsosRealizados: { select: { valor: true, realizadoEm: true } },
       },
     });
 
@@ -124,9 +127,12 @@ export class FinanceiroService {
       })),
       tratamentosComplementares: reserva.tratamentosComplementares.map((t) => ({
         reembolsado: paraNumero(t.reembolsado),
-        reembolsadoEm: t.reembolsadoEm,
         retido: paraNumero(t.retido),
         definidoEm: t.definidoEm,
+      })),
+      reembolsos: reserva.reembolsosRealizados.map((r) => ({
+        valor: paraNumero(r.valor),
+        realizadoEm: r.realizadoEm,
       })),
       creditoAplicado: creditoAplicadoNaReserva(
         reserva.creditosUtilizados.map((m) => ({ valor: paraNumero(m.valor) })),
@@ -134,7 +140,6 @@ export class FinanceiroService {
       tratamento: reserva.tratamentoDoCancelamento
         ? {
             reembolsado: paraNumero(reserva.tratamentoDoCancelamento.reembolsado),
-            reembolsadoEm: reserva.tratamentoDoCancelamento.reembolsadoEm,
             retido: paraNumero(reserva.tratamentoDoCancelamento.retido),
             definidoEm: reserva.tratamentoDoCancelamento.definidoEm,
           }
@@ -243,6 +248,8 @@ export class FinanceiroService {
         entradas: indicadores.entradasNoCaixa,
         reembolsos: indicadores.reembolsosNoMes,
         liquido: indicadores.caixa.receita,
+        /** Destinados a clientes e ainda não devolvidos: não saíram do caixa. */
+        reembolsosARealizar: reembolsosARealizar(contratos),
       },
       creditoEmAberto,
 

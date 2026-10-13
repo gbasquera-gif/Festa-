@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PAYMENT_METHODS } from "../enums";
 
 const diaSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD.");
 
@@ -17,9 +18,15 @@ export const cancelarReservaSchema = z.object({
     .min(3, "Diga o motivo do cancelamento.")
     .max(500, "O motivo pode ter até 500 caracteres."),
   credito: z.coerce.number().min(0).default(0),
+  /** Quanto volta para a cliente. Sem `reembolsadoEm`, é reembolso a realizar. */
   reembolso: z.coerce.number().min(0).default(0),
-  /** O dia em que o reembolso saiu. Obrigatório quando há reembolso. */
+  /**
+   * Só quando a devolução JÁ foi feita: o dia em que o dinheiro saiu.
+   * Ausente, o reembolso fica pendente e não mexe no caixa.
+   */
   reembolsadoEm: diaSchema.optional(),
+  /** Por onde a devolução já feita saiu. */
+  formaDoReembolso: z.enum(PAYMENT_METHODS).optional(),
   retencao: z.coerce.number().min(0).default(0),
 });
 export type CancelarReservaInput = z.infer<typeof cancelarReservaSchema>;
@@ -57,8 +64,25 @@ export type EstornarCreditoInput = z.infer<typeof estornarCreditoSchema>;
 export const tratarPagamentoTardioSchema = z.object({
   credito: z.coerce.number().min(0).default(0),
   reembolso: z.coerce.number().min(0).default(0),
+  /** Só quando a devolução já foi feita; ausente, fica reembolso a realizar. */
   reembolsadoEm: diaSchema.optional(),
+  formaDoReembolso: z.enum(PAYMENT_METHODS).optional(),
   retencao: z.coerce.number().min(0).default(0),
   observacao: z.string().trim().max(500).optional(),
 });
 export type TratarPagamentoTardioInput = z.infer<typeof tratarPagamentoTardioSchema>;
+
+/**
+ * O registro de uma devolução que a Festaê já fez.
+ *
+ * Não transfere nada: a Festaê devolve por Pix ou outro meio, fora do
+ * sistema, e registra aqui o dia em que o dinheiro saiu. `tratamentoComplementarId`
+ * ausente quer dizer o reembolso do tratamento do cancelamento.
+ */
+export const registrarReembolsoSchema = z.object({
+  tratamentoComplementarId: z.string().min(1).optional(),
+  realizadoEm: diaSchema,
+  forma: z.enum(PAYMENT_METHODS),
+  observacao: z.string().trim().max(500).optional(),
+});
+export type RegistrarReembolsoInput = z.infer<typeof registrarReembolsoSchema>;

@@ -8,6 +8,7 @@ import {
   mesEmChapeco,
   periodoComercial,
   receitaPorCompetencia,
+  reembolsosARealizar,
   resultadoOperacionalDoMes,
   resumoDaCarteira,
   toCentsInt,
@@ -106,6 +107,8 @@ export type RelatorioExecutivo = {
     entradas: number;
     reembolsos: number;
     liquido: number;
+    /** Destinados a clientes e ainda não devolvidos: ainda não saíram do caixa. */
+    reembolsosARealizar: number;
   };
   /** Soma dos saldos de crédito Festaê das clientes. Não é caixa nem receita. */
   creditoEmAberto: number;
@@ -200,6 +203,7 @@ export function montarRelatorioExecutivo(entrada: {
       entradas: indicadores.entradasNoCaixa,
       reembolsos: indicadores.reembolsosNoMes,
       liquido: indicadores.caixa.receita,
+      reembolsosARealizar: reembolsosARealizar(contratos),
     },
     creditoEmAberto: entrada.creditoEmAberto ?? 0,
     acervoNoMes: acervoDoMes(gastos, mes),

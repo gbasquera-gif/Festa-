@@ -25,6 +25,7 @@ import {
   mesDaDespesa,
   entradasNoCaixa,
   reembolsosNoMes,
+  reembolsosARealizar,
   receitaDeRetencao,
 } from "./financeiro";
 
@@ -550,7 +551,7 @@ describe("caixa de reserva cancelada com tratamento", () => {
     valor: 1500,
     recebimentos: [{ valor: 450, recebidoEm: meioDia("2026-09-03") }],
     cancelado: true,
-    tratamento: { reembolsado: 0, reembolsadoEm: null, retido: 150, definidoEm: meioDia("2026-10-08") },
+    tratamento: { reembolsado: 0, retido: 150, definidoEm: meioDia("2026-10-08") },
   };
 
   /** Pagou R$ 400 em setembro; R$ 250 devolvidos em outubro, R$ 150 retidos. */
@@ -560,12 +561,8 @@ describe("caixa de reserva cancelada com tratamento", () => {
     valor: 1000,
     recebimentos: [{ valor: 400, recebidoEm: meioDia("2026-09-05") }],
     cancelado: true,
-    tratamento: {
-      reembolsado: 250,
-      reembolsadoEm: new Date("2026-10-12T12:00:00.000Z"),
-      retido: 150,
-      definidoEm: meioDia("2026-10-12"),
-    },
+    tratamento: { reembolsado: 250, retido: 150, definidoEm: meioDia("2026-10-12") },
+    reembolsos: [{ valor: 250, realizadoEm: new Date("2026-10-12T12:00:00.000Z") }],
   };
 
   /** Cancelamento antigo, sem tratamento: continua fora do caixa. */
@@ -692,7 +689,7 @@ describe("pagamento recebido depois do cancelamento", () => {
       { valor: 200, recebidoEm: meioDia("2026-10-20"), aposCancelamento: true },
     ],
     cancelado: true,
-    tratamento: { reembolsado: 0, reembolsadoEm: null, retido: 0, definidoEm: meioDia("2026-10-05") },
+    tratamento: { reembolsado: 0, retido: 0, definidoEm: meioDia("2026-10-05") },
   };
 
   it("o Pix tardio continua no caixa do dia em que entrou", () => {
@@ -708,9 +705,8 @@ describe("pagamento recebido depois do cancelamento", () => {
   it("tratamento complementar: reembolso sai no caixa e retenção vira receita do mês dele", () => {
     const tratada: ContratoApurado = {
       ...base,
-      tratamentosComplementares: [
-        { reembolsado: 120, reembolsadoEm: new Date("2026-11-03T12:00:00.000Z"), retido: 80, definidoEm: meioDia("2026-11-03") },
-      ],
+      tratamentosComplementares: [{ reembolsado: 120, retido: 80, definidoEm: meioDia("2026-11-03") }],
+      reembolsos: [{ valor: 120, realizadoEm: new Date("2026-11-03T12:00:00.000Z") }],
     };
     expect(reembolsosNoMes([tratada], "2026-11")).toBe(120);
     expect(receitaPorCaixa([tratada], "2026-11")).toBe(-120);
@@ -729,5 +725,49 @@ describe("pagamento recebido depois do cancelamento", () => {
     };
     expect(entradasNoCaixa([antiga], "2026-09")).toBe(0);
     expect(entradasNoCaixa([antiga], "2026-10")).toBe(200);
+  });
+});
+
+describe("reembolso a realizar × reembolso realizado", () => {
+  /**
+   * Pagou R$ 450 em 02/10. Cancelou em 13/10: R$ 100 crédito, R$ 50
+   * retenção, R$ 300 a reembolsar. A Festaê transferiu os R$ 300 em 14/10.
+   */
+  const pendente: ContratoApurado = {
+    fechadoEm: meioDia("2026-10-02"),
+    festaEm: meioDia("2026-12-05"),
+    valor: 1200,
+    recebimentos: [{ valor: 450, recebidoEm: meioDia("2026-10-02") }],
+    cancelado: true,
+    tratamento: { reembolsado: 300, retido: 50, definidoEm: meioDia("2026-10-13") },
+  };
+  const realizado: ContratoApurado = {
+    ...pendente,
+    reembolsos: [{ valor: 300, realizadoEm: new Date("2026-10-14T12:00:00.000Z") }],
+  };
+  const dia = (contratos: ContratoApurado[], d: string) =>
+    contratos.flatMap((c) => c.reembolsos ?? []).filter((r) => r.realizadoEm.toISOString().slice(0, 10) === d).reduce((t, r) => t + r.valor, 0);
+
+  it("o pagamento original continua no caixa do dia em que entrou", () => {
+    expect(entradasNoCaixa([pendente], "2026-10")).toBe(450);
+  });
+
+  it("reembolso pendente não reduz o caixa", () => {
+    expect(reembolsosNoMes([pendente], "2026-10")).toBe(0);
+    expect(receitaPorCaixa([pendente], "2026-10")).toBe(450);
+    expect(reembolsosARealizar([pendente])).toBe(300);
+  });
+
+  it("registrado em 14/10, reduz o caixa de 14/10 — e só ele", () => {
+    expect(dia([realizado], "2026-10-13")).toBe(0);
+    expect(dia([realizado], "2026-10-14")).toBe(300);
+    expect(reembolsosNoMes([realizado], "2026-10")).toBe(300);
+    expect(receitaPorCaixa([realizado], "2026-10")).toBe(150);
+    expect(reembolsosARealizar([realizado])).toBe(0);
+  });
+
+  it("faturamento da festa cancelada continua zero; retenção no mês do tratamento", () => {
+    expect(receitaPorCompetencia([realizado], "2026-12")).toBe(0);
+    expect(receitaDeRetencao([realizado], "2026-10")).toBe(50);
   });
 });

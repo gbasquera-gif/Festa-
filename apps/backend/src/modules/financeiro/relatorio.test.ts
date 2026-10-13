@@ -47,6 +47,7 @@ vi.mock("@festae/database", () => ({
             creditosUtilizados: [],
             tratamentoDoCancelamento: null,
             tratamentosComplementares: [],
+            reembolsosRealizados: [],
           }));
       },
     },

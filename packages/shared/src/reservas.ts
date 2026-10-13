@@ -71,6 +71,8 @@ export type ReservaClassificavel = {
   creditoAplicado?: number;
   /** Pagamento recebido depois do cancelamento, ainda sem tratamento. */
   tratamentoPendente?: number;
+  /** Reembolso destinado à cliente e ainda não registrado como feito. */
+  reembolsoPendente?: number;
 };
 
 /**
@@ -105,6 +107,8 @@ export type SituacaoOperacional = {
    * o que fazer com ele. É pendência de dinheiro real, e pede ação.
    */
   tratamentoPendente: boolean;
+  /** Cancelada com reembolso a realizar: dinheiro que ainda vai sair. */
+  reembolsoPendente: boolean;
   /**
    * Precisa de ação agora.
    *
@@ -144,6 +148,7 @@ export function situacaoOperacional(
   const pendenciaOperacional =
     !cancelada && diasAteAFesta < 0 && reserva.status !== "COMPLETED" && !aguardandoDevolucao;
   const tratamentoPendente = cancelada && toCentsInt(reserva.tratamentoPendente ?? 0) > 0;
+  const reembolsoPendente = cancelada && toCentsInt(reserva.reembolsoPendente ?? 0) > 0;
 
   return {
     cancelada,
@@ -153,7 +158,8 @@ export function situacaoOperacional(
     pendenciaOperacional,
     aguardandoDevolucao,
     tratamentoPendente,
-    temPendencia: vencido || pendenciaOperacional || tratamentoPendente,
+    reembolsoPendente,
+    temPendencia: vencido || pendenciaOperacional || tratamentoPendente || reembolsoPendente,
   };
 }
 
@@ -181,11 +187,13 @@ export function ehDaAba(reserva: ReservaClassificavel, aba: AbaDeReserva, agora:
     case "PROXIMAS":
       return !s.cancelada && s.diasAteAFesta >= 0;
     case "ATIVAS":
-      // A cancelada com pagamento tardio sem destino também pede ação: ela
-      // aparece aqui, além de Canceladas, até o tratamento ser definido.
+      // A cancelada com pendência de dinheiro — pagamento tardio sem destino
+      // ou reembolso a realizar — também pede ação: aparece aqui, além de
+      // Canceladas, até a pendência ser resolvida.
       return (
         (!s.cancelada && (reserva.status !== "COMPLETED" || s.pendenciaFinanceira)) ||
-        s.tratamentoPendente
+        s.tratamentoPendente ||
+        s.reembolsoPendente
       );
   }
 }

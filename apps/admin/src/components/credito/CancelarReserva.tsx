@@ -4,12 +4,15 @@ import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { CheckCircle2, Copy, FileDown } from "lucide-react";
 import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABEL,
   diaEmChapeco,
   formatarReais,
   fromCentsInt,
   mensagemDoVoucher,
   motivoDeRecusaDaDistribuicao,
   toCentsInt,
+  type PaymentMethod,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -90,7 +93,14 @@ function useDistribuicao(valor: number) {
   const [credito, setCredito] = useState("");
   const [reembolso, setReembolso] = useState("");
   const [retencao, setRetencao] = useState("");
+  /**
+   * Reembolso nasce "a realizar": a Festaê ainda vai devolver. Só quando a
+   * devolução JÁ aconteceu a pessoa marca isso e informa o dia — e só então
+   * o valor sai do caixa.
+   */
+  const [jaDevolvido, setJaDevolvido] = useState(false);
   const [reembolsadoEm, setReembolsadoEm] = useState(diaEmChapeco(new Date()));
+  const [formaDoReembolso, setFormaDoReembolso] = useState<PaymentMethod>("PIX");
 
   const total = fromCentsInt(toCentsInt(valor));
   const partes = { credito: lerValor(credito), reembolso: lerValor(reembolso), retencao: lerValor(retencao) };
@@ -102,7 +112,7 @@ function useDistribuicao(valor: number) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [total, credito, reembolso, retencao],
   );
-  const faltaData = partes.reembolso > 0 && !reembolsadoEm;
+  const faltaData = partes.reembolso > 0 && jaDevolvido && !reembolsadoEm;
 
   return {
     total,
@@ -110,11 +120,25 @@ function useDistribuicao(valor: number) {
     distribuido,
     problema,
     faltaData,
-    campos: { credito, setCredito, reembolso, setReembolso, retencao, setRetencao, reembolsadoEm, setReembolsadoEm },
+    campos: {
+      credito,
+      setCredito,
+      reembolso,
+      setReembolso,
+      retencao,
+      setRetencao,
+      jaDevolvido,
+      setJaDevolvido,
+      reembolsadoEm,
+      setReembolsadoEm,
+      formaDoReembolso,
+      setFormaDoReembolso,
+    },
     corpo: {
       credito: partes.credito,
       reembolso: partes.reembolso,
-      reembolsadoEm: partes.reembolso > 0 ? reembolsadoEm : undefined,
+      reembolsadoEm: partes.reembolso > 0 && jaDevolvido ? reembolsadoEm : undefined,
+      formaDoReembolso: partes.reembolso > 0 && jaDevolvido ? formaDoReembolso : undefined,
       retencao: partes.retencao,
     },
     preencher(destino: "credito" | "reembolso" | "retencao") {
@@ -127,6 +151,7 @@ function useDistribuicao(valor: number) {
       setCredito("");
       setReembolso("");
       setRetencao("");
+      setJaDevolvido(false);
     },
   };
 }
@@ -168,7 +193,7 @@ function DistribuicaoDoValor({
         {(
           [
             ["credito", "Tudo em crédito"],
-            ["reembolso", "Reembolsar tudo"],
+            ["reembolso", "Tudo em reembolso"],
             ["retencao", "Reter tudo"],
           ] as const
         ).map(([destino, rotulo]) => (
@@ -187,22 +212,72 @@ function DistribuicaoDoValor({
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {campo("Crédito Festaê", "fica no cadastro da cliente", campos.credito, campos.setCredito, "dist-credito")}
-        {campo("Reembolso", "volta para a cliente", campos.reembolso, campos.setReembolso, "dist-reembolso")}
+        {campo("Reembolso", "a Festaê devolve à cliente", campos.reembolso, campos.setReembolso, "dist-reembolso")}
         {campo("Retenção", "fica com a Festaê", campos.retencao, campos.setRetencao, "dist-retencao")}
       </div>
+      {/* O sistema não devolve dinheiro: registra a devolução que a Festaê
+          faz por Pix ou outro meio. Por isso a pergunta é se ela JÁ aconteceu,
+          e o padrão é que ainda não. */}
       {d.partes.reembolso > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="dia-reembolso">Dia em que o reembolso saiu</Label>
-          <Input
-            id="dia-reembolso"
-            type="date"
-            max={diaEmChapeco(new Date())}
-            value={campos.reembolsadoEm}
-            onChange={(e) => campos.setReembolsadoEm(e.target.value)}
-          />
+        <div className="space-y-2 rounded-md bg-muted/40 p-3" data-escolha-reembolso>
           <p className="text-xs text-muted-foreground">
-            É a data da saída no caixa. O pagamento original continua no caixa do dia em que entrou.
+            O sistema não faz a devolução: a Festaê devolve por Pix ou outro meio, e o caixa só muda
+            quando a devolução for registrada como realizada.
           </p>
+          <div role="radiogroup" aria-label="Situação do reembolso" className="grid gap-2 sm:grid-cols-2">
+            {(
+              [
+                [false, "Reembolso a realizar", "a Festaê ainda vai devolver"],
+                [true, "Já devolvido", "registrar a devolução já feita"],
+              ] as const
+            ).map(([valor, titulo, nota]) => (
+              <button
+                key={titulo}
+                type="button"
+                role="radio"
+                aria-checked={campos.jaDevolvido === valor}
+                onClick={() => {
+                  campos.setJaDevolvido(valor);
+                  aoMudar();
+                }}
+                className={`rounded-md border p-2 text-left text-sm ${
+                  campos.jaDevolvido === valor ? "border-navy bg-white ring-1 ring-navy" : "border-input"
+                }`}
+              >
+                <span className="block font-medium">{titulo}</span>
+                <span className="block text-xs text-muted-foreground">{nota}</span>
+              </button>
+            ))}
+          </div>
+          {campos.jaDevolvido && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="dia-reembolso">Dia em que a devolução foi feita</Label>
+                <Input
+                  id="dia-reembolso"
+                  type="date"
+                  max={diaEmChapeco(new Date())}
+                  value={campos.reembolsadoEm}
+                  onChange={(e) => campos.setReembolsadoEm(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="forma-reembolso">Meio</Label>
+                <select
+                  id="forma-reembolso"
+                  className="h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm sm:h-9"
+                  value={campos.formaDoReembolso}
+                  onChange={(e) => campos.setFormaDoReembolso(e.target.value as PaymentMethod)}
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {PAYMENT_METHOD_LABEL[m]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <p className={`text-sm tabular-nums ${d.problema ? "text-amber-800" : "text-emerald-700"}`} data-distribuicao>

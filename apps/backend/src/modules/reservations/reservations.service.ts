@@ -11,8 +11,10 @@ import {
   creditoAplicadoNaReserva,
   diaDaFesta,
   diaEmChapeco,
+  formatarDiaDoMomento,
   pendenteDeTratamento,
   podeAguardarDevolucao,
+  reembolsoPendente,
   formatarReais,
   fromCentsInt,
   motivoDeRecusaDaDistribuicao,
@@ -23,6 +25,7 @@ import {
 import type {
   CancelarReservaInput,
   CreateReservationInput,
+  RegistrarReembolsoInput,
   ReservationStatus,
   TratarPagamentoTardioInput,
   UpdateReservationStatusInput,
@@ -45,6 +48,16 @@ import { pendentesAEncerrar } from "./encerrar-pendencias";
  * Os movimentos de utilização dão o crédito aplicado; o crédito gerado dá o
  * voucher; o tratamento diz o que foi feito com o dinheiro da cancelada.
  */
+/** O registro de uma devolução feita, como a tela o mostra. */
+const SELECAO_DO_REEMBOLSO = {
+  valor: true,
+  realizadoEm: true,
+  forma: true,
+  observacao: true,
+  registradoEm: true,
+  registradoPor: { select: { name: true } },
+} as const;
+
 const INCLUSAO_DO_CREDITO = {
   creditosUtilizados: { select: { valor: true } },
   creditosGerados: {
@@ -63,25 +76,26 @@ const INCLUSAO_DO_CREDITO = {
       recebido: true,
       creditoGerado: true,
       reembolsado: true,
-      reembolsadoEm: true,
       retido: true,
       definidoEm: true,
       createdBy: { select: { name: true } },
+      reembolsoRealizado: { select: SELECAO_DO_REEMBOLSO },
     },
     orderBy: { definidoEm: "asc" as const },
   },
   tratamentoDoCancelamento: {
     select: {
+      id: true,
       motivo: true,
       contratado: true,
       recebido: true,
       creditoAplicadoDevolvido: true,
       creditoGerado: true,
       reembolsado: true,
-      reembolsadoEm: true,
       retido: true,
       definidoEm: true,
       createdBy: { select: { name: true } },
+      reembolsoRealizado: { select: SELECAO_DO_REEMBOLSO },
     },
   },
   cancelledBy: { select: { name: true } },
@@ -108,15 +122,25 @@ function comCredito<
   T extends {
     creditosUtilizados: { valor: unknown }[];
     pagamentosAposCancelamento: { valor: unknown; tratamentoComplementarId: string | null }[];
+    tratamentoDoCancelamento: { reembolsado: unknown; reembolsoRealizado: unknown } | null;
+    tratamentosComplementares: { reembolsado: unknown; reembolsoRealizado: unknown }[];
     order: { event: { userId: string } };
   },
 >(reserva: T, saldos: Map<string, number>) {
+  const tratamentos = [
+    ...(reserva.tratamentoDoCancelamento ? [reserva.tratamentoDoCancelamento] : []),
+    ...reserva.tratamentosComplementares,
+  ];
   return {
     ...reserva,
     creditoAplicado: creditoAplicadoNaReserva(
       reserva.creditosUtilizados.map((m) => ({ valor: Number(m.valor) })),
     ),
     creditoDisponivelDaCliente: saldos.get(reserva.order.event.userId) ?? 0,
+    // Reembolso destinado à cliente e ainda não registrado como feito.
+    reembolsoPendente: reembolsoPendente(
+      tratamentos.map((t) => ({ reembolsado: Number(t.reembolsado), realizado: t.reembolsoRealizado !== null })),
+    ),
     // Pagamento recebido depois do cancelamento que ainda não tem destino.
     tratamentoPendente: pendenteDeTratamento(
       reserva.pagamentosAposCancelamento.map((p) => ({
@@ -129,6 +153,24 @@ function comCredito<
 
 /** Estados de que a reserva não volta pelo seletor de etapa. */
 const MORTAS = ["CANCELLED", "REJECTED"];
+
+/**
+ * O dia de uma devolução que já foi feita, ou nulo quando não foi.
+ *
+ * Dia de calendário, ancorado ao meio-dia UTC como o dia de um pagamento.
+ * Nunca no futuro: registrar como feito um reembolso de amanhã tiraria do
+ * caixa hoje um dinheiro que ainda está nele — para o que ainda vai
+ * acontecer existe o reembolso a realizar.
+ */
+function diaDoReembolsoJaFeito(dia: string | undefined): Date | null {
+  if (!dia) return null;
+  if (dia > diaEmChapeco(new Date())) {
+    throw new BadRequestException(
+      "Um reembolso no futuro ainda não foi feito. Deixe-o como reembolso a realizar e registre quando a devolução acontecer.",
+    );
+  }
+  return normalizarDataDaFesta(dia);
+}
 
 @Injectable()
 export class ReservationsService {
@@ -478,9 +520,12 @@ export class ReservationsService {
    *   reembolso e retenção. A soma tem de ser exatamente o pago, conferida
    *   sob trava contra o pago lido na hora — não contra o que a tela viu;
    *
-   * - **o pagamento continua no caixa**, na data em que entrou. O reembolso é
-   *   uma saída, com a data em que saiu. A retenção é receita de retenção do
-   *   mês do cancelamento, nunca faturamento de festa;
+   * - **o pagamento continua no caixa**, na data em que entrou. O reembolso
+   *   é destino, não saída: fica "a realizar" até a Festaê devolver o dinheiro
+   *   (por fora do sistema) e registrar que devolveu — só então sai do caixa,
+   *   na data em que saiu. Se a devolução já foi feita, ela é registrada
+   *   junto. A retenção é receita de retenção do mês do cancelamento, nunca
+   *   faturamento de festa;
    *
    * - **crédito Festaê que estava aplicado volta sozinho** ao saldo da
    *   cliente, por um movimento próprio no extrato. A utilização original
@@ -509,20 +554,8 @@ export class ReservationsService {
     }
 
     const reembolso = toCentsInt(input.reembolso);
-    let reembolsadoEm: Date | null = null;
-    if (reembolso > 0) {
-      if (!input.reembolsadoEm) {
-        throw new BadRequestException("Informe o dia em que o reembolso foi feito.");
-      }
-      // Dia de calendário, ancorado ao meio-dia UTC como o dia de um
-      // pagamento: é a data da saída no caixa.
-      reembolsadoEm = normalizarDataDaFesta(input.reembolsadoEm);
-      if (input.reembolsadoEm > diaEmChapeco(new Date())) {
-        throw new BadRequestException(
-          "O reembolso entra no caixa no dia em que sai. Registre o cancelamento quando o reembolso for feito.",
-        );
-      }
-    }
+    // Sem data, o reembolso fica a realizar. Com data, ele já foi feito.
+    const reembolsadoEm = reembolso > 0 ? diaDoReembolsoJaFeito(input.reembolsadoEm) : null;
 
     const userId = reserva.order.event.userId;
     const resultado = await prisma.$transaction(
@@ -593,7 +626,7 @@ export class ReservationsService {
               })
             : null;
 
-        await tx.tratamentoDeCancelamento.create({
+        const tratamento = await tx.tratamentoDeCancelamento.create({
           data: {
             reservationId: id,
             motivo: input.motivo,
@@ -602,12 +635,25 @@ export class ReservationsService {
             creditoAplicadoDevolvido: fromCentsInt(creditoDevolvido),
             creditoGerado: fromCentsInt(credito),
             reembolsado: fromCentsInt(reembolso),
-            reembolsadoEm,
             retido: fromCentsInt(toCentsInt(input.retencao)),
             definidoEm: agora,
             createdById: usuarioId,
           },
         });
+
+        // Devolução que já aconteceu é registrada junto; senão, fica a realizar.
+        if (reembolsadoEm) {
+          await tx.reembolsoRealizado.create({
+            data: {
+              reservationId: id,
+              tratamentoId: tratamento.id,
+              valor: fromCentsInt(reembolso),
+              realizadoEm: reembolsadoEm,
+              forma: input.formaDoReembolso ?? "PIX",
+              registradoPorId: usuarioId,
+            },
+          });
+        }
 
         return {
           recebido: fromCentsInt(recebido),
@@ -674,14 +720,8 @@ export class ReservationsService {
       throw new BadRequestException("Só reserva cancelada tem pagamento após o cancelamento a tratar.");
     }
 
-    let reembolsadoEm: Date | null = null;
-    if (toCentsInt(input.reembolso) > 0) {
-      if (!input.reembolsadoEm) throw new BadRequestException("Informe o dia em que o reembolso foi feito.");
-      if (input.reembolsadoEm > diaEmChapeco(new Date())) {
-        throw new BadRequestException("O reembolso entra no caixa no dia em que sai. Registre quando ele for feito.");
-      }
-      reembolsadoEm = normalizarDataDaFesta(input.reembolsadoEm);
-    }
+    // Sem data, o reembolso fica a realizar; com data, já foi feito.
+    const reembolsadoEm = toCentsInt(input.reembolso) > 0 ? diaDoReembolsoJaFeito(input.reembolsadoEm) : null;
 
     const userId = reserva.order.event.userId;
     const resultado = await prisma.$transaction(
@@ -732,12 +772,24 @@ export class ReservationsService {
             recebido: fromCentsInt(pendente),
             creditoGerado: fromCentsInt(credito),
             reembolsado: fromCentsInt(toCentsInt(input.reembolso)),
-            reembolsadoEm,
             retido: fromCentsInt(toCentsInt(input.retencao)),
             createdById: usuarioId,
             movimentoDeCreditoId: gerado?.id ?? null,
           },
         });
+
+        if (reembolsadoEm) {
+          await tx.reembolsoRealizado.create({
+            data: {
+              reservationId: id,
+              tratamentoComplementarId: complementar.id,
+              valor: fromCentsInt(toCentsInt(input.reembolso)),
+              realizadoEm: reembolsadoEm,
+              forma: input.formaDoReembolso ?? "PIX",
+              registradoPorId: usuarioId,
+            },
+          });
+        }
 
         // Liga cada pagamento tardio a este tratamento. O filtro de nulo e a
         // contagem garantem que nenhum valor é tratado duas vezes.
@@ -765,6 +817,84 @@ export class ReservationsService {
         `(crédito ${formatarReais(input.credito)}, reembolso ${formatarReais(input.reembolso)}, retenção ${formatarReais(input.retencao)}).`,
     );
     return { tratado: true, clienteId: userId, ...resultado };
+  }
+
+  /**
+   * Registra uma devolução que a Festaê já fez.
+   *
+   * Não transfere dinheiro — o sistema não devolve nada pelo Mercado Pago nem
+   * por banco algum. A Festaê faz o Pix ou a transferência por fora e diz
+   * aqui o dia em que o dinheiro saiu; é esse registro que tira o valor do
+   * caixa, naquele dia. Um registro por tratamento, sempre do valor inteiro
+   * destinado a reembolso, nunca editado nem apagado: confirmar duas vezes
+   * não pode tirar o dinheiro do caixa duas vezes.
+   */
+  async registrarReembolso(id: string, input: RegistrarReembolsoInput, usuarioId: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      select: { id: true, orderId: true, status: true },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    if (!MORTAS.includes(reserva.status)) {
+      throw new BadRequestException("Só reserva cancelada tem reembolso a registrar.");
+    }
+    const realizadoEm = diaDoReembolsoJaFeito(input.realizadoEm)!;
+
+    const registro = await prisma.$transaction(
+      async (tx) => {
+        // A mesma trava do pedido: duas confirmações ao mesmo tempo passam
+        // uma de cada vez, e a segunda já encontra o reembolso registrado.
+        await travarPedido(tx, reserva.orderId);
+
+        const tratamento = input.tratamentoComplementarId
+          ? await tx.tratamentoComplementarDeCancelamento.findFirst({
+              where: { id: input.tratamentoComplementarId, reservationId: id },
+              select: { id: true, reembolsado: true, definidoEm: true, reembolsoRealizado: { select: { id: true } } },
+            })
+          : await tx.tratamentoDeCancelamento.findUnique({
+              where: { reservationId: id },
+              select: { id: true, reembolsado: true, definidoEm: true, reembolsoRealizado: { select: { id: true } } },
+            });
+        if (!tratamento || toCentsInt(Number(tratamento.reembolsado)) <= 0) {
+          throw new BadRequestException("Este tratamento não tem reembolso destinado à cliente.");
+        }
+        if (tratamento.reembolsoRealizado) {
+          throw new ConflictException({
+            message: "Este reembolso já foi registrado como realizado.",
+            codigo: "REEMBOLSO_JA_REGISTRADO",
+          });
+        }
+        // Ficou pendente no dia em que o tratamento foi definido: não pode
+        // ter sido feito antes disso.
+        if (input.realizadoEm < diaEmChapeco(tratamento.definidoEm)) {
+          throw new BadRequestException(
+            `O reembolso ficou pendente em ${formatarDiaDoMomento(tratamento.definidoEm)}: a data em que foi feito não pode ser anterior.`,
+          );
+        }
+
+        return tx.reembolsoRealizado.create({
+          data: {
+            reservationId: id,
+            ...(input.tratamentoComplementarId
+              ? { tratamentoComplementarId: tratamento.id }
+              : { tratamentoId: tratamento.id }),
+            valor: tratamento.reembolsado,
+            realizadoEm,
+            forma: input.forma,
+            observacao: input.observacao?.trim() || null,
+            registradoPorId: usuarioId,
+          },
+          select: { id: true, valor: true, realizadoEm: true },
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    this.logger.log(
+      `Reembolso de ${formatarReais(Number(registro.valor))} da reserva ${id} registrado como realizado ` +
+        `em ${input.realizadoEm} por ${usuarioId}.`,
+    );
+    return { registrado: true, valor: Number(registro.valor), realizadoEm: registro.realizadoEm.toISOString() };
   }
 
   /**

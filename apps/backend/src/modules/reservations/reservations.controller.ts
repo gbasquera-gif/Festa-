@@ -7,6 +7,7 @@ import {
   editarReservaSchema,
   registrarPagamentoSchema,
   manualReservationSchema,
+  registrarReembolsoSchema,
   tratarPagamentoTardioSchema,
   updateReservationStatusSchema,
 } from "@festae/shared";
@@ -17,6 +18,7 @@ import type {
   EditarReservaInput,
   RegistrarPagamentoInput,
   ManualReservationInput,
+  RegistrarReembolsoInput,
   TratarPagamentoTardioInput,
   UpdateReservationStatusInput,
 } from "@festae/shared";
@@ -175,6 +177,22 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(tratarPagamentoTardioSchema)) body: TratarPagamentoTardioInput,
   ) {
     return this.reservationsService.tratarPagamentoTardio(id, body, user.userId);
+  }
+
+  /**
+   * Registra uma devolução que a Festaê JÁ fez, por Pix ou outro meio, fora
+   * do sistema. Não transfere dinheiro. É o que tira o valor do caixa, no dia
+   * informado. OPS registra junto com ADMIN, como registra pagamento.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Post("reservations/:id/reembolso-realizado")
+  registrarReembolso(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(registrarReembolsoSchema)) body: RegistrarReembolsoInput,
+  ) {
+    return this.reservationsService.registrarReembolso(id, body, user.userId);
   }
 
   /** Material devolvido: marca a devolução e conclui a reserva. */

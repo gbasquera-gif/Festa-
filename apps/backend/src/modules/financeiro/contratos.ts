@@ -4,6 +4,7 @@ import {
   creditoDoContrato,
   fromCentsInt,
   pendenteDeTratamento,
+  reembolsosARealizar,
   toCentsInt,
   mesEmChapeco,
   recebidoDoContrato,
@@ -102,12 +103,13 @@ export type ReservaCrua = {
   tratamentoDoCancelamento?: TratamentoCru | null;
   /** O destino dos pagamentos recebidos depois do cancelamento. */
   tratamentosComplementares?: TratamentoCru[];
+  /** Devoluções já feitas: a saída do caixa, cada uma no seu dia. */
+  reembolsosRealizados?: { valor: ValorDoBanco; realizadoEm: Date }[];
 };
 
 type TratamentoCru = {
   creditoGerado: ValorDoBanco;
   reembolsado: ValorDoBanco;
-  reembolsadoEm: Date | null;
   retido: ValorDoBanco;
   definidoEm: Date;
 };
@@ -150,6 +152,8 @@ export type ContratoComercial = {
   } | null;
   /** Pagamento recebido depois do cancelamento, ainda sem destino. */
   tratamentoPendente: number;
+  /** Destinado à cliente e ainda não devolvido. */
+  reembolsoPendente: number;
   /** O saldo vence no dia da festa: é quando a cliente paga, na retirada ou na entrega. */
   venceEm: string;
   /** Recebimento sem data conhecida — herança do painel antigo, nunca recuperável. */
@@ -191,9 +195,12 @@ export function apurar(reserva: ReservaCrua): ContratoApurado {
       })),
     tratamentosComplementares: (reserva.tratamentosComplementares ?? []).map((c) => ({
       reembolsado: paraNumero(c.reembolsado),
-      reembolsadoEm: c.reembolsadoEm,
       retido: paraNumero(c.retido),
       definidoEm: c.definidoEm,
+    })),
+    reembolsos: (reserva.reembolsosRealizados ?? []).map((r) => ({
+      valor: paraNumero(r.valor),
+      realizadoEm: r.realizadoEm,
     })),
     creditoAplicado: creditoAplicadoNaReserva(
       (reserva.creditosUtilizados ?? []).map((m) => ({ valor: paraNumero(m.valor) })),
@@ -201,7 +208,6 @@ export function apurar(reserva: ReservaCrua): ContratoApurado {
     tratamento: t
       ? {
           reembolsado: paraNumero(t.reembolsado),
-          reembolsadoEm: t.reembolsadoEm,
           retido: paraNumero(t.retido),
           definidoEm: t.definidoEm,
         }
@@ -225,9 +231,8 @@ function somaDosTratamentos(reserva: ReservaCrua): ContratoComercial["tratamento
   if (todos.length === 0) return null;
   const soma = (f: (t: TratamentoCru) => ValorDoBanco) =>
     fromCentsInt(todos.reduce((t, x) => t + toCentsInt(paraNumero(f(x))), 0));
-  const ultimoReembolso = todos
-    .filter((t) => t.reembolsadoEm && toCentsInt(paraNumero(t.reembolsado)) > 0)
-    .map((t) => t.reembolsadoEm!.toISOString())
+  const ultimoReembolso = (reserva.reembolsosRealizados ?? [])
+    .map((r) => r.realizadoEm.toISOString())
     .sort()
     .at(-1);
   return {
@@ -273,6 +278,7 @@ export function montarContrato(reserva: ReservaCrua, agora: Date): ContratoComer
     saldo: saldoDoContrato(apurado),
     situacao: situacaoDePagamento(apurado, agora),
     tratamento: somaDosTratamentos(reserva),
+    reembolsoPendente: reembolsosARealizar([apurado]),
     tratamentoPendente: pendenteDeTratamento(
       pagos
         .filter((p) => p.aposCancelamento)

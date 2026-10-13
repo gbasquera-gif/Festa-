@@ -280,7 +280,6 @@ describe("crédito Festaê e cancelamento com tratamento", () => {
       tratamentoDoCancelamento: {
         creditoGerado: "250.00",
         reembolsado: "0.00",
-        reembolsadoEm: null,
         retido: "150.00",
         definidoEm: new Date("2026-09-10T15:00:00.000Z"),
       },
@@ -299,5 +298,34 @@ describe("crédito Festaê e cancelamento com tratamento", () => {
     const r = reserva({ status: "AGUARDANDO_DEVOLUCAO" });
     expect(montarContrato(r, AGORA).vigente).toBe(true);
     expect(resumir([montarLinha(r, AGORA)], AGORA).contratado).toBe(920);
+  });
+});
+
+describe("reembolso a realizar no contrato", () => {
+  const cancelada = (realizado: boolean) =>
+    reserva({
+      status: "CANCELLED",
+      cancelledAt: new Date("2026-10-13T15:00:00.000Z"),
+      tratamentoDoCancelamento: {
+        creditoGerado: "100.00",
+        reembolsado: "300.00",
+        retido: "0.00",
+        definidoEm: new Date("2026-10-13T15:00:00.000Z"),
+      },
+      reembolsosRealizados: realizado ? [{ valor: "300.00", realizadoEm: new Date("2026-10-14T12:00:00.000Z") }] : [],
+    });
+
+  it("pendente: aparece como reembolso a realizar, sem data e sem saída", () => {
+    const c = montarContrato(cancelada(false), AGORA);
+    expect(c.reembolsoPendente).toBe(300);
+    expect(c.tratamento?.reembolsadoEm).toBeNull();
+    expect(apurar(cancelada(false)).reembolsos).toEqual([]);
+  });
+
+  it("realizado: sai com a data efetiva e a pendência some", () => {
+    const c = montarContrato(cancelada(true), AGORA);
+    expect(c.reembolsoPendente).toBe(0);
+    expect(c.tratamento?.reembolsadoEm).toBe("2026-10-14T12:00:00.000Z");
+    expect(apurar(cancelada(true)).reembolsos).toEqual([{ valor: 300, realizadoEm: new Date("2026-10-14T12:00:00.000Z") }]);
   });
 });

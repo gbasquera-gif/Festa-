@@ -40,7 +40,6 @@ CREATE TABLE "tratamentos_de_cancelamento" (
     "creditoAplicadoDevolvido" DECIMAL(10,2) NOT NULL,
     "creditoGerado" DECIMAL(10,2) NOT NULL,
     "reembolsado" DECIMAL(10,2) NOT NULL,
-    "reembolsadoEm" TIMESTAMP(3),
     "retido" DECIMAL(10,2) NOT NULL,
     "definidoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdById" TEXT NOT NULL,
@@ -104,9 +103,6 @@ ALTER TABLE "tratamentos_de_cancelamento" ADD CONSTRAINT "tratamento_distribui_o
 ALTER TABLE "tratamentos_de_cancelamento" ADD CONSTRAINT "tratamento_sem_valor_negativo"
   CHECK ("contratado" >= 0 AND "recebido" >= 0 AND "creditoAplicadoDevolvido" >= 0
      AND "creditoGerado" >= 0 AND "reembolsado" >= 0 AND "retido" >= 0);
--- Reembolso sem data não tem como entrar no caixa.
-ALTER TABLE "tratamentos_de_cancelamento" ADD CONSTRAINT "reembolso_tem_data"
-  CHECK ("reembolsado" = 0 OR "reembolsadoEm" IS NOT NULL);
 
 -- O sinal do movimento é o do seu tipo: crédito gerado e estornos entram,
 -- utilização sai. Movimento de valor zero não registra nada.

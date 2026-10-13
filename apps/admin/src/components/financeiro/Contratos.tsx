@@ -58,6 +58,8 @@ type ContratoComercial = {
   tratamento?: { creditoGerado: number; reembolsado: number; reembolsadoEm: string | null; retido: number } | null;
   /** Recebido depois do cancelamento e ainda sem destino. */
   tratamentoPendente?: number;
+  /** Destinado a reembolso e ainda não devolvido: continua no caixa. */
+  reembolsoPendente?: number;
   situacao: SituacaoDePagamento;
   venceEm: string;
   temRecebimentoSemData: boolean;
@@ -426,12 +428,22 @@ function Detalhe({ contrato: c }: { contrato: ContratoComercial }) {
                 <span className="fin-numero" style={{ fontSize: "0.85rem" }}>{numero(c.tratamento.creditoGerado)}</span>
               </li>
             )}
-            {c.tratamento.reembolsado > 0 && (
+            {/* Reembolso só é saída de caixa depois de registrado como feito;
+                o que falta devolver continua no caixa, como pendência. */}
+            {c.tratamento.reembolsado - (c.reembolsoPendente ?? 0) > 0 && (
               <li className="flex justify-between gap-3">
                 <span style={{ color: "var(--fin-muted)" }}>
                   Reembolsado{c.tratamento.reembolsadoEm ? ` em ${formatarDiaDoMomento(c.tratamento.reembolsadoEm)}` : ""} · saída de caixa
                 </span>
-                <span className="fin-numero" style={{ fontSize: "0.85rem" }}>−{numero(c.tratamento.reembolsado)}</span>
+                <span className="fin-numero" style={{ fontSize: "0.85rem" }}>
+                  −{numero(c.tratamento.reembolsado - (c.reembolsoPendente ?? 0))}
+                </span>
+              </li>
+            )}
+            {(c.reembolsoPendente ?? 0) > 0 && (
+              <li className="flex justify-between gap-3" data-reembolso-a-realizar>
+                <span style={{ color: "var(--fin-coral-dark)" }}>Reembolso a realizar · ainda no caixa</span>
+                <span className="fin-numero" style={{ fontSize: "0.85rem" }}>{numero(c.reembolsoPendente ?? 0)}</span>
               </li>
             )}
             {c.tratamento.retido > 0 && (

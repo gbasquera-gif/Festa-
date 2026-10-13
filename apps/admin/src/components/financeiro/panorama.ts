@@ -4,8 +4,11 @@ export type Panorama = {
   ano: number;
   /** `retencao`: receita de retenção por cancelamento — no resultado, fora do faturamento. */
   operacional: { faturamento: number; retencao: number; despesas: number; resultado: number; margem: number | null };
-  /** Caixa do mês: pagamentos confirmados que entraram menos reembolsos que saíram. */
-  caixa: { entradas: number; reembolsos: number; liquido: number };
+  /**
+   * Caixa do mês: pagamentos confirmados que entraram menos reembolsos que
+   * saíram. Reembolso a realizar não saiu: vem à parte, como pendência.
+   */
+  caixa: { entradas: number; reembolsos: number; liquido: number; reembolsosARealizar?: number };
   /** Soma dos saldos de crédito Festaê das clientes. Não é caixa nem receita. */
   creditoEmAberto: number;
   ytd: {

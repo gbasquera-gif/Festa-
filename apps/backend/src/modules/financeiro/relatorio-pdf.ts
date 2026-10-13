@@ -367,6 +367,11 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
         "Pagamentos de reservas canceladas depois continuam no caixa do dia em que entraram.",
     );
   }
+  // Reembolso combinado e ainda não feito não saiu do caixa: aparece à parte,
+  // para ninguém contar com um dinheiro que já tem destino.
+  if (cx.reembolsosARealizar > 0) {
+    notas.push(`Reembolsos a realizar: ${reais(cx.reembolsosARealizar)} já destinados a clientes e ainda não devolvidos — não saíram do caixa.`);
+  }
   if (r.creditoEmAberto > 0) {
     notas.push(`Crédito Festaê em aberto das clientes: ${reais(r.creditoEmAberto)} — já entrou no caixa quando foi pago; não é receita nova.`);
   }

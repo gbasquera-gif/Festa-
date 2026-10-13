@@ -242,8 +242,10 @@ export type TratamentoDoCancelamento = {
   recebido: number;
   creditoAplicadoDevolvido: number;
   creditoGerado: number;
+  /** Destinado a voltar para a cliente. */
   reembolsado: number;
-  reembolsadoEm: string | Date | null;
+  /** A devolução registrada como feita; nula enquanto é reembolso a realizar. */
+  reembolsoRealizado: { valor: number; em: string | Date } | null;
   retido: number;
   definidoEm: string | Date;
 };
@@ -261,8 +263,9 @@ export function frasesDoTratamento(t: TratamentoDoCancelamento): string[] {
   }
   if (toCentsInt(t.reembolsado) > 0) {
     frases.push(
-      `${formatarReais(t.reembolsado)} reembolsados à cliente` +
-        (t.reembolsadoEm ? ` em ${formatarDiaDoMomento(t.reembolsadoEm)}` : ""),
+      t.reembolsoRealizado
+        ? `${formatarReais(t.reembolsado)} reembolsados à cliente em ${formatarDiaDoMomento(t.reembolsoRealizado.em)}`
+        : `${formatarReais(t.reembolsado)} a reembolsar à cliente (reembolso pendente)`,
     );
   }
   if (toCentsInt(t.retido) > 0) {
@@ -387,4 +390,28 @@ export function conciliacaoDoCancelamento(entrada: {
     pendente: fromCentsInt(pendente),
     confere: pago === original + depois + pendente && depois + pendente === tardios,
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * Reembolso a realizar
+ * ------------------------------------------------------------------ */
+
+/**
+ * Quanto ainda falta devolver à cliente.
+ *
+ * O tratamento define quanto volta para ela; a devolução só acontece quando
+ * a Festaê faz o Pix ou a transferência e registra que fez. Entre um e
+ * outro, o valor é reembolso a realizar: não saiu do caixa e é pendência.
+ */
+export function reembolsoPendente(
+  tratamentos: readonly { reembolsado: number; realizado: boolean }[],
+): number {
+  return fromCentsInt(
+    tratamentos.filter((t) => !t.realizado).reduce((total, t) => total + toCentsInt(t.reembolsado), 0),
+  );
+}
+
+/** A frase da pendência, igual em toda tela que a mostra. */
+export function mensagemDeReembolsoPendente(valor: number): string {
+  return `Pendência financeira — reembolso de ${formatarReais(valor)}`;
 }

@@ -235,3 +235,20 @@ describe("confirmação por sinal, saldo ou crédito", () => {
     }
   });
 });
+
+describe("cancelada com reembolso a realizar", () => {
+  const r: ReservaClassificavel = { ...reserva("CANCELLED", "2026-12-05", 1200, 450), reembolsoPendente: 300 };
+  it("é pendência e aparece em Ativas, além de Canceladas", () => {
+    const s = situacaoOperacional(r, AGORA);
+    expect(s.reembolsoPendente).toBe(true);
+    expect(s.temPendencia).toBe(true);
+    expect(ehDaAba(r, "ATIVAS", AGORA)).toBe(true);
+    expect(ehDaAba(r, "CANCELADAS", AGORA)).toBe(true);
+  });
+  it("registrado o reembolso, a pendência some e ela não é reativada", () => {
+    const feito = { ...r, reembolsoPendente: 0 };
+    expect(situacaoOperacional(feito, AGORA).temPendencia).toBe(false);
+    expect(ehDaAba(feito, "ATIVAS", AGORA)).toBe(false);
+    expect(feito.status).toBe("CANCELLED");
+  });
+});

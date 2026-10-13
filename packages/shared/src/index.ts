@@ -196,6 +196,7 @@ export {
   receitaPorCaixa,
   entradasNoCaixa,
   reembolsosNoMes,
+  reembolsosARealizar,
   receitaDeRetencao,
   recebidoSemData,
   despesaDoMes,
@@ -414,7 +415,9 @@ export {
   creditoAplicadoNaReserva,
   descricaoDoMovimento,
   mensagemDePagamentoTardio,
+  mensagemDeReembolsoPendente,
   pendenteDeTratamento,
+  reembolsoPendente,
   extratoDeCredito,
   formatarReais,
   frasesDoTratamento,
@@ -438,11 +441,13 @@ export {
   aplicarCreditoSchema,
   cancelarReservaSchema,
   estornarCreditoSchema,
+  registrarReembolsoSchema,
   tratarPagamentoTardioSchema,
 } from "./schemas/credito";
 export type {
   AplicarCreditoInput,
   CancelarReservaInput,
   EstornarCreditoInput,
+  RegistrarReembolsoInput,
   TratarPagamentoTardioInput,
 } from "./schemas/credito";

@@ -133,6 +133,12 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           <Indicador rotulo="Caixa do mês" valor={brl(data.caixa.liquido)}
             nota="entradas − reembolsos" />
         </div>
+        {(data.caixa.reembolsosARealizar ?? 0) > 0 && (
+          <p className="mt-2 text-xs font-medium" style={{ color: "var(--fin-coral-dark)" }} data-reembolsos-a-realizar>
+            Reembolsos a realizar: {brl(data.caixa.reembolsosARealizar ?? 0)}. Prometidos a clientes em
+            cancelamentos e ainda não devolvidos — não saíram do caixa; saem no dia em que a devolução for registrada.
+          </p>
+        )}
         {data.creditoEmAberto > 0 && (
           <p className="mt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
             Crédito Festaê em aberto das clientes: {brl(data.creditoEmAberto)}. Já entrou no caixa quando foi

@@ -21,12 +21,15 @@ import {
   formatarReais,
   frasesDoTratamento,
   mensagemDePagamentoTardio,
+  mensagemDeReembolsoPendente,
+  PAYMENT_METHOD_LABEL,
   podeAguardarDevolucao,
   PERCENTUAL_DO_SINAL,
   saldoAPagar,
   situacaoDoRecebimento,
   SITUACAO_DO_RECEBIMENTO_LABEL,
   splitPayment,
+  type PaymentMethod,
   type ReservationStatus,
 } from "@festae/shared";
 import { Badge } from "@/components/ui/badge";
@@ -36,10 +39,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api } from "@/lib/api";
 import { AcoesDaReserva } from "@/components/AcoesDaReserva";
 import { TratarPagamentoTardio } from "@/components/credito/CancelarReserva";
+import { RegistrarReembolsoRealizado } from "@/components/credito/RegistrarReembolso";
 
 interface ProductRef {
   id: string;
   name: string;
+}
+
+/** A devolução registrada como feita. Nunca editada: é o que tirou o dinheiro do caixa. */
+interface ReembolsoRealizadoRow {
+  valor: string;
+  realizadoEm: string;
+  forma: PaymentMethod;
+  observacao: string | null;
+  registradoEm: string;
+  registradoPor: { name: string } | null;
 }
 
 interface ReservationRow {
@@ -57,19 +71,22 @@ interface ReservationRow {
   /** O crédito que nasceu do cancelamento desta reserva (o voucher). */
   creditosGerados?: { id: string; numero: number; valor: string; createdAt: string }[];
   tratamentoDoCancelamento?: {
+    id: string;
     motivo: string;
     contratado: string;
     recebido: string;
     creditoAplicadoDevolvido: string;
     creditoGerado: string;
     reembolsado: string;
-    reembolsadoEm: string | null;
+    reembolsoRealizado: ReembolsoRealizadoRow | null;
     retido: string;
     definidoEm: string;
     createdBy: { name: string } | null;
   } | null;
   /** Pagamento recebido depois do cancelamento ainda sem destino (somado pelo servidor). */
   tratamentoPendente?: number;
+  /** Reembolso destinado à cliente e ainda não registrado como feito (somado pelo servidor). */
+  reembolsoPendente?: number;
   pagamentosAposCancelamento?: { id: string; valor: string; registradoEm: string; tratamentoComplementarId: string | null }[];
   tratamentosComplementares?: {
     id: string;
@@ -77,7 +94,7 @@ interface ReservationRow {
     recebido: string;
     creditoGerado: string;
     reembolsado: string;
-    reembolsadoEm: string | null;
+    reembolsoRealizado: ReembolsoRealizadoRow | null;
     retido: string;
     definidoEm: string;
     createdBy: { name: string } | null;
@@ -275,7 +292,93 @@ function classificarLinha(row: ReservationRow) {
     recebido: recebidoDe(row),
     creditoAplicado: row.creditoAplicado ?? 0,
     tratamentoPendente: row.tratamentoPendente ?? 0,
+    reembolsoPendente: row.reembolsoPendente ?? 0,
   };
+}
+
+/** O registro da devolução no formato que `frasesDoTratamento` lê. */
+function emFrase(r: ReembolsoRealizadoRow | null) {
+  return r ? { valor: Number(r.valor), em: r.realizadoEm } : null;
+}
+
+/** Hora de um momento no relógio de Chapecó: 14:32. */
+const horaEmChapeco = (iso: string) =>
+  new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * O reembolso de um tratamento: a realizar ou realizado.
+ *
+ * Enquanto a realizar, é pendência financeira e o dinheiro continua no
+ * caixa; o botão só registra a devolução que a Festaê fez por fora — o
+ * sistema não devolve nada. Depois de registrado, fica a prova: quanto,
+ * quando saiu, por qual meio, quem registrou e quando.
+ */
+function Reembolso({
+  row,
+  tratamentoComplementarId,
+  reembolsado,
+  realizado,
+  pendenteDesde,
+}: {
+  row: ReservationRow;
+  tratamentoComplementarId: string | null;
+  reembolsado: number;
+  realizado: ReembolsoRealizadoRow | null;
+  pendenteDesde: string;
+}) {
+  const queryClient = useQueryClient();
+  const [registrando, setRegistrando] = useState(false);
+  if (reembolsado <= 0) return null;
+
+  if (realizado) {
+    return (
+      <div className="mt-2 rounded-md border border-emerald-200 bg-white p-3" data-reembolso-realizado>
+        <p className="font-medium text-emerald-800">
+          Reembolso realizado <span className="whitespace-nowrap">{formatarReais(Number(realizado.valor))}</span> em{" "}
+          <span className="whitespace-nowrap">{formatarDataDaFesta(realizado.realizadoEm)}</span>
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {PAYMENT_METHOD_LABEL[realizado.forma]} · registrado
+          {realizado.registradoPor?.name ? ` por ${realizado.registradoPor.name}` : ""} em{" "}
+          {formatarDiaDoMomento(realizado.registradoEm)} às {horaEmChapeco(realizado.registradoEm)}
+        </p>
+        {realizado.observacao && <p className="mt-1 text-xs text-muted-foreground">{realizado.observacao}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-red-300 bg-white p-3" data-reembolso-pendente>
+      <p className="text-xs font-bold uppercase tracking-wide text-red-800">{mensagemDeReembolsoPendente(reembolsado)}</p>
+      <p className="font-medium text-red-900">
+        Reembolso pendente <span className="whitespace-nowrap">{formatarReais(reembolsado)}</span>
+      </p>
+      <p className="text-xs text-muted-foreground">
+        A Festaê devolve à cliente por Pix ou outro meio e registra aqui quando fizer. Até lá, o valor continua no
+        caixa.
+      </p>
+      {/* A coluna do detalhe é estreita no desktop: o botão ocupa a largura
+          do bloco e quebra a linha em vez de vazar a borda. */}
+      <Button size="sm" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:min-h-8" onClick={() => setRegistrando(true)}>
+        Registrar reembolso realizado
+      </Button>
+      {registrando && (
+        <RegistrarReembolsoRealizado
+          reservaId={row.id}
+          tratamentoComplementarId={tratamentoComplementarId}
+          cliente={row.order.event.user.name}
+          valor={reembolsado}
+          pendenteDesde={pendenteDesde}
+          aberto
+          aoFechar={() => setRegistrando(false)}
+          aoRegistrar={() => {
+            queryClient.invalidateQueries({ queryKey: ["reservations"] });
+            queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 /**
@@ -343,7 +446,7 @@ function Cancelamento({ row }: { row: ReservationRow }) {
                 creditoAplicadoDevolvido: Number(t.creditoAplicadoDevolvido),
                 creditoGerado: Number(t.creditoGerado),
                 reembolsado: Number(t.reembolsado),
-                reembolsadoEm: t.reembolsadoEm,
+                reembolsoRealizado: emFrase(t.reembolsoRealizado),
                 retido: Number(t.retido),
                 definidoEm: t.definidoEm,
               }).map((frase) => (
@@ -351,6 +454,13 @@ function Cancelamento({ row }: { row: ReservationRow }) {
               ))}
             </ul>
           </div>
+          <Reembolso
+            row={row}
+            tratamentoComplementarId={null}
+            reembolsado={Number(t.reembolsado)}
+            realizado={t.reembolsoRealizado}
+            pendenteDesde={t.definidoEm}
+          />
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -375,7 +485,7 @@ function Cancelamento({ row }: { row: ReservationRow }) {
               creditoAplicadoDevolvido: 0,
               creditoGerado: Number(c.creditoGerado),
               reembolsado: Number(c.reembolsado),
-              reembolsadoEm: c.reembolsadoEm,
+              reembolsoRealizado: emFrase(c.reembolsoRealizado),
               retido: Number(c.retido),
               definidoEm: c.definidoEm,
             }).map((frase) => (
@@ -383,6 +493,13 @@ function Cancelamento({ row }: { row: ReservationRow }) {
             ))}
           </ul>
           {c.observacao && <p className="mt-1 text-xs text-muted-foreground">{c.observacao}</p>}
+          <Reembolso
+            row={row}
+            tratamentoComplementarId={c.id}
+            reembolsado={Number(c.reembolsado)}
+            realizado={c.reembolsoRealizado}
+            pendenteDesde={c.definidoEm}
+          />
         </div>
       ))}
       {vouchers.map((voucher) => (
@@ -759,7 +876,9 @@ function Pendencia({ row, agora }: { row: ReservationRow; agora: Date }) {
   if (!s.temPendencia) return null;
   const texto = s.tratamentoPendente
     ? "tratamento financeiro pendente"
-    : s.vencido && s.pendenciaOperacional
+    : s.reembolsoPendente
+      ? "reembolso pendente"
+      : s.vencido && s.pendenciaOperacional
       ? "vencida e sem fechar"
       : s.vencido
         ? "saldo vencido"

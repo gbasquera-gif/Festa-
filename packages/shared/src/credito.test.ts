@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  mensagemDeReembolsoPendente,
+  reembolsoPendente,
   conciliacaoDoCancelamento,
   creditoAplicadoNaReserva,
   mensagemDePagamentoTardio,
@@ -147,7 +149,7 @@ describe("distribuição do cancelamento", () => {
       creditoAplicadoDevolvido: 200,
       creditoGerado: 300,
       reembolsado: 0,
-      reembolsadoEm: null,
+      reembolsoRealizado: null,
       retido: 150,
       definidoEm: "2026-10-05T15:00:00.000Z",
     });
@@ -166,11 +168,26 @@ describe("distribuição do cancelamento", () => {
       creditoAplicadoDevolvido: 0,
       creditoGerado: 0,
       reembolsado: 150,
-      reembolsadoEm: "2026-10-05T12:00:00.000Z",
+      reembolsoRealizado: { valor: 150, em: "2026-10-06T12:00:00.000Z" },
       retido: 0,
       definidoEm: "2026-10-05T15:00:00.000Z",
     });
-    expect(frase).toBe("R$ 150,00 reembolsados à cliente em 05/10/2026");
+    expect(frase).toBe("R$ 150,00 reembolsados à cliente em 06/10/2026");
+  });
+
+  it("reembolso ainda não feito aparece como pendente, sem data", () => {
+    const [frase] = frasesDoTratamento({
+      motivo: "x",
+      contratado: 500,
+      recebido: 300,
+      creditoAplicadoDevolvido: 0,
+      creditoGerado: 0,
+      reembolsado: 300,
+      reembolsoRealizado: null,
+      retido: 0,
+      definidoEm: "2026-10-13T15:00:00.000Z",
+    });
+    expect(frase).toBe("R$ 300,00 a reembolsar à cliente (reembolso pendente)");
   });
 });
 
@@ -246,5 +263,20 @@ describe("conciliação do cancelamento com pagamento tardio", () => {
       pagamentosAposCancelamento: [{ valor: 200, tratado: true }],
     });
     expect(c.confere).toBe(false);
+  });
+});
+
+describe("reembolso a realizar", () => {
+  it("pendente até a devolução ser registrada", () => {
+    expect(reembolsoPendente([{ reembolsado: 300, realizado: false }])).toBe(300);
+    expect(reembolsoPendente([{ reembolsado: 300, realizado: true }])).toBe(0);
+    expect(reembolsoPendente([{ reembolsado: 300, realizado: true }, { reembolsado: 200, realizado: false }])).toBe(200);
+    expect(reembolsoPendente([{ reembolsado: 0, realizado: false }])).toBe(0);
+  });
+  it("frase da pendência", () => {
+    expect(mensagemDeReembolsoPendente(300)).toBe("Pendência financeira — reembolso de R$ 300,00");
+  });
+  it("crédito + retenção + reembolso pendente fecham com o pago", () => {
+    expect(motivoDeRecusaDaDistribuicao(450, { credito: 100, reembolso: 300, retencao: 50 })).toBeNull();
   });
 });

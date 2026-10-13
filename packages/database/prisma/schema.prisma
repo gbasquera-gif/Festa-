@@ -205,6 +205,7 @@ model User {
   creditosRegistrados       CreditoClienteMovimento[]              @relation("CreditosRegistrados")
   cancelamentosTratados     TratamentoDeCancelamento[]             @relation("CancelamentosTratados")
   tratamentosComplementares TratamentoComplementarDeCancelamento[] @relation("TratamentosComplementares")
+  reembolsosRegistrados     ReembolsoRealizado[]                   @relation("ReembolsosRegistrados")
 
   @@map("users")
 }
@@ -505,6 +506,8 @@ model Reservation {
   pagamentosAposCancelamento PagamentoAposCancelamento[]
   /// O destino dado a esses pagamentos, um tratamento por vez.
   tratamentosComplementares  TratamentoComplementarDeCancelamento[]
+  /// Devoluções de dinheiro já feitas à cliente.
+  reembolsosRealizados       ReembolsoRealizado[]
 
   @@index([eventDate])
   @@index([cancelledById])
@@ -619,9 +622,10 @@ model CreditoClienteMovimento {
 /// exatamente o pago; o servidor recusa qualquer outra combinação.
 ///
 /// É esta linha que o Financeiro lê para saber que o pago de uma reserva
-/// cancelada continua no caixa, que um reembolso saiu e em que dia, e que a
-/// parte retida é receita de retenção do mês do cancelamento — e não
-/// faturamento de festa.
+/// cancelada continua no caixa e que a parte retida é receita de retenção do
+/// mês do cancelamento — e não faturamento de festa. O reembolso aqui é o
+/// destino do dinheiro, não a saída: a saída do caixa é o ReembolsoRealizado,
+/// registrado quando a Festaê de fato devolve.
 ///
 /// Cancelamentos anteriores a esta tabela não têm linha e não ganham uma:
 /// não há registro confiável do que foi feito com aquele dinheiro, e
@@ -640,18 +644,20 @@ model TratamentoDeCancelamento {
   creditoAplicadoDevolvido Decimal @db.Decimal(10, 2)
 
   /// Distribuição do recebido. creditoGerado + reembolsado + retido = recebido.
-  creditoGerado Decimal   @db.Decimal(10, 2)
-  reembolsado   Decimal   @db.Decimal(10, 2)
-  /// Quando o reembolso saiu de fato. É a data da saída no caixa.
-  reembolsadoEm DateTime?
-  retido        Decimal   @db.Decimal(10, 2)
+  /// `reembolsado` é o valor destinado a voltar para a cliente; enquanto não
+  /// houver ReembolsoRealizado, é reembolso a realizar.
+  creditoGerado Decimal @db.Decimal(10, 2)
+  reembolsado   Decimal @db.Decimal(10, 2)
+  retido        Decimal @db.Decimal(10, 2)
 
   /// Quando o tratamento foi definido. A retenção é receita deste mês.
   definidoEm  DateTime @default(now())
   createdById String
 
-  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
-  createdBy   User        @relation("CancelamentosTratados", fields: [createdById], references: [id], onDelete: Restrict)
+  reservation        Reservation         @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  createdBy          User                @relation("CancelamentosTratados", fields: [createdById], references: [id], onDelete: Restrict)
+  /// A devolução de fato, quando já aconteceu.
+  reembolsoRealizado ReembolsoRealizado?
 
   @@index([definidoEm])
   @@index([createdById])
@@ -705,12 +711,12 @@ model TratamentoComplementarDeCancelamento {
   observacao    String?
 
   /// Soma dos pagamentos após o cancelamento que este tratamento resolve.
-  recebido      Decimal   @db.Decimal(10, 2)
+  recebido      Decimal @db.Decimal(10, 2)
   /// Distribuição do recebido. creditoGerado + reembolsado + retido = recebido.
-  creditoGerado Decimal   @db.Decimal(10, 2)
-  reembolsado   Decimal   @db.Decimal(10, 2)
-  reembolsadoEm DateTime?
-  retido        Decimal   @db.Decimal(10, 2)
+  /// `reembolsado` é o destino; a saída do caixa é o ReembolsoRealizado.
+  creditoGerado Decimal @db.Decimal(10, 2)
+  reembolsado   Decimal @db.Decimal(10, 2)
+  retido        Decimal @db.Decimal(10, 2)
 
   /// Quando foi definido. A retenção é receita deste mês.
   definidoEm  DateTime @default(now())
@@ -723,11 +729,55 @@ model TratamentoComplementarDeCancelamento {
   createdBy          User                        @relation("TratamentosComplementares", fields: [createdById], references: [id], onDelete: Restrict)
   movimentoDeCredito CreditoClienteMovimento?    @relation(fields: [movimentoDeCreditoId], references: [id], onDelete: Restrict)
   pagamentos         PagamentoAposCancelamento[]
+  /// A devolução de fato, quando já aconteceu.
+  reembolsoRealizado ReembolsoRealizado?
 
   @@index([reservationId])
   @@index([definidoEm])
   @@index([createdById])
   @@map("tratamentos_complementares_de_cancelamento")
+}
+
+/// Uma devolução de dinheiro que a Festaê já fez à cliente.
+///
+/// É registro, não operação: o sistema não devolve dinheiro pelo Mercado Pago
+/// nem por banco nenhum. A Festaê faz o Pix ou a transferência por fora e
+/// registra aqui que fez, em que dia e por qual meio. É este registro — e só
+/// ele — que tira o valor do caixa, na data em que o dinheiro saiu.
+///
+/// O tratamento do cancelamento (ou o complementar) diz quanto vai voltar
+/// para a cliente; enquanto não existe esta linha, é reembolso a realizar.
+/// Uma linha por tratamento, nunca editada: registrar duas vezes o mesmo
+/// reembolso seria tirar o dinheiro do caixa duas vezes.
+model ReembolsoRealizado {
+  id            String @id @default(cuid())
+  reservationId String
+
+  /// O tratamento cujo reembolso foi feito — o do cancelamento ou um
+  /// complementar. Exatamente um dos dois.
+  tratamentoId             String? @unique
+  tratamentoComplementarId String? @unique
+
+  valor       Decimal       @db.Decimal(10, 2)
+  /// O dia em que o dinheiro saiu. É a data da saída no caixa.
+  realizadoEm DateTime
+  /// Por onde a devolução foi feita.
+  forma       PaymentMethod
+  observacao  String?
+
+  /// Quem registrou e quando — não é quem fez a transferência.
+  registradoPorId String
+  registradoEm    DateTime @default(now())
+
+  reservation            Reservation                           @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  tratamento             TratamentoDeCancelamento?             @relation(fields: [tratamentoId], references: [id], onDelete: Restrict)
+  tratamentoComplementar TratamentoComplementarDeCancelamento? @relation(fields: [tratamentoComplementarId], references: [id], onDelete: Restrict)
+  registradoPor          User                                  @relation("ReembolsosRegistrados", fields: [registradoPorId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId])
+  @@index([realizadoEm])
+  @@index([registradoPorId])
+  @@map("reembolsos_realizados")
 }
 
 model Partner {
