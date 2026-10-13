@@ -7,9 +7,12 @@ import {
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import {
+  confirmaAReserva as confirmaPorLiquidacao,
   creditoAplicadoNaReserva,
   diaDaFesta,
   diaEmChapeco,
+  pendenteDeTratamento,
+  podeAguardarDevolucao,
   formatarReais,
   fromCentsInt,
   motivoDeRecusaDaDistribuicao,
@@ -20,6 +23,8 @@ import {
 import type {
   CancelarReservaInput,
   CreateReservationInput,
+  ReservationStatus,
+  TratarPagamentoTardioInput,
   UpdateReservationStatusInput,
 } from "@festae/shared";
 import {
@@ -29,6 +34,7 @@ import {
   travarPedido,
 } from "../creditos/ledger";
 import { AvailabilityService } from "../availability/availability.service";
+import { PaymentsService } from "../payments/payments.service";
 import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-commitment";
 import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
@@ -44,6 +50,25 @@ const INCLUSAO_DO_CREDITO = {
   creditosGerados: {
     where: { tipo: "CREDITO_GERADO_CANCELAMENTO" as const },
     select: { id: true, numero: true, valor: true, createdAt: true },
+    orderBy: { numero: "asc" as const },
+  },
+  pagamentosAposCancelamento: {
+    select: { id: true, valor: true, registradoEm: true, tratamentoComplementarId: true },
+    orderBy: { registradoEm: "asc" as const },
+  },
+  tratamentosComplementares: {
+    select: {
+      id: true,
+      observacao: true,
+      recebido: true,
+      creditoGerado: true,
+      reembolsado: true,
+      reembolsadoEm: true,
+      retido: true,
+      definidoEm: true,
+      createdBy: { select: { name: true } },
+    },
+    orderBy: { definidoEm: "asc" as const },
   },
   tratamentoDoCancelamento: {
     select: {
@@ -82,6 +107,7 @@ async function saldosDeCredito(userId?: string): Promise<Map<string, number>> {
 function comCredito<
   T extends {
     creditosUtilizados: { valor: unknown }[];
+    pagamentosAposCancelamento: { valor: unknown; tratamentoComplementarId: string | null }[];
     order: { event: { userId: string } };
   },
 >(reserva: T, saldos: Map<string, number>) {
@@ -91,6 +117,13 @@ function comCredito<
       reserva.creditosUtilizados.map((m) => ({ valor: Number(m.valor) })),
     ),
     creditoDisponivelDaCliente: saldos.get(reserva.order.event.userId) ?? 0,
+    // Pagamento recebido depois do cancelamento que ainda não tem destino.
+    tratamentoPendente: pendenteDeTratamento(
+      reserva.pagamentosAposCancelamento.map((p) => ({
+        valor: Number(p.valor),
+        tratado: p.tratamentoComplementarId !== null,
+      })),
+    ),
   };
 }
 
@@ -101,7 +134,10 @@ const MORTAS = ["CANCELLED", "REJECTED"];
 export class ReservationsService {
   private readonly logger = new Logger(ReservationsService.name);
 
-  constructor(private readonly availability: AvailabilityService) {}
+  constructor(
+    private readonly availability: AvailabilityService,
+    private readonly payments: PaymentsService,
+  ) {}
 
   async requestReservation(eventId: string, input: CreateReservationInput) {
     const event = await prisma.event.findUnique({
@@ -280,7 +316,12 @@ export class ReservationsService {
       throw new BadRequestException("A data do pagamento não pode estar no futuro.");
     }
 
-    const confirmaAReserva = dados.tipo === "DEPOSIT" && reserva.status === "PENDING";
+    // A regra única de confirmação: sinal pago (de qualquer valor) confirma a
+    // solicitada; saldo não. Ver `confirmaAReserva` em @festae/shared.
+    const confirmaAReserva = confirmaPorLiquidacao(
+      reserva.status as ReservationStatus,
+      dados.tipo === "DEPOSIT" ? "SINAL" : "SALDO",
+    );
     const orderId = reserva.order.id;
     const totalDoPedido = Number(reserva.order.total);
 
@@ -586,11 +627,144 @@ export class ReservationsService {
           : "."),
     );
 
+    // Depois de gravado, e só então, as cobranças que ficaram vivas são
+    // encerradas — no Mercado Pago, quando existem lá. A que já tinha sido
+    // paga é registrada agora e, com a reserva cancelada, vira pagamento após
+    // o cancelamento, com pendência. Falha aqui não desfaz o cancelamento:
+    // o que não encerrou fica dito na resposta.
+    let cobrancas = { encerradas: 0, jaPagas: 0, naoEncerradas: 0 };
+    try {
+      cobrancas = await this.payments.encerrarCobrancasPendentes(reserva.orderId);
+    } catch (error) {
+      this.logger.error(`Falha ao encerrar cobranças da reserva ${id} cancelada: ${error}`);
+      const restantes = await prisma.payment.count({ where: { orderId: reserva.orderId, status: "PENDING" } });
+      cobrancas = { encerradas: 0, jaPagas: 0, naoEncerradas: restantes };
+    }
+
     return {
       cancelada: true,
       clienteId: userId,
       ...resultado,
+      cobrancas,
     };
+  }
+
+  /**
+   * Dá destino a pagamentos recebidos depois do cancelamento.
+   *
+   * Não mexe no tratamento original: grava um tratamento complementar, com
+   * autoria e data, para todo o valor tardio que está pendente agora. A
+   * distribuição tem de ser exatamente esse valor — conferido sob a trava do
+   * pedido, a mesma do registro de pagamento, para um Pix que caia durante
+   * esta operação ficar pendente em vez de entrar pela metade.
+   */
+  async tratarPagamentoTardio(id: string, input: TratarPagamentoTardioInput, usuarioId: string) {
+    const reserva = await prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        contractSeq: true,
+        order: { select: { event: { select: { userId: true } } } },
+      },
+    });
+    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+    if (!MORTAS.includes(reserva.status)) {
+      throw new BadRequestException("Só reserva cancelada tem pagamento após o cancelamento a tratar.");
+    }
+
+    let reembolsadoEm: Date | null = null;
+    if (toCentsInt(input.reembolso) > 0) {
+      if (!input.reembolsadoEm) throw new BadRequestException("Informe o dia em que o reembolso foi feito.");
+      if (input.reembolsadoEm > diaEmChapeco(new Date())) {
+        throw new BadRequestException("O reembolso entra no caixa no dia em que sai. Registre quando ele for feito.");
+      }
+      reembolsadoEm = normalizarDataDaFesta(input.reembolsadoEm);
+    }
+
+    const userId = reserva.order.event.userId;
+    const resultado = await prisma.$transaction(
+      async (tx) => {
+        await travarPedido(tx, reserva.orderId);
+        await travarCredito(tx, userId);
+
+        const pendentes = await tx.pagamentoAposCancelamento.findMany({
+          where: { reservationId: id, tratamentoComplementarId: null },
+          select: { id: true, valor: true },
+        });
+        const pendente = pendentes.reduce((t, p) => t + toCentsInt(Number(p.valor)), 0);
+        if (pendente === 0) {
+          throw new ConflictException({
+            message: "Não há pagamento recebido após o cancelamento aguardando tratamento.",
+            codigo: "SEM_PENDENCIA",
+          });
+        }
+        const recusa = motivoDeRecusaDaDistribuicao(fromCentsInt(pendente), {
+          credito: input.credito,
+          reembolso: input.reembolso,
+          retencao: input.retencao,
+        });
+        if (recusa) {
+          throw new ConflictException({ message: recusa, codigo: "DISTRIBUICAO_INVALIDA", recebido: fromCentsInt(pendente) });
+        }
+
+        const credito = toCentsInt(input.credito);
+        const gerado =
+          credito > 0
+            ? await tx.creditoClienteMovimento.create({
+                data: {
+                  userId,
+                  tipo: "CREDITO_GERADO_CANCELAMENTO",
+                  valor: fromCentsInt(credito),
+                  reservationOrigemId: id,
+                  observacao: input.observacao?.trim() || "Pagamento recebido após o cancelamento",
+                  createdById: usuarioId,
+                },
+                select: { id: true, numero: true, valor: true },
+              })
+            : null;
+
+        const complementar = await tx.tratamentoComplementarDeCancelamento.create({
+          data: {
+            reservationId: id,
+            observacao: input.observacao?.trim() || null,
+            recebido: fromCentsInt(pendente),
+            creditoGerado: fromCentsInt(credito),
+            reembolsado: fromCentsInt(toCentsInt(input.reembolso)),
+            reembolsadoEm,
+            retido: fromCentsInt(toCentsInt(input.retencao)),
+            createdById: usuarioId,
+            movimentoDeCreditoId: gerado?.id ?? null,
+          },
+        });
+
+        // Liga cada pagamento tardio a este tratamento. O filtro de nulo e a
+        // contagem garantem que nenhum valor é tratado duas vezes.
+        const { count } = await tx.pagamentoAposCancelamento.updateMany({
+          where: { id: { in: pendentes.map((p) => p.id) }, tratamentoComplementarId: null },
+          data: { tratamentoComplementarId: complementar.id },
+        });
+        if (count !== pendentes.length) {
+          throw new ConflictException({
+            message: "Outro tratamento foi registrado ao mesmo tempo. Recarregue a reserva.",
+            codigo: "TRATAMENTO_CONCORRENTE",
+          });
+        }
+
+        return {
+          valorTratado: fromCentsInt(pendente),
+          voucher: gerado ? { id: gerado.id, numero: gerado.numero, valor: Number(gerado.valor) } : null,
+        };
+      },
+      { timeout: 15_000 },
+    );
+
+    this.logger.log(
+      `Pagamento após o cancelamento da reserva ${id} tratado por ${usuarioId}: ${formatarReais(resultado.valorTratado)} ` +
+        `(crédito ${formatarReais(input.credito)}, reembolso ${formatarReais(input.reembolso)}, retenção ${formatarReais(input.retencao)}).`,
+    );
+    return { tratado: true, clienteId: userId, ...resultado };
   }
 
   /**
@@ -641,13 +815,16 @@ export class ReservationsService {
       where: { id },
       select: {
         tratamentoDoCancelamento: { select: { id: true } },
-        _count: { select: { creditosGerados: true, creditosUtilizados: true } },
+        _count: {
+          select: { creditosGerados: true, creditosUtilizados: true, pagamentosAposCancelamento: true },
+        },
       },
     });
     if (
       vinculos?.tratamentoDoCancelamento ||
       (vinculos?._count.creditosGerados ?? 0) > 0 ||
-      (vinculos?._count.creditosUtilizados ?? 0) > 0
+      (vinculos?._count.creditosUtilizados ?? 0) > 0 ||
+      (vinculos?._count.pagamentosAposCancelamento ?? 0) > 0
     ) {
       throw new ConflictException({
         message:
@@ -806,13 +983,25 @@ export class ReservationsService {
       where: { id },
       include: {
         tratamentoDoCancelamento: { select: { id: true } },
-        _count: { select: { creditosUtilizados: true } },
+        _count: { select: { creditosUtilizados: true, pagamentosAposCancelamento: true } },
         order: {
           select: { payments: { where: { status: "PAID" }, select: { id: true } } },
         },
       },
     });
     if (!reservation) throw new NotFoundException("Reserva não encontrada.");
+
+    // "Aguardando devolução" quer dizer que a festa aconteceu: só a partir do
+    // dia dela. A tela já não oferece antes; o servidor garante.
+    if (
+      input.status === "AGUARDANDO_DEVOLUCAO" &&
+      reservation.status !== "AGUARDANDO_DEVOLUCAO" &&
+      !podeAguardarDevolucao(reservation.eventDate, new Date())
+    ) {
+      throw new BadRequestException(
+        "Aguardando devolução vale a partir do dia da festa: é a festa que já aconteceu, com o material ainda fora.",
+      );
+    }
 
     // Cancelar passa sempre pelo cancelamento: é lá que ficam o motivo e o
     // destino do dinheiro. Pelo seletor, a reserva paga sairia da agenda sem
@@ -839,7 +1028,7 @@ export class ReservationsService {
     if (
       MORTAS.includes(reservation.status) &&
       !MORTAS.includes(input.status) &&
-      reservation.tratamentoDoCancelamento
+      (reservation.tratamentoDoCancelamento || reservation._count.pagamentosAposCancelamento > 0)
     ) {
       throw new BadRequestException(
         "Esta reserva foi cancelada com tratamento financeiro registrado. Para retomar a festa, registre uma nova reserva.",

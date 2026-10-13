@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  conciliacaoDoCancelamento,
   creditoAplicadoNaReserva,
+  mensagemDePagamentoTardio,
+  pendenteDeTratamento,
   extratoDeCredito,
   formatarReais,
   frasesDoTratamento,
@@ -203,5 +206,45 @@ describe("voucher de crédito", () => {
     expect(formatarReais(1450)).toBe("R$ 1.450,00");
     expect(formatarReais(0.5)).toBe("R$ 0,50");
     expect(formatarReais(1234567.89)).toBe("R$ 1.234.567,89");
+  });
+});
+
+describe("conciliação do cancelamento com pagamento tardio", () => {
+  const tardio = { valor: 200, tratado: false };
+
+  it("pendência explícita enquanto o valor não tem destino", () => {
+    expect(pendenteDeTratamento([tardio])).toBe(200);
+    expect(mensagemDePagamentoTardio(200)).toBe(
+      "Pagamento recebido após o cancelamento: R$ 200,00. Defina o tratamento financeiro.",
+    );
+    const c = conciliacaoDoCancelamento({
+      pagos: [300, 200],
+      tratadoNoCancelamento: 300,
+      complementares: [],
+      pagamentosAposCancelamento: [tardio],
+    });
+    expect(c).toEqual({ pago: 500, tratadoNoCancelamento: 300, tratadoDepois: 0, pendente: 200, confere: true });
+  });
+
+  it("depois do complementar: PAID = tratado no cancelamento + tratado depois", () => {
+    const c = conciliacaoDoCancelamento({
+      pagos: [300, 200],
+      tratadoNoCancelamento: 300,
+      complementares: [200],
+      pagamentosAposCancelamento: [{ valor: 200, tratado: true }],
+    });
+    expect(c.pendente).toBe(0);
+    expect(c.pago).toBe(c.tratadoNoCancelamento + c.tratadoDepois);
+    expect(c.confere).toBe(true);
+  });
+
+  it("acusa pagamento que não passou por nenhum dos dois caminhos", () => {
+    const c = conciliacaoDoCancelamento({
+      pagos: [300, 200, 50],
+      tratadoNoCancelamento: 300,
+      complementares: [200],
+      pagamentosAposCancelamento: [{ valor: 200, tratado: true }],
+    });
+    expect(c.confere).toBe(false);
   });
 });

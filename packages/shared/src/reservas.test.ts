@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  confirmaAReserva,
   ehDaAba,
+  podeAguardarDevolucao,
   grupoDeProximidade,
   ordenarParaOperacao,
   situacaoOperacional,
@@ -180,5 +182,56 @@ describe("crédito Festaê na classificação", () => {
   it("sem o crédito, a mesma festa teria saldo vencido", () => {
     const r = reserva("COMPLETED", "2026-09-10", 1000, 700);
     expect(situacaoOperacional(r, AGORA).vencido).toBe(true);
+  });
+});
+
+describe("cancelada com pagamento tardio sem tratamento", () => {
+  const r: ReservaClassificavel = { ...reserva("CANCELLED", "2026-10-30", 1000, 500), tratamentoPendente: 200 };
+
+  it("indica tratamento financeiro pendente e aparece em Ativas além de Canceladas", () => {
+    const s = situacaoOperacional(r, AGORA);
+    expect(s.tratamentoPendente).toBe(true);
+    expect(s.temPendencia).toBe(true);
+    expect(ehDaAba(r, "ATIVAS", AGORA)).toBe(true);
+    expect(ehDaAba(r, "CANCELADAS", AGORA)).toBe(true);
+  });
+
+  it("resolvido o tratamento, volta a ser só cancelada", () => {
+    const resolvida = { ...r, tratamentoPendente: 0 };
+    expect(situacaoOperacional(resolvida, AGORA).temPendencia).toBe(false);
+    expect(ehDaAba(resolvida, "ATIVAS", AGORA)).toBe(false);
+  });
+});
+
+describe("quando dá para marcar 'aguardando devolução'", () => {
+  // AGORA = 20/09 às 12h em Chapecó.
+  it("não antes do dia da festa — nem na véspera", () => {
+    expect(podeAguardarDevolucao("2026-09-21T12:00:00.000Z", AGORA)).toBe(false);
+  });
+  it("no próprio dia da festa, a qualquer hora", () => {
+    expect(podeAguardarDevolucao("2026-09-20T12:00:00.000Z", AGORA)).toBe(true);
+    expect(podeAguardarDevolucao("2026-09-20T12:00:00.000Z", new Date("2026-09-20T03:30:00.000Z"))).toBe(true);
+  });
+  it("depois da festa também", () => {
+    expect(podeAguardarDevolucao("2026-09-12T12:00:00.000Z", AGORA)).toBe(true);
+  });
+  it("usa o dia de Chapecó: 23h do dia 19 ainda é véspera", () => {
+    expect(podeAguardarDevolucao("2026-09-20T12:00:00.000Z", new Date("2026-09-20T02:00:00.000Z"))).toBe(false);
+  });
+});
+
+describe("confirmação por sinal, saldo ou crédito", () => {
+  it("sinal de qualquer valor confirma a solicitada; saldo não", () => {
+    expect(confirmaAReserva("PENDING", "SINAL")).toBe(true);
+    expect(confirmaAReserva("PENDING", "SALDO")).toBe(false);
+  });
+  it("crédito segue a regra do sinal, nem mais nem menos", () => {
+    expect(confirmaAReserva("PENDING", "CREDITO")).toBe(confirmaAReserva("PENDING", "SINAL"));
+  });
+  it("só confirma o que está solicitado: não rebaixa nem reabre outras etapas", () => {
+    for (const s of ["CONFIRMED", "PREPARING", "READY", "AGUARDANDO_DEVOLUCAO", "COMPLETED", "CANCELLED", "REJECTED"] as const) {
+      expect(confirmaAReserva(s, "CREDITO")).toBe(false);
+      expect(confirmaAReserva(s, "SINAL")).toBe(false);
+    }
   });
 });

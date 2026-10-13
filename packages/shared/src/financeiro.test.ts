@@ -677,3 +677,57 @@ describe("crédito Festaê aplicado num contrato", () => {
     expect(situacaoDePagamento(quitadaComCredito, meioDia("2026-10-20"))).toBe("QUITADO");
   });
 });
+
+describe("pagamento recebido depois do cancelamento", () => {
+  /**
+   * O caso combinado: pagou R$ 300 em setembro, cancelou em outubro com tudo
+   * em crédito; em 20/10 entra mais R$ 200 de um Pix antigo.
+   */
+  const base: ContratoApurado = {
+    fechadoEm: meioDia("2026-09-01"),
+    festaEm: meioDia("2026-11-21"),
+    valor: 1000,
+    recebimentos: [
+      { valor: 300, recebidoEm: meioDia("2026-09-01") },
+      { valor: 200, recebidoEm: meioDia("2026-10-20"), aposCancelamento: true },
+    ],
+    cancelado: true,
+    tratamento: { reembolsado: 0, reembolsadoEm: null, retido: 0, definidoEm: meioDia("2026-10-05") },
+  };
+
+  it("o Pix tardio continua no caixa do dia em que entrou", () => {
+    expect(entradasNoCaixa([base], "2026-10")).toBe(200);
+    expect(entradasNoCaixa([base], "2026-09")).toBe(300);
+  });
+
+  it("o Pix tardio não aumenta faturamento", () => {
+    expect(receitaPorCompetencia([base], "2026-11")).toBe(0);
+    expect(resultadoOperacionalDoMes([base], [], "2026-10").receita).toBe(0);
+  });
+
+  it("tratamento complementar: reembolso sai no caixa e retenção vira receita do mês dele", () => {
+    const tratada: ContratoApurado = {
+      ...base,
+      tratamentosComplementares: [
+        { reembolsado: 120, reembolsadoEm: new Date("2026-11-03T12:00:00.000Z"), retido: 80, definidoEm: meioDia("2026-11-03") },
+      ],
+    };
+    expect(reembolsosNoMes([tratada], "2026-11")).toBe(120);
+    expect(receitaPorCaixa([tratada], "2026-11")).toBe(-120);
+    expect(receitaDeRetencao([tratada], "2026-11")).toBe(80);
+    expect(receitaDeRetencao([tratada], "2026-10")).toBe(0);
+  });
+
+  it("cancelada antiga, sem tratamento: só o que entrou depois do cancelamento vai para o caixa", () => {
+    const antiga: ContratoApurado = {
+      ...base,
+      tratamento: null,
+      recebimentos: [
+        { valor: 300, recebidoEm: meioDia("2026-09-01") },
+        { valor: 200, recebidoEm: meioDia("2026-10-20"), aposCancelamento: true },
+      ],
+    };
+    expect(entradasNoCaixa([antiga], "2026-09")).toBe(0);
+    expect(entradasNoCaixa([antiga], "2026-10")).toBe(200);
+  });
+});

@@ -200,10 +200,11 @@ model User {
   excecoesAutorizadas ExcecaoComercial[] @relation("ExcecoesAutorizadas")
 
   /// O extrato de crédito Festaê desta cliente.
-  creditos              CreditoClienteMovimento[]  @relation("CreditosDaCliente")
+  creditos                  CreditoClienteMovimento[]              @relation("CreditosDaCliente")
   /// Movimentos de crédito que esta pessoa da equipe registrou.
-  creditosRegistrados   CreditoClienteMovimento[]  @relation("CreditosRegistrados")
-  cancelamentosTratados TratamentoDeCancelamento[] @relation("CancelamentosTratados")
+  creditosRegistrados       CreditoClienteMovimento[]              @relation("CreditosRegistrados")
+  cancelamentosTratados     TratamentoDeCancelamento[]             @relation("CancelamentosTratados")
+  tratamentosComplementares TratamentoComplementarDeCancelamento[] @relation("TratamentosComplementares")
 
   @@map("users")
 }
@@ -495,11 +496,15 @@ model Reservation {
   excecoes    ExcecaoComercial[]
 
   /// O que foi feito com o dinheiro quando esta reserva foi cancelada.
-  tratamentoDoCancelamento TratamentoDeCancelamento?
+  tratamentoDoCancelamento   TratamentoDeCancelamento?
   /// Crédito Festaê que nasceu do cancelamento desta reserva.
-  creditosGerados          CreditoClienteMovimento[] @relation("CreditoOrigem")
+  creditosGerados            CreditoClienteMovimento[]              @relation("CreditoOrigem")
   /// Crédito Festaê usado para pagar esta reserva (e os estornos dele).
-  creditosUtilizados       CreditoClienteMovimento[] @relation("CreditoDestino")
+  creditosUtilizados         CreditoClienteMovimento[]              @relation("CreditoDestino")
+  /// Pagamentos confirmados quando a reserva já estava cancelada.
+  pagamentosAposCancelamento PagamentoAposCancelamento[]
+  /// O destino dado a esses pagamentos, um tratamento por vez.
+  tratamentosComplementares  TratamentoComplementarDeCancelamento[]
 
   @@index([eventDate])
   @@index([cancelledById])
@@ -588,6 +593,9 @@ model CreditoClienteMovimento {
   createdById String
   createdAt   DateTime @default(now())
 
+  /// O tratamento complementar que gerou este crédito, quando foi um.
+  tratamentoComplementar TratamentoComplementarDeCancelamento?
+
   user                User                     @relation("CreditosDaCliente", fields: [userId], references: [id], onDelete: Restrict)
   reservationOrigem   Reservation?             @relation("CreditoOrigem", fields: [reservationOrigemId], references: [id], onDelete: Restrict)
   reservationDestino  Reservation?             @relation("CreditoDestino", fields: [reservationDestinoId], references: [id], onDelete: Restrict)
@@ -650,6 +658,78 @@ model TratamentoDeCancelamento {
   @@map("tratamentos_de_cancelamento")
 }
 
+/// Um pagamento que só foi confirmado quando a reserva já estava cancelada
+/// (ou recusada).
+///
+/// Acontece com uma cobrança Pix antiga paga depois do cancelamento, ou com
+/// a confirmação do Mercado Pago chegando depois de a reserva ter caído. O
+/// dinheiro entrou de verdade: o pagamento fica PAID, no caixa do dia em que
+/// entrou, e nada o apaga. Mas ele não fazia parte do tratamento definido no
+/// cancelamento — por isso esta linha existe: é a pendência explícita, até
+/// alguém dizer o que fazer com o valor.
+///
+/// Gravada pelo próprio registro do pagamento, sob a mesma trava do pedido
+/// que o cancelamento usa. Pagamento confirmado antes do cancelamento entra
+/// no tratamento original; depois, entra aqui. Não há terceira possibilidade.
+model PagamentoAposCancelamento {
+  id            String   @id @default(cuid())
+  paymentId     String   @unique
+  reservationId String
+  /// O valor do pagamento, fotografado no registro.
+  valor         Decimal  @db.Decimal(10, 2)
+  registradoEm  DateTime @default(now())
+
+  /// O tratamento complementar que deu destino a este valor. Nulo enquanto
+  /// a pendência está aberta.
+  tratamentoComplementarId String?
+
+  payment                Payment                               @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  reservation            Reservation                           @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  tratamentoComplementar TratamentoComplementarDeCancelamento? @relation(fields: [tratamentoComplementarId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId])
+  @@index([tratamentoComplementarId])
+  @@map("pagamentos_apos_cancelamento")
+}
+
+/// O destino de pagamentos recebidos depois do cancelamento.
+///
+/// Não reescreve o tratamento original: soma-se a ele. A distribuição do
+/// cancelamento continua exatamente como foi definida, e cada valor que
+/// chegou depois ganha o seu próprio tratamento — crédito, reembolso,
+/// retenção —, com autoria e data. A soma de todos os tratamentos da
+/// reserva fecha com todos os pagamentos PAID dela.
+model TratamentoComplementarDeCancelamento {
+  id            String  @id @default(cuid())
+  reservationId String
+  observacao    String?
+
+  /// Soma dos pagamentos após o cancelamento que este tratamento resolve.
+  recebido      Decimal   @db.Decimal(10, 2)
+  /// Distribuição do recebido. creditoGerado + reembolsado + retido = recebido.
+  creditoGerado Decimal   @db.Decimal(10, 2)
+  reembolsado   Decimal   @db.Decimal(10, 2)
+  reembolsadoEm DateTime?
+  retido        Decimal   @db.Decimal(10, 2)
+
+  /// Quando foi definido. A retenção é receita deste mês.
+  definidoEm  DateTime @default(now())
+  createdById String
+
+  /// O crédito gerado por este tratamento, quando houve.
+  movimentoDeCreditoId String? @unique
+
+  reservation        Reservation                 @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  createdBy          User                        @relation("TratamentosComplementares", fields: [createdById], references: [id], onDelete: Restrict)
+  movimentoDeCredito CreditoClienteMovimento?    @relation(fields: [movimentoDeCreditoId], references: [id], onDelete: Restrict)
+  pagamentos         PagamentoAposCancelamento[]
+
+  @@index([reservationId])
+  @@index([definidoEm])
+  @@index([createdById])
+  @@map("tratamentos_complementares_de_cancelamento")
+}
+
 model Partner {
   id           String      @id @default(cuid())
   name         String
@@ -690,6 +770,9 @@ model Payment {
   createdAt DateTime  @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  /// Presente quando este pagamento foi confirmado com a reserva já cancelada.
+  aposCancelamento PagamentoAposCancelamento?
 
   @@index([orderId])
   @@map("payments")

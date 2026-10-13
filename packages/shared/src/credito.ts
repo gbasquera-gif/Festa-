@@ -318,3 +318,73 @@ export function mensagemDoVoucher(nomeDaCliente: string, valor: number): string 
     "Quando quiser utilizar, é só falar com a gente. ✨",
   ].join("\n");
 }
+
+/* ------------------------------------------------------------------ *
+ * Pagamento recebido depois do cancelamento
+ * ------------------------------------------------------------------ */
+
+/** A frase da pendência, igual em toda tela que a mostra. */
+export function mensagemDePagamentoTardio(valor: number): string {
+  return `Pagamento recebido após o cancelamento: ${formatarReais(valor)}. Defina o tratamento financeiro.`;
+}
+
+/**
+ * Quanto de pagamento recebido depois do cancelamento ainda não tem destino.
+ *
+ * Cada pagamento tardio ou já foi resolvido por um tratamento complementar,
+ * ou está pendente. Enquanto houver pendente, a reserva cancelada está com
+ * "Tratamento financeiro pendente".
+ */
+export function pendenteDeTratamento(
+  pagamentosAposCancelamento: readonly { valor: number; tratado: boolean }[],
+): number {
+  return fromCentsInt(
+    pagamentosAposCancelamento.filter((p) => !p.tratado).reduce((t, p) => t + toCentsInt(p.valor), 0),
+  );
+}
+
+export type ConciliacaoDoCancelamento = {
+  /** Todos os pagamentos PAID da reserva. */
+  pago: number;
+  /** O que o tratamento do cancelamento distribuiu (o pago naquele instante). */
+  tratadoNoCancelamento: number;
+  /** O que os tratamentos complementares distribuíram. */
+  tratadoDepois: number;
+  /** Pagamentos recebidos depois do cancelamento ainda sem destino. */
+  pendente: number;
+  /**
+   * PAID = tratado no cancelamento + tratado depois + pendente.
+   *
+   * Falso aponta um pagamento que não passou por nenhum dos dois caminhos —
+   * a tela mostra isso em vez de exibir um total plausível e errado.
+   */
+  confere: boolean;
+};
+
+/**
+ * A conta inteira do dinheiro de uma reserva cancelada com tratamento.
+ *
+ * Todo pagamento PAID entrou antes do cancelamento (e está no tratamento
+ * original) ou depois (e está num complementar, ou pendente). A soma tem de
+ * fechar em centavos.
+ */
+export function conciliacaoDoCancelamento(entrada: {
+  pagos: readonly number[];
+  tratadoNoCancelamento: number;
+  complementares: readonly number[];
+  pagamentosAposCancelamento: readonly { valor: number; tratado: boolean }[];
+}): ConciliacaoDoCancelamento {
+  const soma = (v: readonly number[]) => v.reduce((t, x) => t + toCentsInt(x), 0);
+  const pago = soma(entrada.pagos);
+  const original = toCentsInt(entrada.tratadoNoCancelamento);
+  const depois = soma(entrada.complementares);
+  const pendente = toCentsInt(pendenteDeTratamento(entrada.pagamentosAposCancelamento));
+  const tardios = soma(entrada.pagamentosAposCancelamento.map((p) => p.valor));
+  return {
+    pago: fromCentsInt(pago),
+    tratadoNoCancelamento: fromCentsInt(original),
+    tratadoDepois: fromCentsInt(depois),
+    pendente: fromCentsInt(pendente),
+    confere: pago === original + depois + pendente && depois + pendente === tardios,
+  };
+}

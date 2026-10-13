@@ -64,6 +64,12 @@ export type RecebimentoApurado = {
    * mais e que nenhuma conta recupera.
    */
   recebidoEm: Date | null;
+  /**
+   * Confirmado quando a reserva já estava cancelada (Pix antigo pago depois,
+   * confirmação atrasada do Mercado Pago). Entrou de verdade e conta no
+   * caixa, mas pede um tratamento complementar.
+   */
+  aposCancelamento?: boolean;
 };
 
 /**
@@ -99,6 +105,8 @@ export type ContratoApurado = {
   creditoAplicado?: number;
   /** Presente quando o contrato foi cancelado com tratamento registrado. */
   tratamento?: TratamentoApurado | null;
+  /** O destino dos pagamentos recebidos depois do cancelamento. */
+  tratamentosComplementares?: readonly TratamentoApurado[];
 };
 
 /** Um lançamento de saída. */
@@ -122,9 +130,9 @@ function vigentes(contratos: readonly ContratoApurado[]): ContratoApurado[] {
 }
 
 /**
- * Contratos cujo dinheiro conta no caixa.
+ * Os recebimentos de um contrato que contam no caixa.
  *
- * Os vigentes, e os cancelados com tratamento registrado: o pagamento de uma
+ * Todos, nos vigentes e nos cancelados com tratamento registrado: o pagamento de uma
  * reserva cancelada depois entrou de verdade, na data em que entrou, e
  * cancelar a festa não desfaz esse fato. O que sai depois — um reembolso —
  * é outro fato, com a sua própria data.
@@ -133,8 +141,20 @@ function vigentes(contratos: readonly ContratoApurado[]): ContratoApurado[] {
  * não há registro do que foi feito com aquele dinheiro, e somá-lo ao caixa
  * agora mudaria meses já fechados com base num palpite.
  */
-function contamNoCaixa(contratos: readonly ContratoApurado[]): ContratoApurado[] {
-  return contratos.filter((contrato) => !contrato.cancelado || Boolean(contrato.tratamento));
+function recebimentosNoCaixa(contrato: ContratoApurado): readonly RecebimentoApurado[] {
+  if (!contrato.cancelado || contrato.tratamento) return contrato.recebimentos;
+  // Cancelada sem tratamento original: o que entrou antes continua fora,
+  // como sempre esteve. O que entrou DEPOIS do cancelamento é fato novo,
+  // registrado na hora, com data — esse entra, porque o dinheiro entrou.
+  return contrato.recebimentos.filter((r) => r.aposCancelamento);
+}
+
+/** Todos os tratamentos de um contrato: o do cancelamento e os complementares. */
+function tratamentosDe(contrato: ContratoApurado): TratamentoApurado[] {
+  return [
+    ...(contrato.tratamento ? [contrato.tratamento] : []),
+    ...(contrato.tratamentosComplementares ?? []),
+  ];
 }
 
 /** Tudo que já foi recebido de um contrato. */
@@ -221,31 +241,32 @@ export function receitaPorCompetencia(contratos: readonly ContratoApurado[], mes
  * O que entrou no mês: pagamentos PAID, pela data em que entraram.
  *
  * Inclui o pagamento de reserva cancelada depois, quando o cancelamento tem
- * tratamento — ver `contamNoCaixa`. Crédito Festaê não entra aqui: usar
+ * tratamento — ver `recebimentosNoCaixa`. Crédito Festaê não entra aqui: usar
  * crédito não traz dinheiro novo.
  */
 export function entradasNoCaixa(contratos: readonly ContratoApurado[], mes: string): number {
   return somar(
-    contamNoCaixa(contratos).flatMap((contrato) =>
-      contrato.recebimentos
+    contratos.flatMap((contrato) =>
+      recebimentosNoCaixa(contrato)
         .filter((r) => r.recebidoEm !== null && mesEmChapeco(r.recebidoEm) === mes)
         .map((r) => r.valor),
     ),
   );
 }
 
-/** O que foi devolvido a clientes no mês, pela data em que o reembolso saiu. */
+/**
+ * O que foi devolvido a clientes no mês, pela data em que o reembolso saiu —
+ * do tratamento do cancelamento e dos complementares.
+ */
 export function reembolsosNoMes(contratos: readonly ContratoApurado[], mes: string): number {
   return somar(
-    contratos
-      .filter(
-        (contrato) =>
-          contrato.tratamento &&
-          contrato.tratamento.reembolsadoEm !== null &&
-          toCentsInt(contrato.tratamento.reembolsado) > 0 &&
-          mesEmChapeco(contrato.tratamento.reembolsadoEm) === mes,
-      )
-      .map((contrato) => contrato.tratamento!.reembolsado),
+    contratos.flatMap((contrato) =>
+      tratamentosDe(contrato)
+        .filter(
+          (t) => t.reembolsadoEm !== null && toCentsInt(t.reembolsado) > 0 && mesEmChapeco(t.reembolsadoEm) === mes,
+        )
+        .map((t) => t.reembolsado),
+    ),
   );
 }
 
@@ -273,14 +294,12 @@ export function receitaPorCaixa(contratos: readonly ContratoApurado[], mes: stri
 export function receitaDeRetencao(contratos: readonly ContratoApurado[], mes: string): number {
   return somar(
     contratos
-      .filter(
-        (contrato) =>
-          contrato.cancelado &&
-          contrato.tratamento &&
-          toCentsInt(contrato.tratamento.retido) > 0 &&
-          mesEmChapeco(contrato.tratamento.definidoEm) === mes,
-      )
-      .map((contrato) => contrato.tratamento!.retido),
+      .filter((contrato) => contrato.cancelado)
+      .flatMap((contrato) =>
+        tratamentosDe(contrato)
+          .filter((t) => toCentsInt(t.retido) > 0 && mesEmChapeco(t.definidoEm) === mes)
+          .map((t) => t.retido),
+      ),
   );
 }
 
@@ -294,8 +313,8 @@ export function receitaDeRetencao(contratos: readonly ContratoApurado[], mes: st
  */
 export function recebidoSemData(contratos: readonly ContratoApurado[]): number {
   return somar(
-    contamNoCaixa(contratos).flatMap((contrato) =>
-      contrato.recebimentos.filter((r) => r.recebidoEm === null).map((r) => r.valor),
+    contratos.flatMap((contrato) =>
+      recebimentosNoCaixa(contrato).filter((r) => r.recebidoEm === null).map((r) => r.valor),
     ),
   );
 }

@@ -4,11 +4,27 @@ import {
   PERCENTUAL_DO_SALDO,
   PERCENTUAL_DO_SINAL,
   PIX_EXPIRATION_MINUTES,
+  confirmaAReserva,
   saldoAPagar,
   splitPayment,
+  type ReservationStatus,
 } from "@festae/shared";
 import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
+import { travarPedido } from "../creditos/ledger";
+
+/** Reserva que não existe mais como festa: cancelada ou recusada. */
+const ENCERRADAS = ["CANCELLED", "REJECTED"];
+
+/** O que aconteceu com as cobranças pendentes de uma reserva cancelada. */
+export type EncerramentoDeCobrancas = {
+  /** Encerradas: no provedor, ou só aqui quando nunca existiram lá. */
+  encerradas: number;
+  /** Já tinham sido pagas: viram pagamento após o cancelamento. */
+  jaPagas: number;
+  /** Não deu para confirmar o encerramento no provedor. */
+  naoEncerradas: number;
+};
 
 /**
  * O que a cliente lê na fatura do Mercado Pago.
@@ -124,9 +140,14 @@ export class PaymentsService {
   async createCheckout(eventId: string, input: CreateCheckoutBody, payerEmail: string) {
     const order = await prisma.order.findUnique({
       where: { eventId },
-      include: { payments: true, event: { include: { user: true } } },
+      include: { payments: true, event: { include: { user: true } }, reservation: { select: { status: true } } },
     });
     if (!order) throw new NotFoundException("Orçamento do evento não encontrado.");
+    // Reserva cancelada não gera cobrança nova: um Pix de uma festa que não
+    // existe mais seria dinheiro entrando sem destino.
+    if (order.status === "CANCELLED" || (order.reservation && ENCERRADAS.includes(order.reservation.status))) {
+      throw new ConflictException("Esta reserva foi cancelada. Não há pagamento a gerar.");
+    }
     if (!order.kitId) {
       throw new ConflictException("Selecione um kit antes de gerar o pagamento.");
     }
@@ -216,67 +237,163 @@ export class PaymentsService {
    * solicitada, então não há decisão humana pendente: quem pagou o sinal tem
    * a data. Deixar a pessoa pagando e esperando resposta é justamente o que
    * se quis eliminar.
+   *
+   * Roda sob a trava do pedido — a mesma do cancelamento e do registro
+   * manual. Isso decide, sem ambiguidade, de que lado do cancelamento o
+   * pagamento caiu: confirmado antes, o cancelamento o enxerga e ele entra no
+   * tratamento; confirmado depois, a reserva já está cancelada aqui dentro e
+   * ele vira "pagamento após o cancelamento", com pendência explícita. Em
+   * nenhum dos dois casos o dinheiro some ou é contado duas vezes.
    */
-  private async settle(paymentId: string, status: "PAID" | "FAILED" | "PENDING") {
-    const payment = await prisma.payment.findUnique({
-      where: { id: paymentId },
-      include: { order: { include: { reservation: true } } },
-    });
-    if (!payment || payment.status === "PAID") return;
+  async settle(paymentId: string, status: "PAID" | "FAILED" | "PENDING") {
+    const alvo = await prisma.payment.findUnique({ where: { id: paymentId }, select: { orderId: true } });
+    if (!alvo) return;
 
-    const confirmsReservation =
-      status === "PAID" &&
-      payment.type === "DEPOSIT" &&
-      payment.order.reservation?.status === "PENDING";
+    const registro = await prisma.$transaction(async (tx) => {
+      await travarPedido(tx, alvo.orderId);
 
-    if (status === "PAID" && payment.type === "DEPOSIT" && !confirmsReservation) {
-      // Sinal pago para uma reserva que não está mais aguardando (expirada,
-      // cancelada ou já confirmada). O dinheiro entrou e precisa aparecer no
-      // painel: registramos o pagamento e avisamos para alguém olhar.
-      this.logger.warn(
-        `Sinal do pagamento ${payment.id} chegou com a reserva em ${payment.order.reservation?.status ?? "nenhuma"}. Confira no painel.`,
-      );
-    }
+      // Relido sob a trava: o webhook repetido e a consulta ativa podem ter
+      // chegado juntos, e o cancelamento pode ter acabado de gravar.
+      const payment = await tx.payment.findUnique({
+        where: { id: paymentId },
+        include: { order: { include: { reservation: true } } },
+      });
+      if (!payment || payment.status === "PAID") return null;
 
-    await prisma.$transaction([
-      prisma.payment.update({
+      const reserva = payment.order.reservation;
+      const confirmsReservation =
+        status === "PAID" &&
+        reserva !== null &&
+        confirmaAReserva(reserva.status as ReservationStatus, payment.type === "DEPOSIT" ? "SINAL" : "SALDO");
+      const aposCancelamento = status === "PAID" && reserva !== null && ENCERRADAS.includes(reserva.status);
+
+      await tx.payment.update({
         where: { id: payment.id },
         data: {
           status,
           paidAt: status === "PAID" ? new Date() : payment.paidAt,
           syncedAt: new Date(),
         },
-      }),
-      ...(confirmsReservation
-        ? [
-            prisma.reservation.update({
-              where: { id: payment.order.reservation!.id },
-              data: { status: "CONFIRMED", confirmedAt: new Date() },
-            }),
-            prisma.order.update({ where: { id: payment.orderId }, data: { status: "CONFIRMED" } }),
-          ]
-        : []),
+      });
+
+      if (confirmsReservation) {
+        await tx.reservation.update({
+          where: { id: reserva!.id },
+          data: { status: "CONFIRMED", confirmedAt: new Date() },
+        });
+        await tx.order.update({ where: { id: payment.orderId }, data: { status: "CONFIRMED" } });
+      }
+
+      // Dinheiro que entrou numa festa cancelada: fica registrado como pago
+      // e ganha a pendência que pede o tratamento complementar.
+      if (aposCancelamento) {
+        await tx.pagamentoAposCancelamento.create({
+          data: { paymentId: payment.id, reservationId: reserva!.id, valor: payment.amount },
+        });
+      }
 
       // O último degrau do funil só pode ser registrado aqui: é o Mercado
       // Pago que diz que o dinheiro entrou, não o aplicativo. Sem isto o
       // relatório terminava sempre em zero pagamentos — a única linha que
       // realmente responde se a loja vende.
-      ...(status === "PAID"
-        ? [
-            prisma.analyticsEvent.create({
-              data: {
-                type: "PAGAMENTO_REALIZADO",
-                metadata: {
-                  paymentId: payment.id,
-                  orderId: payment.orderId,
-                  tipo: payment.type,
-                  valor: payment.amount.toString(),
-                },
-              },
-            }),
-          ]
-        : []),
-    ]);
+      if (status === "PAID") {
+        await tx.analyticsEvent.create({
+          data: {
+            type: "PAGAMENTO_REALIZADO",
+            metadata: {
+              paymentId: payment.id,
+              orderId: payment.orderId,
+              tipo: payment.type,
+              valor: payment.amount.toString(),
+            },
+          },
+        });
+      }
+
+      return { payment, reserva, aposCancelamento, confirmsReservation };
+    });
+
+    if (registro?.aposCancelamento) {
+      this.logger.warn(
+        `Pagamento ${registro.payment.id} (R$ ${Number(registro.payment.amount).toFixed(2)}) confirmado com a ` +
+          `reserva ${registro.reserva!.id} já cancelada: registrado como pago, com tratamento financeiro pendente.`,
+      );
+    } else if (
+      registro &&
+      status === "PAID" &&
+      registro.payment.type === "DEPOSIT" &&
+      !registro.confirmsReservation
+    ) {
+      this.logger.warn(
+        `Sinal do pagamento ${registro.payment.id} chegou com a reserva em ${registro.reserva?.status ?? "nenhuma"}. Confira no painel.`,
+      );
+    }
+  }
+
+  /**
+   * Encerra as cobranças ainda pendentes de uma reserva que acabou de ser
+   * cancelada.
+   *
+   * Roda depois que o cancelamento foi gravado — nunca antes: cancelar o Pix
+   * da cliente e depois descobrir que a reserva não pôde ser cancelada
+   * deixaria uma festa de pé sem como pagar.
+   *
+   * - Cobrança que só existe aqui (lançada à mão, sem Pix no provedor) ou Pix
+   *   já vencido: não há o que pagar; é encerrada aqui.
+   * - Pix vivo no Mercado Pago: cancelado lá, pela API real. Se o provedor
+   *   disser que ele já foi pago, o pagamento é registrado agora — e, como a
+   *   reserva já está cancelada, entra como pagamento após o cancelamento.
+   * - Não deu para confirmar no provedor: fica como está, e a resposta diz
+   *   isso. Se for pago depois, cai no mesmo caminho do pagamento tardio.
+   */
+  async encerrarCobrancasPendentes(orderId: string): Promise<EncerramentoDeCobrancas> {
+    const pendentes = await prisma.payment.findMany({
+      where: { orderId, status: "PENDING" },
+      select: { id: true, method: true, externalReference: true, expiresAt: true },
+    });
+    const resultado: EncerramentoDeCobrancas = { encerradas: 0, jaPagas: 0, naoEncerradas: 0 };
+    const agora = Date.now();
+
+    for (const p of pendentes) {
+      const soAqui = !p.externalReference;
+      const vencido = p.expiresAt !== null && p.expiresAt.getTime() <= agora;
+      if (soAqui || vencido) {
+        // `status: "PENDING"` no filtro: nada aqui reescreve um pagamento que
+        // o webhook acabou de confirmar.
+        const { count } = await prisma.payment.updateMany({
+          where: { id: p.id, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+        resultado.encerradas += count;
+        continue;
+      }
+      if (p.method !== "PIX") {
+        resultado.naoEncerradas += 1;
+        continue;
+      }
+
+      const noProvedor = await this.gateway.cancelar(p.externalReference!);
+      if (noProvedor === "ENCERRADA") {
+        const { count } = await prisma.payment.updateMany({
+          where: { id: p.id, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+        resultado.encerradas += count;
+      } else if (noProvedor === "JA_PAGA") {
+        await this.settle(p.id, "PAID");
+        resultado.jaPagas += 1;
+      } else {
+        resultado.naoEncerradas += 1;
+      }
+    }
+
+    if (pendentes.length > 0) {
+      this.logger.log(
+        `Cobranças pendentes do pedido ${orderId} após o cancelamento: ${resultado.encerradas} encerrada(s), ` +
+          `${resultado.jaPagas} já paga(s), ${resultado.naoEncerradas} sem confirmação do provedor.`,
+      );
+    }
+    return resultado;
   }
 
   /** Notificação do Mercado Pago. A autenticidade é checada no controller. */

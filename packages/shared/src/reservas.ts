@@ -1,4 +1,4 @@
-import { diaEmChapeco } from "./data-da-festa";
+import { diaDaFesta, diaEmChapeco } from "./data-da-festa";
 import { toCentsInt } from "./pricing";
 import type { ReservationStatus } from "./enums";
 
@@ -69,6 +69,8 @@ export type ReservaClassificavel = {
   recebido: number;
   /** Crédito Festaê aplicado. Abate o saldo sem ser recebimento. */
   creditoAplicado?: number;
+  /** Pagamento recebido depois do cancelamento, ainda sem tratamento. */
+  tratamentoPendente?: number;
 };
 
 /**
@@ -98,6 +100,11 @@ export type SituacaoOperacional = {
   pendenciaOperacional: boolean;
   /** Festa entregue com material ainda fora. */
   aguardandoDevolucao: boolean;
+  /**
+   * Cancelada que recebeu dinheiro depois do cancelamento e ainda não disse
+   * o que fazer com ele. É pendência de dinheiro real, e pede ação.
+   */
+  tratamentoPendente: boolean;
   /**
    * Precisa de ação agora.
    *
@@ -136,6 +143,7 @@ export function situacaoOperacional(
   const aguardandoDevolucao = reserva.status === "AGUARDANDO_DEVOLUCAO";
   const pendenciaOperacional =
     !cancelada && diasAteAFesta < 0 && reserva.status !== "COMPLETED" && !aguardandoDevolucao;
+  const tratamentoPendente = cancelada && toCentsInt(reserva.tratamentoPendente ?? 0) > 0;
 
   return {
     cancelada,
@@ -144,7 +152,8 @@ export function situacaoOperacional(
     vencido,
     pendenciaOperacional,
     aguardandoDevolucao,
-    temPendencia: vencido || pendenciaOperacional,
+    tratamentoPendente,
+    temPendencia: vencido || pendenciaOperacional || tratamentoPendente,
   };
 }
 
@@ -172,7 +181,12 @@ export function ehDaAba(reserva: ReservaClassificavel, aba: AbaDeReserva, agora:
     case "PROXIMAS":
       return !s.cancelada && s.diasAteAFesta >= 0;
     case "ATIVAS":
-      return !s.cancelada && (reserva.status !== "COMPLETED" || s.pendenciaFinanceira);
+      // A cancelada com pagamento tardio sem destino também pede ação: ela
+      // aparece aqui, além de Canceladas, até o tratamento ser definido.
+      return (
+        (!s.cancelada && (reserva.status !== "COMPLETED" || s.pendenciaFinanceira)) ||
+        s.tratamentoPendente
+      );
   }
 }
 
@@ -209,4 +223,33 @@ export const GRUPO_DE_PROXIMIDADE_LABEL: Record<GrupoDeProximidade, string> = {
 export function grupoDeProximidade(diasAteAFesta: number): GrupoDeProximidade {
   if (diasAteAFesta <= 0) return "HOJE";
   return diasAteAFesta <= 7 ? "SEMANA" : "DEPOIS";
+}
+
+/**
+ * Se a festa já pode ser marcada como "aguardando devolução".
+ *
+ * O significado é "a festa aconteceu e agora esperamos o material": só vale
+ * a partir do dia da festa, no calendário de Chapecó. A reserva guarda o dia,
+ * não o horário — então o próprio dia basta.
+ */
+export function podeAguardarDevolucao(eventDate: string | Date, agora: Date): boolean {
+  return diaDaFesta(eventDate) <= diaEmChapeco(agora);
+}
+
+/** Por onde entrou o valor que liquida parte de uma reserva. */
+export type FormaDeLiquidacao = "SINAL" | "SALDO" | "CREDITO";
+
+/**
+ * Se esta liquidação confirma a reserva.
+ *
+ * A regra é a que o sistema já pratica, escrita num lugar só: reserva
+ * solicitada (PENDING) passa a confirmada quando o sinal é pago — pelo Pix da
+ * loja ou registrado à mão —, de qualquer valor. Não existe valor mínimo de
+ * sinal para confirmar. Pagamento registrado como saldo não confirma.
+ *
+ * Crédito Festaê entra como forma de liquidação do sinal: confirma nas
+ * mesmas condições, nem antes nem com menos.
+ */
+export function confirmaAReserva(status: ReservationStatus, forma: FormaDeLiquidacao): boolean {
+  return status === "PENDING" && forma !== "SALDO";
 }

@@ -20,6 +20,8 @@ import {
   formatarDiaDoMomento,
   formatarReais,
   frasesDoTratamento,
+  mensagemDePagamentoTardio,
+  podeAguardarDevolucao,
   PERCENTUAL_DO_SINAL,
   saldoAPagar,
   situacaoDoRecebimento,
@@ -33,6 +35,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { AcoesDaReserva } from "@/components/AcoesDaReserva";
+import { TratarPagamentoTardio } from "@/components/credito/CancelarReserva";
 
 interface ProductRef {
   id: string;
@@ -65,6 +68,20 @@ interface ReservationRow {
     definidoEm: string;
     createdBy: { name: string } | null;
   } | null;
+  /** Pagamento recebido depois do cancelamento ainda sem destino (somado pelo servidor). */
+  tratamentoPendente?: number;
+  pagamentosAposCancelamento?: { id: string; valor: string; registradoEm: string; tratamentoComplementarId: string | null }[];
+  tratamentosComplementares?: {
+    id: string;
+    observacao: string | null;
+    recebido: string;
+    creditoGerado: string;
+    reembolsado: string;
+    reembolsadoEm: string | null;
+    retido: string;
+    definidoEm: string;
+    createdBy: { name: string } | null;
+  }[];
   order: {
     id: string;
     total: string;
@@ -257,6 +274,7 @@ function classificarLinha(row: ReservationRow) {
     total: Number(row.order.total),
     recebido: recebidoDe(row),
     creditoAplicado: row.creditoAplicado ?? 0,
+    tratamentoPendente: row.tratamentoPendente ?? 0,
   };
 }
 
@@ -270,9 +288,12 @@ function classificarLinha(row: ReservationRow) {
  */
 function Cancelamento({ row }: { row: ReservationRow }) {
   const [, navegar] = useLocation();
+  const queryClient = useQueryClient();
+  const [tratando, setTratando] = useState(false);
   const t = row.tratamentoDoCancelamento;
-  const voucher = row.creditosGerados?.[0];
-  const pagoAgora = recebidoDe(row);
+  const vouchers = row.creditosGerados ?? [];
+  const pendente = row.tratamentoPendente ?? 0;
+  const complementares = row.tratamentosComplementares ?? [];
 
   return (
     <div className="mt-3 space-y-2 rounded-md border border-red-200 bg-red-50/60 p-3 text-sm" data-cancelamento>
@@ -281,6 +302,31 @@ function Cancelamento({ row }: { row: ReservationRow }) {
         {row.cancelledAt ? ` em ${formatarDiaDoMomento(row.cancelledAt)}` : ""}
         {row.cancelledBy?.name ? ` por ${row.cancelledBy.name}` : ""}
       </p>
+      {/* Dinheiro que entrou depois do cancelamento e ainda não tem destino.
+          Fica no topo do bloco: é a única coisa aqui que pede ação. */}
+      {pendente > 0 && (
+        <div className="space-y-2 rounded-md border border-red-300 bg-white p-3" data-tratamento-pendente>
+          <p className="text-xs font-bold uppercase tracking-wide text-red-800">Tratamento financeiro pendente</p>
+          <p className="text-red-900">{mensagemDePagamentoTardio(pendente)}</p>
+          <Button size="sm" className="min-h-11 sm:min-h-8" onClick={() => setTratando(true)}>
+            Definir tratamento
+          </Button>
+        </div>
+      )}
+      {tratando && (
+        <TratarPagamentoTardio
+          reservaId={row.id}
+          cliente={row.order.event.user.name}
+          pendente={pendente}
+          aberto
+          aoFechar={() => setTratando(false)}
+          aoTratar={() => {
+            queryClient.invalidateQueries({ queryKey: ["reservations"] });
+            queryClient.invalidateQueries({ queryKey: ["cliente"] });
+            queryClient.invalidateQueries({ queryKey: ["financeiro"] });
+          }}
+        />
+      )}
       {t ? (
         <>
           <p>
@@ -305,37 +351,56 @@ function Cancelamento({ row }: { row: ReservationRow }) {
               ))}
             </ul>
           </div>
-          {voucher && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-red-200 pt-2">
-              <span>
-                Voucher de Crédito <strong className="text-navy">{formatarReais(Number(voucher.valor))}</strong>
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-h-11 sm:min-h-8"
-                onClick={() => navegar(`/clientes/${row.order.event.user.id}/creditos/${voucher.id}/voucher`)}
-              >
-                <FileDown className="mr-1.5 size-4" aria-hidden />
-                Baixar novamente
-              </Button>
-            </div>
-          )}
-          {/* Pix que caiu depois do cancelamento: o dinheiro entrou, mas não
-              faz parte do tratamento. Alguém precisa decidir o que fazer. */}
-          {pagoAgora > Number(t.recebido) + 0.004 && (
-            <p className="rounded bg-amber-100 p-2 text-xs text-amber-900">
-              {formatarReais(pagoAgora - Number(t.recebido))} foram recebidos depois do cancelamento e não
-              fazem parte deste tratamento. Confira com a cliente.
-            </p>
-          )}
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
           Cancelada antes do registro de tratamento financeiro: não há informação sobre o que foi feito com o
-          valor pago.
+          valor pago antes do cancelamento.
         </p>
       )}
+      {/* Os tratamentos de pagamentos que chegaram depois: somam-se ao do
+          cancelamento, que continua como foi registrado. */}
+      {complementares.map((c) => (
+        <div key={c.id} className="border-t border-red-200 pt-2">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Recebido após o cancelamento · {formatarReais(Number(c.recebido))} · tratado em{" "}
+            {formatarDiaDoMomento(c.definidoEm)}
+            {c.createdBy?.name ? ` por ${c.createdBy.name}` : ""}
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {frasesDoTratamento({
+              motivo: c.observacao ?? "",
+              contratado: 0,
+              recebido: Number(c.recebido),
+              creditoAplicadoDevolvido: 0,
+              creditoGerado: Number(c.creditoGerado),
+              reembolsado: Number(c.reembolsado),
+              reembolsadoEm: c.reembolsadoEm,
+              retido: Number(c.retido),
+              definidoEm: c.definidoEm,
+            }).map((frase) => (
+              <li key={frase}>{frase}</li>
+            ))}
+          </ul>
+          {c.observacao && <p className="mt-1 text-xs text-muted-foreground">{c.observacao}</p>}
+        </div>
+      ))}
+      {vouchers.map((voucher) => (
+        <div key={voucher.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-red-200 pt-2">
+          <span>
+            Voucher de Crédito <strong className="text-navy">{formatarReais(Number(voucher.valor))}</strong>
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="min-h-11 sm:min-h-8"
+            onClick={() => navegar(`/clientes/${row.order.event.user.id}/creditos/${voucher.id}/voucher`)}
+          >
+            <FileDown className="mr-1.5 size-4" aria-hidden />
+            Baixar novamente
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -530,7 +595,7 @@ function Detail({ row }: { row: ReservationRow }) {
         status={row.status}
         creditoAplicado={payment.credito}
         creditoDisponivel={row.creditoDisponivelDaCliente ?? 0}
-        festaJaChegou={situacaoOperacional(classificarLinha(row), new Date()).diasAteAFesta <= 1}
+        festaJaChegou={podeAguardarDevolucao(row.eventDate, new Date())}
       />
     </div>
   );
@@ -544,7 +609,14 @@ function Detail({ row }: { row: ReservationRow }) {
  * cancelada, para o seletor mostrar o que ela é.
  */
 function etapasDoSeletor(row: ReservationRow): ReservationStatus[] {
-  return RESERVATION_STATUSES.filter((s) => s !== "CANCELLED" || row.status === "CANCELLED");
+  // "Aguardando devolução" só a partir do dia da festa: antes dela não há
+  // material na casa da cliente para esperar.
+  const devolucaoLiberada = podeAguardarDevolucao(row.eventDate, new Date());
+  return RESERVATION_STATUSES.filter(
+    (s) =>
+      (s !== "CANCELLED" || row.status === "CANCELLED") &&
+      (s !== "AGUARDANDO_DEVOLUCAO" || devolucaoLiberada || row.status === "AGUARDANDO_DEVOLUCAO"),
+  );
 }
 
 /** Cancelada com tratamento não volta pelo seletor: o dinheiro já foi distribuído. */
@@ -685,11 +757,13 @@ function recebidoDe(row: ReservationRow): number {
 function Pendencia({ row, agora }: { row: ReservationRow; agora: Date }) {
   const s = situacaoOperacional(classificarLinha(row), agora);
   if (!s.temPendencia) return null;
-  const texto = s.vencido && s.pendenciaOperacional
-    ? "vencida e sem fechar"
-    : s.vencido
-      ? "saldo vencido"
-      : "não foi fechada";
+  const texto = s.tratamentoPendente
+    ? "tratamento financeiro pendente"
+    : s.vencido && s.pendenciaOperacional
+      ? "vencida e sem fechar"
+      : s.vencido
+        ? "saldo vencido"
+        : "não foi fechada";
   return (
     <span
       className="ml-2 inline-block rounded px-1.5 py-0.5 align-middle text-[0.6rem] font-medium uppercase tracking-wider"
@@ -968,7 +1042,9 @@ export default function Reservations() {
                       <TableCell className="font-medium">
                         {formatarDataDaFesta(row.eventDate)}
                       </TableCell>
-                      <TableCell>
+                      {/* Quebra linha: com o selo de pendência, nome e selo
+                          numa linha só empurravam a tabela para fora da tela. */}
+                      <TableCell className="min-w-[12rem] whitespace-normal">
                         <div className="font-medium">
                           {row.order.event.user.name}
                           <Pendencia row={row} agora={agora} />

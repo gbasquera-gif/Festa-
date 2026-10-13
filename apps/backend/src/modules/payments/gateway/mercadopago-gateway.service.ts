@@ -6,6 +6,7 @@ import type {
   CreateCheckoutInput,
   GatewayPaymentStatus,
   PaymentGateway,
+  ResultadoDoCancelamentoNoProvedor,
   WebhookResult,
 } from "./payment-gateway.interface";
 
@@ -116,6 +117,45 @@ export class MercadoPagoGateway implements PaymentGateway {
     if (!externalReference) return null;
 
     return { externalReference, status: this.toStatus(result.status) };
+  }
+
+  /**
+   * Cancela um Pix pendente pela API de pagamentos do Mercado Pago
+   * (`Payment.cancel` do SDK oficial, que só cancela o que não foi aprovado).
+   *
+   * Recusa do provedor não é tratada como sucesso nem como erro: o status
+   * real é consultado em seguida, porque a recusa mais comum é justamente a
+   * cobrança já ter sido paga — e aí o dinheiro precisa ser registrado.
+   */
+  async cancelar(idNoProvedor: string): Promise<ResultadoDoCancelamentoNoProvedor> {
+    let client: MercadoPagoConfig;
+    try {
+      client = this.client();
+    } catch {
+      // Sem credencial não há Pix no provedor para cancelar nem para consultar.
+      return "NAO_CONFIRMADO";
+    }
+    const pagamento = new MpPayment(client);
+    try {
+      const resultado = await pagamento.cancel({
+        id: idNoProvedor,
+        requestOptions: { idempotencyKey: `cancelar-${idNoProvedor}` },
+      });
+      if (resultado.status === "cancelled") return "ENCERRADA";
+      if (this.toStatus(resultado.status) === "PAID") return "JA_PAGA";
+    } catch (error) {
+      this.logger.warn(`O Mercado Pago recusou cancelar a cobrança ${idNoProvedor}: ${error}`);
+    }
+    try {
+      const atual = await pagamento.get({ id: idNoProvedor });
+      const status = this.toStatus(atual.status);
+      if (status === "PAID") return "JA_PAGA";
+      // Cancelada, recusada ou estornada: não pode mais ser paga.
+      if (status === "FAILED") return "ENCERRADA";
+    } catch (error) {
+      this.logger.warn(`Não foi possível consultar a cobrança ${idNoProvedor}: ${error}`);
+    }
+    return "NAO_CONFIRMADO";
   }
 
   async getStatus(externalReference: string): Promise<GatewayPaymentStatus | null> {

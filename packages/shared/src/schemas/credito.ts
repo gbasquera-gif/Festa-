@@ -46,3 +46,19 @@ export const estornarCreditoSchema = z.object({
     .max(500),
 });
 export type EstornarCreditoInput = z.infer<typeof estornarCreditoSchema>;
+
+/**
+ * O destino de pagamentos recebidos depois do cancelamento.
+ *
+ * Mesma distribuição do cancelamento — crédito, reembolso, retenção —, sobre
+ * o valor que chegou depois. A soma tem de ser exatamente esse valor; o
+ * servidor confere contra o que está pendente na hora, sob trava.
+ */
+export const tratarPagamentoTardioSchema = z.object({
+  credito: z.coerce.number().min(0).default(0),
+  reembolso: z.coerce.number().min(0).default(0),
+  reembolsadoEm: diaSchema.optional(),
+  retencao: z.coerce.number().min(0).default(0),
+  observacao: z.string().trim().max(500).optional(),
+});
+export type TratarPagamentoTardioInput = z.infer<typeof tratarPagamentoTardioSchema>;

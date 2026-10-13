@@ -56,6 +56,8 @@ type ContratoComercial = {
   saldo: number;
   /** Cancelada com tratamento: o destino do que tinha sido pago. */
   tratamento?: { creditoGerado: number; reembolsado: number; reembolsadoEm: string | null; retido: number } | null;
+  /** Recebido depois do cancelamento e ainda sem destino. */
+  tratamentoPendente?: number;
   situacao: SituacaoDePagamento;
   venceEm: string;
   temRecebimentoSemData: boolean;
@@ -439,6 +441,11 @@ function Detalhe({ contrato: c }: { contrato: ContratoComercial }) {
               </li>
             )}
           </ul>
+        )}
+        {(c.tratamentoPendente ?? 0) > 0 && (
+          <p className="mt-2 text-sm font-medium" style={{ color: "var(--fin-coral-dark)" }}>
+            Tratamento financeiro pendente: {numero(c.tratamentoPendente ?? 0)} recebidos após o cancelamento sem destino.
+          </p>
         )}
       </div>
     </div>

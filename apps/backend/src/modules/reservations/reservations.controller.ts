@@ -7,6 +7,7 @@ import {
   editarReservaSchema,
   registrarPagamentoSchema,
   manualReservationSchema,
+  tratarPagamentoTardioSchema,
   updateReservationStatusSchema,
 } from "@festae/shared";
 import type {
@@ -16,6 +17,7 @@ import type {
   EditarReservaInput,
   RegistrarPagamentoInput,
   ManualReservationInput,
+  TratarPagamentoTardioInput,
   UpdateReservationStatusInput,
 } from "@festae/shared";
 import { ReservationsService } from "./reservations.service";
@@ -157,6 +159,22 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(cancelarReservaSchema)) body: CancelarReservaInput,
   ) {
     return this.reservationsService.cancelar(id, body, user.userId);
+  }
+
+  /**
+   * Destino de pagamento recebido depois do cancelamento: crédito, reembolso
+   * ou retenção, somando exatamente o valor pendente. Não altera o tratamento
+   * original — grava um complementar.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Post("reservations/:id/tratamento-complementar")
+  tratarPagamentoTardio(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(tratarPagamentoTardioSchema)) body: TratarPagamentoTardioInput,
+  ) {
+    return this.reservationsService.tratarPagamentoTardio(id, body, user.userId);
   }
 
   /** Material devolvido: marca a devolução e conclui a reserva. */

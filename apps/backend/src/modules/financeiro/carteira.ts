@@ -48,12 +48,22 @@ export function lerCarteiraCrua() {
                 method: true,
                 amount: true,
                 paidAt: true,
+                aposCancelamento: { select: { tratamentoComplementarId: true } },
               },
             },
           },
         },
         creditosUtilizados: { select: { valor: true } },
         tratamentoDoCancelamento: {
+          select: {
+            creditoGerado: true,
+            reembolsado: true,
+            reembolsadoEm: true,
+            retido: true,
+            definidoEm: true,
+          },
+        },
+        tratamentosComplementares: {
           select: {
             creditoGerado: true,
             reembolsado: true,

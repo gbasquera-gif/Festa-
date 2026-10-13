@@ -89,6 +89,7 @@ export class UsersService {
             creditos: true,
             creditosRegistrados: true,
             cancelamentosTratados: true,
+            tratamentosComplementares: true,
           },
         },
       },
@@ -119,7 +120,7 @@ export class UsersService {
     if (c.reservasCanceladas > 0) impedimentos.push(`${c.reservasCanceladas} cancelamento(s) de reserva`);
     if (c.excecoesAutorizadas > 0) impedimentos.push(`${c.excecoesAutorizadas} exceção(ões) comercial(is) autorizada(s)`);
     if (c.creditos > 0) impedimentos.push(`${c.creditos} movimento(s) no extrato de crédito Festaê`);
-    if (c.creditosRegistrados + c.cancelamentosTratados > 0) {
+    if (c.creditosRegistrados + c.cancelamentosTratados + c.tratamentosComplementares > 0) {
       impedimentos.push("crédito ou tratamento de cancelamento registrado por esta conta");
     }
 

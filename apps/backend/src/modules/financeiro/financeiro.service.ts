@@ -82,6 +82,9 @@ export class FinanceiroService {
         OR: [
           { status: { in: [...VIGENTES] } },
           { tratamentoDoCancelamento: { isNot: null } },
+          // Cancelada antiga que recebeu pagamento depois de cancelada: esse
+          // dinheiro entrou e precisa aparecer no caixa.
+          { pagamentosAposCancelamento: { some: {} } },
         ],
       },
       select: {
@@ -94,12 +97,15 @@ export class FinanceiroService {
             total: true,
             payments: {
               where: { status: "PAID" },
-              select: { amount: true, paidAt: true },
+              select: { amount: true, paidAt: true, aposCancelamento: { select: { id: true } } },
             },
           },
         },
         creditosUtilizados: { select: { valor: true } },
         tratamentoDoCancelamento: {
+          select: { reembolsado: true, reembolsadoEm: true, retido: true, definidoEm: true },
+        },
+        tratamentosComplementares: {
           select: { reembolsado: true, reembolsadoEm: true, retido: true, definidoEm: true },
         },
       },
@@ -114,6 +120,13 @@ export class FinanceiroService {
       recebimentos: reserva.order.payments.map((pagamento) => ({
         valor: paraNumero(pagamento.amount),
         recebidoEm: pagamento.paidAt,
+        aposCancelamento: pagamento.aposCancelamento !== null,
+      })),
+      tratamentosComplementares: reserva.tratamentosComplementares.map((t) => ({
+        reembolsado: paraNumero(t.reembolsado),
+        reembolsadoEm: t.reembolsadoEm,
+        retido: paraNumero(t.retido),
+        definidoEm: t.definidoEm,
       })),
       creditoAplicado: creditoAplicadoNaReserva(
         reserva.creditosUtilizados.map((m) => ({ valor: paraNumero(m.valor) })),

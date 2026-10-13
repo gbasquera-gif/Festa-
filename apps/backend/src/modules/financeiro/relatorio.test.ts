@@ -42,10 +42,11 @@ vi.mock("@festae/database", () => ({
               event: { city: "Chapecó", saleChannel: "WHATSAPP", guestCount: null, type: "ANIVERSARIO", theme: null, user: { name: "Cliente", email: null, phone: null } },
               payments: (r.pagamentos ?? [])
                 .filter((p) => !filtroDoPagamento || p.status === filtroDoPagamento)
-                .map((p, j) => ({ id: `p${i}-${j}`, type: "DEPOSIT", method: "PIX", status: p.status, amount: p.amount, paidAt: p.paidAt })),
+                .map((p, j) => ({ id: `p${i}-${j}`, type: "DEPOSIT", method: "PIX", status: p.status, amount: p.amount, paidAt: p.paidAt, aposCancelamento: null })),
             },
             creditosUtilizados: [],
             tratamentoDoCancelamento: null,
+            tratamentosComplementares: [],
           }));
       },
     },

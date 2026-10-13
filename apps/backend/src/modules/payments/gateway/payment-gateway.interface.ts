@@ -39,6 +39,25 @@ export interface PaymentGateway {
    * "aguardando confirmação" para sempre.
    */
   getStatus(externalReference: string): Promise<GatewayPaymentStatus | null>;
+  /**
+   * Encerra no provedor uma cobrança Pix que ainda não foi paga.
+   *
+   * Usado quando a reserva é cancelada: o QR antigo deixa de ser pagável e
+   * a cliente não consegue mandar dinheiro para uma festa que não existe
+   * mais. O provedor só cancela o que não foi aprovado; se já foi pago, a
+   * resposta diz isso e o pagamento segue o caminho do pagamento tardio.
+   *
+   * Recebe o id da cobrança no provedor (o `externalReference` gravado).
+   */
+  cancelar(idNoProvedor: string): Promise<ResultadoDoCancelamentoNoProvedor>;
 }
+
+/**
+ * - ENCERRADA: o provedor confirmou que a cobrança não pode mais ser paga.
+ * - JA_PAGA: a cobrança foi aprovada antes do cancelamento chegar.
+ * - NAO_CONFIRMADO: não deu para confirmar (provedor fora do ar, sem
+ *   credencial, resposta inesperada). A cobrança continua como estava.
+ */
+export type ResultadoDoCancelamentoNoProvedor = "ENCERRADA" | "JA_PAGA" | "NAO_CONFIRMADO";
 
 export const PAYMENT_GATEWAY = "PAYMENT_GATEWAY";

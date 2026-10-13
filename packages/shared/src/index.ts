@@ -287,9 +287,12 @@ export {
   ordenarParaOperacao,
   situacaoOperacional,
   STATUS_QUE_SEGURAM_ACERVO,
+  confirmaAReserva,
+  podeAguardarDevolucao,
 } from "./reservas";
 export type {
   AbaDeReserva,
+  FormaDeLiquidacao,
   GrupoDeProximidade,
   ReservaClassificavel,
   SituacaoOperacional,
@@ -407,8 +410,11 @@ export {
   TIPOS_DE_MOVIMENTO_DE_CREDITO,
   TIPO_DE_MOVIMENTO_LABEL,
   NOTA_DO_VOUCHER,
+  conciliacaoDoCancelamento,
   creditoAplicadoNaReserva,
   descricaoDoMovimento,
+  mensagemDePagamentoTardio,
+  pendenteDeTratamento,
   extratoDeCredito,
   formatarReais,
   frasesDoTratamento,
@@ -421,6 +427,7 @@ export {
   textoDoVoucher,
 } from "./credito";
 export type {
+  ConciliacaoDoCancelamento,
   DistribuicaoDoCancelamento,
   LinhaDoExtrato,
   MovimentoDeCredito,
@@ -431,9 +438,11 @@ export {
   aplicarCreditoSchema,
   cancelarReservaSchema,
   estornarCreditoSchema,
+  tratarPagamentoTardioSchema,
 } from "./schemas/credito";
 export type {
   AplicarCreditoInput,
   CancelarReservaInput,
   EstornarCreditoInput,
+  TratarPagamentoTardioInput,
 } from "./schemas/credito";

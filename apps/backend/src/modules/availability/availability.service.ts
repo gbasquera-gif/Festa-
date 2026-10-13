@@ -9,6 +9,7 @@ import {
   type PedidoComprometido,
 } from "./item-commitment";
 import { SELECAO_DO_COMPROMISSO, STATUS_QUE_COMPROMETEM } from "./selecao-do-pedido";
+import { travarPedido } from "../creditos/ledger";
 
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
@@ -78,19 +79,35 @@ export class AvailabilityService {
     });
     if (expired.length === 0) return;
 
-    await prisma.$transaction([
-      prisma.reservation.updateMany({
-        where: { id: { in: expired.map((r) => r.id) } },
-        data: { status: "CANCELLED" },
-      }),
-      prisma.order.updateMany({
-        where: { id: { in: expired.map((r) => r.orderId) } },
-        data: { status: "CANCELLED" },
-      }),
-    ]);
+    // Uma de cada vez, sob a trava do pedido — a mesma do registro de
+    // pagamento. A condição é reconferida dentro da trava: um Pix confirmado
+    // entre a busca e aqui faz a reserva deixar de ser "sem sinal", e ela não
+    // é cancelada. Confirmado depois, ela já está cancelada quando o
+    // pagamento é gravado, e ele vira pagamento após o cancelamento.
+    let liberadas = 0;
+    for (const reserva of expired) {
+      const cancelou = await prisma.$transaction(async (tx) => {
+        await travarPedido(tx, reserva.orderId);
+        const { count } = await tx.reservation.updateMany({
+          where: {
+            id: reserva.id,
+            status: "PENDING",
+            order: { payments: { none: { status: "PAID" } } },
+            creditosUtilizados: { none: {} },
+          },
+          data: { status: "CANCELLED" },
+        });
+        if (count === 1) {
+          await tx.order.update({ where: { id: reserva.orderId }, data: { status: "CANCELLED" } });
+        }
+        return count === 1;
+      });
+      if (cancelou) liberadas += 1;
+    }
+    if (liberadas === 0) return;
 
     this.logger.log(
-      `${expired.length} reserva(s) sem sinal pago passaram do prazo e a data foi liberada.`,
+      `${liberadas} reserva(s) sem sinal pago passaram do prazo e a data foi liberada.`,
     );
   }
 

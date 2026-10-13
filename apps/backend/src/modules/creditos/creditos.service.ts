@@ -6,7 +6,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import { fromCentsInt, toCentsInt, type MovimentoDeCredito } from "@festae/shared";
+import {
+  confirmaAReserva,
+  fromCentsInt,
+  toCentsInt,
+  type MovimentoDeCredito,
+  type ReservationStatus,
+} from "@festae/shared";
 import { ManualReservationService } from "../reservations/manual-reservation.service";
 import {
   creditoAplicadoEmCentavos,
@@ -160,10 +166,11 @@ export class CreditosService {
   /**
    * Usa crédito numa reserva já existente.
    *
-   * Reserva solicitada (sem sinal) que recebe crédito passa a confirmada, como
-   * aconteceria com o sinal: a cliente garantiu a data com dinheiro que já é
-   * dela na Festaê. Sem isso, a limpeza de reservas sem sinal cancelaria uma
-   * festa que tem crédito aplicado.
+   * Reserva solicitada (sem sinal) que recebe crédito passa a confirmada pela
+   * mesma regra do sinal: hoje, sinal pago de qualquer valor confirma — não
+   * existe valor mínimo —, e o crédito participa como forma de liquidação,
+   * nem antes nem com menos. Sem isso, a limpeza de reservas sem sinal
+   * cancelaria uma festa que tem crédito aplicado.
    */
   async aplicar(reservationId: string, valor: number, observacao: string | undefined, usuarioId: string) {
     const reserva = await prisma.reservation.findUnique({
@@ -199,7 +206,9 @@ export class CreditosService {
           observacao,
         });
 
-        const confirma = atual.status === "PENDING";
+        // Crédito liquida como o sinal liquidaria: confirma nas mesmas
+        // condições e em nenhuma outra (`confirmaAReserva`, regra única).
+        const confirma = confirmaAReserva(atual.status as ReservationStatus, "CREDITO");
         if (confirma) {
           await tx.reservation.update({
             where: { id: reservationId },
