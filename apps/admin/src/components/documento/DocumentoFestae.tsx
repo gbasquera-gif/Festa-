@@ -63,13 +63,18 @@ export function AssinaturaFestae({ declaracao }: { declaracao: string }) {
   );
 }
 
-/** Endereço e contatos da Festaê, e a linha final própria de cada documento. */
+/**
+ * Marca e contatos comerciais da Festaê, e a linha final própria de cada
+ * documento.
+ *
+ * Sem endereço físico, de propósito: o endereço cadastrado é residencial, e
+ * estes papéis circulam — a cliente encaminha, imprime, guarda no celular.
+ * Quem precisa falar com a Festaê tem telefone, e-mail, site e Instagram.
+ */
 export function RodapeFestae({ nota }: { nota: React.ReactNode }) {
   return (
     <footer className="rodape">
-      <p className="rodape-empresa">
-        {COMPANY.address} — {COMPANY.city}/{COMPANY.state}
-      </p>
+      <p className="rodape-empresa">{COMPANY.tradeName} · Sua festa linda, sem complicação</p>
       <p className="rodape-contatos">
         {FESTAE_CONTATO.telefone} · {FESTAE_CONTATO.email} · {FESTAE_CONTATO.site} ·{" "}
         {FESTAE_CONTATO.instagram}
