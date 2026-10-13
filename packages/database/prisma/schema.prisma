@@ -54,6 +54,14 @@ enum ReservationStatus {
   CONFIRMED
   PREPARING
   READY
+  /// A festa aconteceu e o material ainda não voltou.
+  ///
+  /// Continua sendo contrato válido e continua segurando o acervo: as peças
+  /// estão na casa da cliente, e oferecê-las para outra festa enquanto não
+  /// voltam é vender o que não está na prateleira. Não é etapa obrigatória —
+  /// festa com retirada e devolução no mesmo dia vai direto para concluída —
+  /// e nada a conclui sozinho pela data: só quem confere o material devolvido.
+  AGUARDANDO_DEVOLUCAO
   COMPLETED
   REJECTED
   CANCELLED
@@ -190,6 +198,12 @@ model User {
   tarefasFeitas       ReservationTask[]
   reservasCanceladas  Reservation[]      @relation("ReservasCanceladas")
   excecoesAutorizadas ExcecaoComercial[] @relation("ExcecoesAutorizadas")
+
+  /// O extrato de crédito Festaê desta cliente.
+  creditos              CreditoClienteMovimento[]  @relation("CreditosDaCliente")
+  /// Movimentos de crédito que esta pessoa da equipe registrou.
+  creditosRegistrados   CreditoClienteMovimento[]  @relation("CreditosRegistrados")
+  cancelamentosTratados TratamentoDeCancelamento[] @relation("CancelamentosTratados")
 
   @@map("users")
 }
@@ -480,6 +494,13 @@ model Reservation {
   tasks       ReservationTask[]
   excecoes    ExcecaoComercial[]
 
+  /// O que foi feito com o dinheiro quando esta reserva foi cancelada.
+  tratamentoDoCancelamento TratamentoDeCancelamento?
+  /// Crédito Festaê que nasceu do cancelamento desta reserva.
+  creditosGerados          CreditoClienteMovimento[] @relation("CreditoOrigem")
+  /// Crédito Festaê usado para pagar esta reserva (e os estornos dele).
+  creditosUtilizados       CreditoClienteMovimento[] @relation("CreditoDestino")
+
   @@index([eventDate])
   @@index([cancelledById])
   @@map("reservations")
@@ -508,6 +529,125 @@ model ReservationTask {
   @@unique([reservationId, key])
   @@index([doneById])
   @@map("reservation_tasks")
+}
+
+/// O que aconteceu com um movimento de crédito Festaê.
+enum TipoDeMovimentoDeCredito {
+  /// Valor pago de uma reserva cancelada que virou crédito da cliente.
+  CREDITO_GERADO_CANCELAMENTO
+  /// Crédito usado para abater o valor de uma reserva.
+  CREDITO_UTILIZADO
+  /// Crédito que tinha sido usado numa reserva e voltou ao saldo porque essa
+  /// reserva foi cancelada.
+  ESTORNO_CREDITO_POR_CANCELAMENTO
+  /// Utilização desfeita por ter sido lançada por engano.
+  CREDITO_ESTORNADO
+}
+
+/// Um movimento do crédito Festaê de uma cliente.
+///
+/// O saldo não é um campo: é a soma deste histórico. Um saldo gravado ao lado
+/// do extrato é um segundo número que pode discordar do primeiro sem que nada
+/// acuse — o defeito que o painel antigo tinha com o sinal. Aqui só existe o
+/// extrato, e o saldo é sempre a conta dele.
+///
+/// Nada aqui é editado ou apagado. Utilização lançada por engano se desfaz
+/// com um movimento contrário que aponta para ela, e o extrato mostra as duas
+/// linhas — quem ler daqui a um ano vê o que foi feito e o que foi desfeito.
+///
+/// Crédito não é dinheiro novo nem desconto: o dinheiro já entrou (e já está
+/// no caixa, na data em que entrou) quando a cliente pagou a reserva que foi
+/// cancelada. O crédito só registra que a Festaê deve esse valor a ela.
+model CreditoClienteMovimento {
+  id String @id @default(cuid())
+
+  /// Número de referência, impresso no voucher ("CRÉDITO Nº 00012").
+  ///
+  /// Vem de uma sequência do banco pelo mesmo motivo do número do contrato.
+  /// É só referência: não é senha, não dá acesso a nada e não vale como vale.
+  numero Int @unique @default(autoincrement())
+
+  /// A cliente dona do crédito.
+  userId String
+  tipo   TipoDeMovimentoDeCredito
+
+  /// Com sinal: positivo entra no saldo, negativo sai.
+  valor Decimal @db.Decimal(10, 2)
+
+  /// A reserva cancelada de onde o crédito veio.
+  reservationOrigemId  String?
+  /// A reserva em que o crédito foi usado (ou de onde ele voltou).
+  reservationDestinoId String?
+
+  /// A utilização que este movimento desfaz. Única: uma utilização só pode
+  /// ser estornada uma vez.
+  movimentoReferenciaId String? @unique
+
+  observacao String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  user                User                     @relation("CreditosDaCliente", fields: [userId], references: [id], onDelete: Restrict)
+  reservationOrigem   Reservation?             @relation("CreditoOrigem", fields: [reservationOrigemId], references: [id], onDelete: Restrict)
+  reservationDestino  Reservation?             @relation("CreditoDestino", fields: [reservationDestinoId], references: [id], onDelete: Restrict)
+  movimentoReferencia CreditoClienteMovimento? @relation("EstornoDoMovimento", fields: [movimentoReferenciaId], references: [id], onDelete: Restrict)
+  estorno             CreditoClienteMovimento? @relation("EstornoDoMovimento")
+  createdBy           User                     @relation("CreditosRegistrados", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([reservationOrigemId])
+  @@index([reservationDestinoId])
+  @@index([createdById])
+  @@map("credito_cliente_movimentos")
+}
+
+/// O que foi feito com o dinheiro de uma reserva cancelada.
+///
+/// Uma linha por cancelamento feito pelo painel, gravada no mesmo instante e
+/// nunca alterada depois. Os valores são fotografia do momento: o que estava
+/// contratado, quanto tinha sido pago (só PAID) e como esse pago foi
+/// distribuído — crédito, reembolso, retenção. A soma das três é sempre
+/// exatamente o pago; o servidor recusa qualquer outra combinação.
+///
+/// É esta linha que o Financeiro lê para saber que o pago de uma reserva
+/// cancelada continua no caixa, que um reembolso saiu e em que dia, e que a
+/// parte retida é receita de retenção do mês do cancelamento — e não
+/// faturamento de festa.
+///
+/// Cancelamentos anteriores a esta tabela não têm linha e não ganham uma:
+/// não há registro confiável do que foi feito com aquele dinheiro, e
+/// inventar seria pior que deixar em branco.
+model TratamentoDeCancelamento {
+  id            String @id @default(cuid())
+  reservationId String @unique
+
+  motivo String
+
+  /// Valor do contrato no cancelamento.
+  contratado               Decimal @db.Decimal(10, 2)
+  /// Soma dos pagamentos PAID no cancelamento.
+  recebido                 Decimal @db.Decimal(10, 2)
+  /// Crédito Festaê que estava aplicado na reserva e voltou ao saldo.
+  creditoAplicadoDevolvido Decimal @db.Decimal(10, 2)
+
+  /// Distribuição do recebido. creditoGerado + reembolsado + retido = recebido.
+  creditoGerado Decimal   @db.Decimal(10, 2)
+  reembolsado   Decimal   @db.Decimal(10, 2)
+  /// Quando o reembolso saiu de fato. É a data da saída no caixa.
+  reembolsadoEm DateTime?
+  retido        Decimal   @db.Decimal(10, 2)
+
+  /// Quando o tratamento foi definido. A retenção é receita deste mês.
+  definidoEm  DateTime @default(now())
+  createdById String
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  createdBy   User        @relation("CancelamentosTratados", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([definidoEm])
+  @@index([createdById])
+  @@map("tratamentos_de_cancelamento")
 }
 
 model Partner {

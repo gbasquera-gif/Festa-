@@ -13,6 +13,7 @@ import { OrdersModule } from "./modules/orders/orders.module";
 import { ReservationsModule } from "./modules/reservations/reservations.module";
 import { OperationsModule } from "./modules/operations/operations.module";
 import { FinanceiroModule } from "./modules/financeiro/financeiro.module";
+import { CreditosModule } from "./modules/creditos/creditos.module";
 import { ComercialModule } from "./modules/comercial/comercial.module";
 import { AcervoModule } from "./modules/acervo/acervo.module";
 import { OrcamentosModule } from "./modules/orcamentos/orcamentos.module";
@@ -43,6 +44,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
     ReservationsModule,
     OperationsModule,
     FinanceiroModule,
+    CreditosModule,
     ComercialModule,
     AcervoModule,
     OrcamentosModule,

@@ -19,6 +19,8 @@ import Financeiro from "@/pages/Financeiro";
 import NovoOrcamento from "@/pages/NovoOrcamento";
 import OrcamentoDetalhe from "@/pages/OrcamentoDetalhe";
 import Proposta from "@/pages/Proposta";
+import ClienteDetalhe from "@/pages/ClienteDetalhe";
+import { ComprovanteDoSaldo, VoucherDeCredito } from "@/pages/VoucherDeCredito";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -131,6 +133,29 @@ function Router() {
         <Protected>
           <Events />
         </Protected>
+      </Route>
+      {/* Voucher e saldo de crédito: dentro do painel, com login. Não há
+          endereço público para eles — ver CreditosController. */}
+      <Route path="/clientes/:id/creditos/saldo">
+        {(params) => (
+          <Protected>
+            <ComprovanteDoSaldo clienteId={params.id} />
+          </Protected>
+        )}
+      </Route>
+      <Route path="/clientes/:id/creditos/:movimentoId/voucher">
+        {(params) => (
+          <Protected>
+            <VoucherDeCredito movimentoId={params.movimentoId} />
+          </Protected>
+        )}
+      </Route>
+      <Route path="/clientes/:id">
+        {(params) => (
+          <Protected>
+            <ClienteDetalhe id={params.id} />
+          </Protected>
+        )}
       </Route>
       <Route path="/clientes">
         <Protected>

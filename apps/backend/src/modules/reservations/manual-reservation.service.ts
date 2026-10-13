@@ -9,11 +9,15 @@ import { prisma } from "@festae/database";
 import {
   diaDaFesta,
   formasDoTelefone,
+  formatarReais,
+  fromCentsInt,
   normalizarTelefone,
+  toCentsInt,
   totalDaVendaManual,
   type EditarReservaInput,
   type ManualReservationInput,
 } from "@festae/shared";
+import { creditoAplicadoEmCentavos, pagoEmCentavos, travarPedido, utilizarCredito } from "../creditos/ledger";
 import { AvailabilityService } from "../availability/availability.service";
 import { itensDoKitDoPedido } from "../availability/item-commitment";
 import {
@@ -22,7 +26,14 @@ import {
 } from "../availability/registro-de-conflitos";
 
 /** Estados que seguram data e material. Recusada e cancelada devolvem tudo. */
-const RESERVAS_ATIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
+const RESERVAS_ATIVAS = [
+  "PENDING",
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "AGUARDANDO_DEVOLUCAO",
+  "COMPLETED",
+] as const;
 
 /**
  * O detalhe de um conflito, do jeito que a operação precisa ler.
@@ -144,6 +155,17 @@ export class ManualReservationService {
 
     const cliente = await this.acharOuCriarCliente(input.cliente);
 
+    // O crédito que a tela ofereceu é o da ficha que ela mostrou. Se a venda
+    // acabou ligada a outra ficha (outro e-mail digitado depois, por exemplo),
+    // recusar é melhor do que tirar crédito de quem não estava na tela.
+    if (input.credito && input.credito.clienteId !== cliente.id) {
+      throw new ConflictException({
+        message:
+          "O crédito mostrado é de outro cadastro. Confira o telefone e o e-mail da cliente e aplique o crédito de novo.",
+        codigo: "CREDITO_DE_OUTRA_FICHA",
+      });
+    }
+
     const reserva = await prisma.$transaction(async (tx) => {
       const evento = await tx.event.create({
         data: {
@@ -210,7 +232,7 @@ export class ManualReservationService {
         });
       }
 
-      return tx.reservation.create({
+      const criada = await tx.reservation.create({
         data: {
           orderId: ordem.id,
           eventDate: dataDaFesta,
@@ -221,7 +243,24 @@ export class ManualReservationService {
           notes: input.evento.observacoes || undefined,
         },
       });
-    });
+
+      // Crédito na mesma transação da venda: ou a festa nasce com o crédito
+      // aplicado, ou não nasce. Metade — festa criada, crédito não — faria a
+      // operação cobrar da cliente um valor que ela já tinha na Festaê.
+      if (input.credito) {
+        await utilizarCredito(tx, {
+          userId: cliente.id,
+          reservationId: criada.id,
+          orderId: ordem.id,
+          totalDoPedido: total,
+          valor: input.credito.valor,
+          createdById: criadoPorId,
+          observacao: "Aplicado na venda",
+        });
+      }
+
+      return criada;
+    }, { timeout: 15_000 });
 
     this.logger.log(
       `Reserva manual ${reserva.id} criada por ${criadoPorId} — canal ${input.origem}.`,
@@ -351,6 +390,25 @@ export class ManualReservationService {
     const observacoes = input.evento.observacoes?.trim() || null;
 
     await prisma.$transaction(async (tx) => {
+      // Crédito aplicado é dinheiro da cliente já comprometido com esta festa.
+      // Baixar o total abaixo de pago + crédito deixaria crédito sobrando
+      // dentro da reserva, sem caminho de volta para o saldo dela. Primeiro
+      // se estorna o crédito, depois se baixa o preço.
+      await travarPedido(tx, reserva.order.id);
+      const credito = await creditoAplicadoEmCentavos(tx, id);
+      if (credito > 0) {
+        const pago = await pagoEmCentavos(tx, reserva.order.id);
+        if (toCentsInt(total) < pago + credito) {
+          throw new ConflictException({
+            message:
+              `O total novo (${formatarReais(total)}) fica abaixo do que já está coberto: ` +
+              `${formatarReais(fromCentsInt(pago))} pagos e ${formatarReais(fromCentsInt(credito))} de crédito Festaê. ` +
+              "Estorne o crédito aplicado antes de baixar o valor da festa.",
+            codigo: "TOTAL_ABAIXO_DO_CREDITO",
+          });
+        }
+      }
+
       await tx.user.update({
         where: { id: cliente.id },
         data: {
@@ -464,11 +522,9 @@ export class ManualReservationService {
     const email = dados.email?.trim() || null;
     const telefone = normalizarTelefone(dados.telefone);
 
-    const existente = email
-      ? await prisma.user.findUnique({ where: { email } })
-      : await this.clientePorTelefone(dados.telefone);
+    const existente = await this.clienteExistente(dados);
 
-    if (existente && !existente.deletedAt) {
+    if (existente) {
       // Telefone novo de cliente conhecido é atualização, não conflito. A
       // comparação é pelos dígitos: o mesmo número com outra máscara não é
       // telefone novo, e reescrevê-lo só mudaria a formatação.
@@ -486,6 +542,21 @@ export class ManualReservationService {
         role: "CLIENT",
       },
     });
+  }
+
+  /**
+   * A ficha que uma venda com este contato vai usar, se já existir.
+   *
+   * É a regra de reaproveitamento sozinha, sem criar nem atualizar nada —
+   * para a tela de venda poder perguntar "essa cliente tem crédito?" pela
+   * mesma regra que, ao salvar, vai decidir de quem é a venda.
+   */
+  async clienteExistente(dados: { telefone: string; email?: string | null }) {
+    const email = dados.email?.trim() || null;
+    const existente = email
+      ? await prisma.user.findUnique({ where: { email } })
+      : await this.clientePorTelefone(dados.telefone);
+    return existente && !existente.deletedAt ? existente : null;
   }
 
   /**

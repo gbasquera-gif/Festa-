@@ -85,6 +85,21 @@ export const manualReservationSchema = z.object({
 
   /** Obrigatório: é a única chance de saber por onde esta venda entrou. */
   origem: z.enum(MANUAL_SALE_CHANNELS as unknown as [string, ...string[]]),
+
+  /**
+   * Crédito Festaê aplicado nesta festa, quando a operação escolheu aplicar.
+   *
+   * Nunca automático: só vem quando alguém apertou "Aplicar crédito nesta
+   * festa". `clienteId` é a ficha cujo saldo a tela mostrou — o servidor
+   * recusa se a venda acabar ligada a outra ficha, em vez de tirar crédito
+   * de quem não estava na tela.
+   */
+  credito: z
+    .object({
+      clienteId: z.string().min(1),
+      valor: z.coerce.number().positive("Informe o valor do crédito."),
+    })
+    .optional(),
 });
 
 export type ManualReservationInput = z.infer<typeof manualReservationSchema>;
@@ -236,6 +251,9 @@ export type RegistrarPagamentoInput = z.infer<typeof registrarPagamentoSchema>;
  *    valores do pedido — e o saldo se ajusta sozinho.
  */
 export const editarReservaSchema = manualReservationSchema
+  // Crédito numa reserva existente tem caminho próprio, com trava e extrato:
+  // a edição mexe no pedido, não no saldo da cliente.
+  .omit({ credito: true })
   .extend({
     origem: z.enum(SALE_CHANNELS as unknown as [string, ...string[]]).optional(),
     financeiro: z.object({

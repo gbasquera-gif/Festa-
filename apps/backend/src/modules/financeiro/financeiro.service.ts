@@ -19,6 +19,7 @@ import {
 } from "./contratos";
 import {
   acumuladoNoAno,
+  creditoAplicadoNaReserva,
   gastoAcumulado,
   indicadoresDoMes,
   mesAnterior,
@@ -73,8 +74,18 @@ export class FinanceiroService {
    */
   private async contratos(): Promise<ContratoApurado[]> {
     const reservas = await prisma.reservation.findMany({
-      where: { status: { in: [...VIGENTES] } },
+      // Vigentes, mais as canceladas com tratamento registrado: o dinheiro
+      // delas entrou e continua no caixa, o reembolso é saída e a retenção é
+      // receita do mês do cancelamento. Cancelada sem tratamento (anterior a
+      // ele) fica de fora, como sempre ficou.
+      where: {
+        OR: [
+          { status: { in: [...VIGENTES] } },
+          { tratamentoDoCancelamento: { isNot: null } },
+        ],
+      },
       select: {
+        status: true,
         eventDate: true,
         requestedAt: true,
         cancelledAt: true,
@@ -87,6 +98,10 @@ export class FinanceiroService {
             },
           },
         },
+        creditosUtilizados: { select: { valor: true } },
+        tratamentoDoCancelamento: {
+          select: { reembolsado: true, reembolsadoEm: true, retido: true, definidoEm: true },
+        },
       },
     });
 
@@ -94,12 +109,36 @@ export class FinanceiroService {
       fechadoEm: reserva.requestedAt,
       festaEm: reserva.eventDate,
       valor: paraNumero(reserva.order.total),
-      cancelado: reserva.cancelledAt !== null,
+      cancelado:
+        reserva.cancelledAt !== null || !(VIGENTES as readonly string[]).includes(reserva.status),
       recebimentos: reserva.order.payments.map((pagamento) => ({
         valor: paraNumero(pagamento.amount),
         recebidoEm: pagamento.paidAt,
       })),
+      creditoAplicado: creditoAplicadoNaReserva(
+        reserva.creditosUtilizados.map((m) => ({ valor: paraNumero(m.valor) })),
+      ),
+      tratamento: reserva.tratamentoDoCancelamento
+        ? {
+            reembolsado: paraNumero(reserva.tratamentoDoCancelamento.reembolsado),
+            reembolsadoEm: reserva.tratamentoDoCancelamento.reembolsadoEm,
+            retido: paraNumero(reserva.tratamentoDoCancelamento.retido),
+            definidoEm: reserva.tratamentoDoCancelamento.definidoEm,
+          }
+        : null,
     }));
+  }
+
+  /**
+   * Quanto a Festaê deve em crédito às clientes, somando todos os saldos.
+   *
+   * Não é caixa nem receita: é dinheiro que já entrou (e já está no caixa
+   * do mês em que entrou) e que vai virar festa. Aparece ao lado do caixa
+   * para ninguém tomá-lo por sobra.
+   */
+  private async creditoEmAberto(): Promise<number> {
+    const soma = await prisma.creditoClienteMovimento.aggregate({ _sum: { valor: true } });
+    return paraNumero(soma._sum.valor ?? 0);
   }
 
   private async gastos(): Promise<GastoApurado[]> {
@@ -154,10 +193,11 @@ export class FinanceiroService {
    * ano e aos doze pontos do gráfico.
    */
   async panorama(ano: number, mes: string) {
-    const [contratos, gastos, meta] = await Promise.all([
+    const [contratos, gastos, meta, creditoEmAberto] = await Promise.all([
       this.contratos(),
       this.gastos(),
       prisma.metaMensal.findUnique({ where: { competencia: mes } }),
+      this.creditoEmAberto(),
     ]);
 
     const operacional = resultadoOperacionalDoMes(contratos, gastos, mes);
@@ -171,12 +211,27 @@ export class FinanceiroService {
       ano,
 
       // Faturou -> gastou -> sobrou -> margem. A leitura principal.
+      // A retenção de cancelamento vem em linha própria: é receita
+      // operacional, mas não é faturamento de festa.
       operacional: {
         faturamento: operacional.receita,
+        retencao: operacional.receitaDeRetencao,
         despesas: operacional.despesa,
         resultado: operacional.resultado,
         margem: operacional.margem,
       },
+
+      /**
+       * O caixa do mês: o que entrou (PAID, inclusive de reserva cancelada
+       * depois) menos o que foi devolvido. Crédito Festaê não aparece aqui
+       * nem quando é gerado nem quando é usado — não é dinheiro novo.
+       */
+      caixa: {
+        entradas: indicadores.entradasNoCaixa,
+        reembolsos: indicadores.reembolsosNoMes,
+        liquido: indicadores.caixa.receita,
+      },
+      creditoEmAberto,
 
       ytd: acumuladoNoAno(contratos, gastos, ano, mes),
 
@@ -203,7 +258,7 @@ export class FinanceiroService {
 
       comparacao: {
         mesAnterior: anterior,
-        temBase: doAnterior.receita > 0 || doAnterior.despesa > 0,
+        temBase: doAnterior.receita > 0 || doAnterior.receitaDeRetencao > 0 || doAnterior.despesa > 0,
         faturamento: variacao(operacional.receita, doAnterior.receita),
         resultado: variacao(operacional.resultado, doAnterior.resultado),
       },
@@ -231,10 +286,11 @@ export class FinanceiroService {
    */
   async relatorioExecutivo(ano: number, mes: string) {
     const agora = new Date();
-    const [contratos, gastos, reservas] = await Promise.all([
+    const [contratos, gastos, reservas, creditoEmAberto] = await Promise.all([
       this.contratos(),
       this.gastos(),
       this.carteiraCrua(),
+      this.creditoEmAberto(),
     ]);
     return montarRelatorioExecutivo({
       contratos,
@@ -243,6 +299,7 @@ export class FinanceiroService {
       ano,
       mes,
       agora,
+      creditoEmAberto,
     });
   }
 

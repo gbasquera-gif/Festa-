@@ -36,6 +36,8 @@ export type LinhaDoDetalhe = {
   situacao: string;
   valor: number;
   recebido: number;
+  /** Crédito Festaê aplicado: abate o saldo, não é recebido. */
+  creditoAplicado: number;
   saldo: number;
 };
 
@@ -45,7 +47,7 @@ export type Detalhamento = {
   /** "2026-09", "2026" ou null quando o indicador não tem recorte de período. */
   periodo: string | null;
   linhas: LinhaDoDetalhe[];
-  totais: { contratado: number; recebido: number; saldo: number; festas: number };
+  totais: { contratado: number; recebido: number; creditoAplicado: number; saldo: number; festas: number };
   /**
    * O total das linhas bate com o indicador apurado pela regra compartilhada.
    *
@@ -68,6 +70,7 @@ export function paraLinha({ comercial }: LinhaDaCarteira): LinhaDoDetalhe {
     situacao: comercial.situacao,
     valor: comercial.valor,
     recebido: comercial.recebido,
+    creditoAplicado: comercial.creditoAplicado,
     saldo: comercial.saldo,
   };
 }
@@ -143,6 +146,7 @@ function montar(
   const totais = {
     contratado: somaCentavos(linhas.map((l) => l.valor)) / 100,
     recebido: somaCentavos(linhas.map((l) => l.recebido)) / 100,
+    creditoAplicado: somaCentavos(linhas.map((l) => l.creditoAplicado)) / 100,
     saldo: somaCentavos(linhas.map((l) => l.saldo)) / 100,
     festas: linhas.length,
   };

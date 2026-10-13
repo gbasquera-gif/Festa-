@@ -133,3 +133,52 @@ describe("grupoDeProximidade", () => {
     expect(grupoDeProximidade(8)).toBe("DEPOIS");
   });
 });
+
+describe("aguardando devolução", () => {
+  const fora = reserva("AGUARDANDO_DEVOLUCAO", "2026-09-19", 1000, 1000);
+
+  it("tem aba própria e continua entre as ativas", () => {
+    expect(ehDaAba(fora, "DEVOLUCAO", AGORA)).toBe(true);
+    expect(ehDaAba(fora, "ATIVAS", AGORA)).toBe(true);
+    expect(ehDaAba(fora, "CONCLUIDAS", AGORA)).toBe(false);
+    expect(ehDaAba(fora, "CANCELADAS", AGORA)).toBe(false);
+  });
+
+  it("só ela aparece na aba de devolução", () => {
+    for (const status of ["CONFIRMED", "READY", "COMPLETED", "CANCELLED"] as const) {
+      expect(ehDaAba(reserva(status, "2026-09-19"), "DEVOLUCAO", AGORA)).toBe(false);
+    }
+  });
+
+  it("não é marcada como 'não foi fechada': a operação já disse onde ela está", () => {
+    const s = situacaoOperacional(fora, AGORA);
+    expect(s.aguardandoDevolucao).toBe(true);
+    expect(s.pendenciaOperacional).toBe(false);
+    expect(s.temPendencia).toBe(false);
+  });
+
+  it("saldo vencido continua sendo pendência, mesmo aguardando devolução", () => {
+    const s = situacaoOperacional(reserva("AGUARDANDO_DEVOLUCAO", "2026-09-19", 1000, 300), AGORA);
+    expect(s.vencido).toBe(true);
+    expect(s.temPendencia).toBe(true);
+  });
+
+  it("nada a conclui pela data: dias depois continua aguardando", () => {
+    const muitoDepois = new Date("2026-12-20T15:00:00.000Z");
+    expect(ehDaAba(fora, "DEVOLUCAO", muitoDepois)).toBe(true);
+    expect(ehDaAba(fora, "CONCLUIDAS", muitoDepois)).toBe(false);
+  });
+});
+
+describe("crédito Festaê na classificação", () => {
+  it("crédito aplicado abate o saldo: paga com crédito e sinal, a festa concluída sai de Ativas", () => {
+    const r: ReservaClassificavel = { ...reserva("COMPLETED", "2026-09-10", 1000, 700), creditoAplicado: 300 };
+    expect(situacaoOperacional(r, AGORA).pendenciaFinanceira).toBe(false);
+    expect(ehDaAba(r, "CONCLUIDAS", AGORA)).toBe(true);
+  });
+
+  it("sem o crédito, a mesma festa teria saldo vencido", () => {
+    const r = reserva("COMPLETED", "2026-09-10", 1000, 700);
+    expect(situacaoOperacional(r, AGORA).vencido).toBe(true);
+  });
+});

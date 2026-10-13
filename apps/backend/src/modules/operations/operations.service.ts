@@ -16,7 +16,8 @@ import {
 } from "./calendario";
 
 /** Reservas que a operação ainda precisa cumprir. */
-const ATIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY"] as const;
+/** Aguardando devolução é festa que ainda não terminou: o material está fora. */
+const ATIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "AGUARDANDO_DEVOLUCAO"] as const;
 
 /** Quantos dias para trás continuar mostrando festas já realizadas. */
 const JANELA_DE_DEVOLUCAO = 7;

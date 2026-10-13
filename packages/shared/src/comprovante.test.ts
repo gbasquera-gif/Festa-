@@ -166,3 +166,30 @@ describe("datas do comprovante no dia de Chapecó", () => {
   });
 });
 
+
+describe("crédito Festaê no comprovante", () => {
+  it("separa valor da festa, crédito utilizado, pagamentos e saldo", () => {
+    const c = montarComprovante({ ...base, valores: { ...base.valores, creditoAplicado: 300 } });
+    expect(c.valores.total).toBe(900);
+    expect(c.valores.credito).toBe(300);
+    expect(c.valores.pago).toBe(270);
+    expect(c.valores.saldo).toBe(330);
+    expect(c.temCredito).toBe(true);
+    expect(c.temPagamento).toBe(true);
+  });
+
+  it("crédito não aparece como pagamento", () => {
+    const c = montarComprovante({ ...base, pagamentos: [], valores: { ...base.valores, creditoAplicado: 300 } });
+    expect(c.pagamentos).toEqual([]);
+    expect(c.valores.pago).toBe(0);
+    expect(c.temPagamento).toBe(false);
+    expect(c.valores.saldo).toBe(600);
+  });
+
+  it("sem crédito, nada muda", () => {
+    const c = montarComprovante(base);
+    expect(c.valores.credito).toBe(0);
+    expect(c.temCredito).toBe(false);
+    expect(c.valores.saldo).toBe(630);
+  });
+});

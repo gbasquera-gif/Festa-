@@ -17,4 +17,12 @@ export const SELECAO_DO_COMPROMISSO = {
  * devolvem as peças. É a lista da disponibilidade; a pressão futura do
  * acervo lê a mesma, para as duas telas não discordarem sobre um dia.
  */
-export const STATUS_QUE_COMPROMETEM = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
+export const STATUS_QUE_COMPROMETEM = [
+  "PENDING",
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  // O material está na casa da cliente: segura como qualquer outra etapa.
+  "AGUARDANDO_DEVOLUCAO",
+  "COMPLETED",
+] as const;

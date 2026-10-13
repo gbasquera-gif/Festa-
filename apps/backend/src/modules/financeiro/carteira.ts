@@ -52,6 +52,16 @@ export function lerCarteiraCrua() {
             },
           },
         },
+        creditosUtilizados: { select: { valor: true } },
+        tratamentoDoCancelamento: {
+          select: {
+            creditoGerado: true,
+            reembolsado: true,
+            reembolsadoEm: true,
+            retido: true,
+            definidoEm: true,
+          },
+        },
       },
       orderBy: { eventDate: "desc" },
     });

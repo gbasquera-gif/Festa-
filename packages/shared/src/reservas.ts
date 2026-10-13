@@ -14,12 +14,20 @@ import type { ReservationStatus } from "./enums";
  * regra é a forma mais barata de fazer o contador dizer 8 e a lista mostrar 7.
  */
 
-export const ABAS_DE_RESERVA = ["ATIVAS", "PROXIMAS", "CONCLUIDAS", "CANCELADAS", "TODAS"] as const;
+export const ABAS_DE_RESERVA = [
+  "ATIVAS",
+  "PROXIMAS",
+  "DEVOLUCAO",
+  "CONCLUIDAS",
+  "CANCELADAS",
+  "TODAS",
+] as const;
 export type AbaDeReserva = (typeof ABAS_DE_RESERVA)[number];
 
 export const ABA_DE_RESERVA_LABEL: Record<AbaDeReserva, string> = {
   ATIVAS: "Ativas",
   PROXIMAS: "Próximas",
+  DEVOLUCAO: "Aguardando devolução",
   CONCLUIDAS: "Concluídas",
   CANCELADAS: "Canceladas",
   TODAS: "Todas",
@@ -28,10 +36,27 @@ export const ABA_DE_RESERVA_LABEL: Record<AbaDeReserva, string> = {
 export const ABA_DE_RESERVA_NOTA: Record<AbaDeReserva, string> = {
   ATIVAS: "o que ainda pede ação — pendências primeiro, depois a festa mais próxima",
   PROXIMAS: "festas de hoje em diante",
+  DEVOLUCAO: "festas que já aconteceram com material ainda fora — confirme a devolução para concluir",
   CONCLUIDAS: "festas entregues e quitadas",
   CANCELADAS: "canceladas e recusadas — ficam no histórico, fora dos totais",
   TODAS: "tudo que existe, sem recorte",
 };
+
+/**
+ * Os estados que seguram data e material.
+ *
+ * Aguardando devolução segura como qualquer outro: as peças estão na casa da
+ * cliente, e oferecê-las a outra festa antes de voltarem é vender o que não
+ * está na prateleira. Só cancelada e recusada liberam.
+ */
+export const STATUS_QUE_SEGURAM_ACERVO: readonly ReservationStatus[] = [
+  "PENDING",
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "AGUARDANDO_DEVOLUCAO",
+  "COMPLETED",
+];
 
 /** O mínimo que uma reserva precisa expor para ser classificada. */
 export type ReservaClassificavel = {
@@ -42,6 +67,8 @@ export type ReservaClassificavel = {
   total: number;
   /** Soma dos pagamentos com status PAID. */
   recebido: number;
+  /** Crédito Festaê aplicado. Abate o saldo sem ser recebimento. */
+  creditoAplicado?: number;
 };
 
 /**
@@ -61,8 +88,16 @@ export type SituacaoOperacional = {
   pendenciaFinanceira: boolean;
   /** A festa já passou e o saldo continua aberto. Isso é atraso. */
   vencido: boolean;
-  /** A festa já passou e a reserva não foi fechada como concluída. */
+  /**
+   * A festa já passou e a reserva não foi fechada como concluída.
+   *
+   * Aguardando devolução não conta: ali a operação já disse em que pé a
+   * festa está, e a aba própria é o lembrete. Marcar de novo como pendência
+   * seria dizer "ninguém olhou" sobre uma festa que alguém acabou de olhar.
+   */
   pendenciaOperacional: boolean;
+  /** Festa entregue com material ainda fora. */
+  aguardandoDevolucao: boolean;
   /**
    * Precisa de ação agora.
    *
@@ -90,10 +125,17 @@ export function situacaoOperacional(
 
   // Em centavos: 219,99999 < 220 em ponto flutuante transformaria contrato
   // quitado em pendência eterna, e a aba Ativas nunca esvaziaria.
-  const saldo = toCentsInt(reserva.total) - toCentsInt(reserva.recebido);
+  // Crédito Festaê aplicado abate o saldo como um pagamento abateria — a
+  // cliente não deve aquela parte —, sem ser dinheiro que entrou.
+  const saldo =
+    toCentsInt(reserva.total) -
+    toCentsInt(reserva.recebido) -
+    toCentsInt(reserva.creditoAplicado ?? 0);
   const pendenciaFinanceira = !cancelada && saldo > 0;
   const vencido = pendenciaFinanceira && diasAteAFesta < 0;
-  const pendenciaOperacional = !cancelada && diasAteAFesta < 0 && reserva.status !== "COMPLETED";
+  const aguardandoDevolucao = reserva.status === "AGUARDANDO_DEVOLUCAO";
+  const pendenciaOperacional =
+    !cancelada && diasAteAFesta < 0 && reserva.status !== "COMPLETED" && !aguardandoDevolucao;
 
   return {
     cancelada,
@@ -101,6 +143,7 @@ export function situacaoOperacional(
     pendenciaFinanceira,
     vencido,
     pendenciaOperacional,
+    aguardandoDevolucao,
     temPendencia: vencido || pendenciaOperacional,
   };
 }
@@ -122,6 +165,8 @@ export function ehDaAba(reserva: ReservaClassificavel, aba: AbaDeReserva, agora:
       return true;
     case "CANCELADAS":
       return s.cancelada;
+    case "DEVOLUCAO":
+      return s.aguardandoDevolucao;
     case "CONCLUIDAS":
       return !s.cancelada && reserva.status === "COMPLETED" && !s.pendenciaFinanceira;
     case "PROXIMAS":

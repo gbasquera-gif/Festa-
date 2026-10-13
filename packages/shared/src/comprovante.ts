@@ -59,10 +59,21 @@ export interface DadosDoComprovante {
   festa: { tipo: string; tema: string | null; convidados: number | null; cidade: string };
   logistica: { entrega: boolean; montagem: boolean; endereco: string | null };
   itens: ItemDoComprovante[];
-  valores: { total: number; pago: number; saldo: number; entrega: number; montagem: number; desconto: number };
+  valores: {
+    total: number;
+    pago: number;
+    /** Crédito Festaê usado nesta festa. Não é pagamento: abate o saldo. */
+    credito: number;
+    saldo: number;
+    entrega: number;
+    montagem: number;
+    desconto: number;
+  };
   pagamentos: PagamentoDoComprovante[];
   /** Falso enquanto nenhum centavo entrou: não é comprovante de pagamento nenhum. */
   temPagamento: boolean;
+  /** Parte da festa coberta por crédito Festaê. */
+  temCredito: boolean;
   observacoes: string | null;
 }
 
@@ -98,7 +109,14 @@ export interface EntradaDoComprovante {
   logistica: { entrega: boolean; montagem: boolean };
   kit: { nome: string } | null;
   itens: { nome: string; quantidade: number }[];
-  valores: { total: number; entrega: number; montagem: number; desconto: number };
+  valores: {
+    total: number;
+    entrega: number;
+    montagem: number;
+    desconto: number;
+    /** Crédito Festaê aplicado, líquido de estornos. */
+    creditoAplicado?: number;
+  };
   pagamentos: { valor: number; forma: string; pagoEm: string | Date | null; recebido: boolean }[];
   observacoes: string | null;
   emitidoEm?: Date;
@@ -116,6 +134,7 @@ export function montarComprovante(entrada: EntradaDoComprovante): DadosDoComprov
   const pago = entrada.pagamentos
     .filter((p) => p.recebido)
     .reduce((soma, p) => soma + p.valor, 0);
+  const credito = Math.max(0, entrada.valores.creditoAplicado ?? 0);
 
   const itens: ItemDoComprovante[] = [
     ...(entrada.kit ? [{ descricao: entrada.kit.nome, quantidade: 1 }] : []),
@@ -154,7 +173,10 @@ export function montarComprovante(entrada: EntradaDoComprovante): DadosDoComprov
     valores: {
       total: entrada.valores.total,
       pago,
-      saldo: saldoAPagar(entrada.valores.total, pago),
+      credito,
+      // Crédito abate o saldo como um pagamento abateria, e aparece em linha
+      // própria: a cliente precisa ver quanto pagou e quanto usou de crédito.
+      saldo: saldoAPagar(entrada.valores.total, pago + credito),
       entrega: entrada.valores.entrega,
       montagem: entrada.valores.montagem,
       desconto: entrada.valores.desconto,
@@ -168,6 +190,7 @@ export function montarComprovante(entrada: EntradaDoComprovante): DadosDoComprov
         recebido: p.recebido,
       })),
     temPagamento: pago > 0,
+    temCredito: credito > 0,
     observacoes: entrada.observacoes?.trim() || null,
   };
 }

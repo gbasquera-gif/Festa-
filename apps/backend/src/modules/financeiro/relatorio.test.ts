@@ -16,10 +16,13 @@ const banco = vi.hoisted(() => ({ reservas: [] as unknown[], gastos: [] as unkno
 vi.mock("@festae/database", () => ({
   prisma: {
     reservation: {
-      findMany: async (args: { where?: { status?: { in: string[] } }; select: { order: { select: { payments: { where?: { status: string } } } } } }) => {
+      findMany: async (args: { where?: { status?: { in: string[] }; OR?: { status?: { in: string[] } }[] }; select: { order: { select: { payments: { where?: { status: string } } } } } }) => {
         const filtroDoPagamento = args.select.order.select.payments.where?.status;
+        // O Financeiro lê vigentes OU canceladas com tratamento; aqui não há
+        // tratamento nenhum, então o OR se reduz ao filtro de status.
+        const status = args.where?.status?.in ?? args.where?.OR?.[0]?.status?.in;
         return (banco.reservas as Reserva[])
-          .filter((r) => !args.where?.status || args.where.status.in.includes(r.status ?? "CONFIRMED"))
+          .filter((r) => !status || status.includes(r.status ?? "CONFIRMED"))
           .map((r, i) => ({
             id: r.id,
             contractSeq: i + 1,
@@ -41,11 +44,14 @@ vi.mock("@festae/database", () => ({
                 .filter((p) => !filtroDoPagamento || p.status === filtroDoPagamento)
                 .map((p, j) => ({ id: `p${i}-${j}`, type: "DEPOSIT", method: "PIX", status: p.status, amount: p.amount, paidAt: p.paidAt })),
             },
+            creditosUtilizados: [],
+            tratamentoDoCancelamento: null,
           }));
       },
     },
     gasto: { findMany: async () => banco.gastos },
     metaMensal: { findUnique: async () => null },
+    creditoClienteMovimento: { aggregate: async () => ({ _sum: { valor: null } }) },
   },
 }));
 

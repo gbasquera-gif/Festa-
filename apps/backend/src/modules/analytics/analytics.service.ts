@@ -14,7 +14,14 @@ import {
 const SUMMARY_WINDOW_DAYS = 30;
 
 /** Reservas que continuam de pé. Recusada e cancelada não contam como venda. */
-const RESERVAS_VALIDAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
+const RESERVAS_VALIDAS = [
+  "PENDING",
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "AGUARDANDO_DEVOLUCAO",
+  "COMPLETED",
+] as const;
 
 @Injectable()
 export class AnalyticsService {

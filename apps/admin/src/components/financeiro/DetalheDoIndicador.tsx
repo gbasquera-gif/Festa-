@@ -33,6 +33,8 @@ export type LinhaDoDetalhe = {
   situacao: string;
   valor: number;
   recebido: number;
+  /** Crédito Festaê aplicado: abate o saldo, não é recebido. */
+  creditoAplicado?: number;
   saldo: number;
 };
 
@@ -42,7 +44,7 @@ export type Detalhamento = {
   escopo: "MES" | "ANO" | null;
   periodo: string | null;
   linhas: LinhaDoDetalhe[];
-  totais: { contratado: number; recebido: number; saldo: number; festas: number };
+  totais: { contratado: number; recebido: number; creditoAplicado?: number; saldo: number; festas: number };
   confere: boolean;
 };
 
@@ -66,6 +68,7 @@ const STATUS_LABEL: Record<string, string> = {
   CONFIRMED: "Confirmada",
   PREPARING: "Preparação",
   READY: "Pronta",
+  AGUARDANDO_DEVOLUCAO: "Aguardando devolução",
   COMPLETED: "Concluída",
   REJECTED: "Rejeitada",
   CANCELLED: "Cancelada",
@@ -234,7 +237,16 @@ export function DetalhePainel({
                       ) : (
                         <>
                           <td className="num">{numero(l.valor)}</td>
-                          {tipo === "A_RECEBER" && <td className="num">{numero(l.recebido)}</td>}
+                          {tipo === "A_RECEBER" && (
+                            <td className="num">
+                              {numero(l.recebido)}
+                              {(l.creditoAplicado ?? 0) > 0 && (
+                                <span className="block text-xs" style={{ color: "var(--fin-muted)" }}>
+                                  + crédito {numero(l.creditoAplicado ?? 0)}
+                                </span>
+                              )}
+                            </td>
+                          )}
                           {tipo === "A_RECEBER" && (
                             <td className="num" style={{ color: "var(--fin-coral-dark)" }}>
                               {numero(l.saldo)}
@@ -263,7 +275,9 @@ export function DetalhePainel({
                       {tipo === "FESTAS"
                         ? `${tipoDeFesta(l.tipoDeFesta)} · ${l.cidade} · ${STATUS_LABEL[l.status] ?? l.status}`
                         : `${formatarDataDaFesta(l.festaEm)}${l.numero > 0 ? ` · contrato nº ${l.numero}` : ""}${
-                            tipo === "A_RECEBER" ? ` · pago ${brl(l.recebido)} de ${brl(l.valor)}` : ""
+                            tipo === "A_RECEBER"
+                              ? ` · pago ${brl(l.recebido)}${(l.creditoAplicado ?? 0) > 0 ? ` + crédito ${brl(l.creditoAplicado ?? 0)}` : ""} de ${brl(l.valor)}`
+                              : ""
                           }`}
                     </p>
                   </li>
@@ -285,6 +299,9 @@ export function DetalhePainel({
                 <>
                   <Total rotulo="Total contratado" valor={brl(data.totais.contratado)} destaque={tipo === "FATURAMENTO"} />
                   <Total rotulo="Total recebido" valor={brl(data.totais.recebido)} />
+                  {(data.totais.creditoAplicado ?? 0) > 0 && (
+                    <Total rotulo="Crédito Festaê aplicado" valor={brl(data.totais.creditoAplicado ?? 0)} />
+                  )}
                   <Total rotulo="Total a receber" valor={brl(data.totais.saldo)} destaque={tipo === "A_RECEBER"} />
                 </>
               )}

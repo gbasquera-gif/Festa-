@@ -2,7 +2,18 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Ban, BadgeDollarSign, CalendarClock, Pencil, Receipt, SquarePen, Trash2 } from "lucide-react";
+import {
+  Ban,
+  BadgeDollarSign,
+  CalendarClock,
+  PackageCheck,
+  PackageOpen,
+  Pencil,
+  Receipt,
+  SquarePen,
+  Ticket,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,13 +27,17 @@ import { Label } from "@/components/ui/label";
 import {
   PAYMENT_METHODS,
   diaEmChapeco,
+  formatarReais,
   PAYMENT_METHOD_LABEL,
   saldoAPagar,
   splitPayment,
+  type ReservationStatus,
 } from "@festae/shared";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { CorrigirDadosReserva } from "@/components/CorrigirDadosReserva";
+import { CancelarReserva } from "@/components/credito/CancelarReserva";
+import { AplicarCredito } from "@/components/credito/AplicarCredito";
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -54,7 +69,10 @@ export function AcoesDaReserva({
   data,
   total,
   jaPago,
-  jaCancelada,
+  status,
+  creditoAplicado = 0,
+  creditoDisponivel = 0,
+  festaJaChegou = false,
   onDepoisDeExcluir,
 }: {
   reservaId: string;
@@ -65,14 +83,22 @@ export function AcoesDaReserva({
   total: number;
   /** Soma dos pagamentos já recebidos. Define o valor proposto e o saldo. */
   jaPago: number;
-  jaCancelada: boolean;
+  status: ReservationStatus;
+  /** Crédito Festaê abatendo esta festa. */
+  creditoAplicado?: number;
+  /** Saldo de crédito Festaê da cliente, para oferecer o uso. */
+  creditoDisponivel?: number;
+  /** O dia da festa já chegou (ou chega amanhã): o material está saindo. */
+  festaJaChegou?: boolean;
   onDepoisDeExcluir?: () => void;
 }) {
+  const jaCancelada = status === "CANCELLED" || status === "REJECTED";
   const { user } = useAuth();
   const [, navegar] = useLocation();
   const queryClient = useQueryClient();
   const [corrigindo, setCorrigindo] = useState(false);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+  const [aplicandoCredito, setAplicandoCredito] = useState(false);
   const [confirmandoExcluir, setConfirmandoExcluir] = useState(false);
   const [digitado, setDigitado] = useState("");
   const [registrando, setRegistrando] = useState(false);
@@ -88,6 +114,10 @@ export function AcoesDaReserva({
 
   function recarregar() {
     queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    queryClient.invalidateQueries({ queryKey: ["reserva", reservaId] });
+    queryClient.invalidateQueries({ queryKey: ["cliente"] });
+    queryClient.invalidateQueries({ queryKey: ["users"] });
+    queryClient.invalidateQueries({ queryKey: ["financeiro"] });
     queryClient.invalidateQueries({ queryKey: ["proximas-acoes"] });
     queryClient.invalidateQueries({ queryKey: ["analytics-summary"] });
     queryClient.invalidateQueries({ queryKey: ["conflitos"] });
@@ -121,7 +151,9 @@ export function AcoesDaReserva({
     },
   });
 
-  const saldo = saldoAPagar(total, jaPago);
+  // Crédito Festaê aplicado já cobre parte da festa: o saldo a receber é o
+  // que sobra depois dele e dos pagamentos.
+  const saldo = saldoAPagar(total, jaPago + creditoAplicado);
 
   /**
    * O valor que a operação provavelmente vai digitar, por tipo.
@@ -183,14 +215,26 @@ export function AcoesDaReserva({
       setMotivoRecusa(e instanceof Error ? e.message : "Não foi possível registrar o pagamento."),
   });
 
-  const cancelar = useMutation({
-    mutationFn: () => api(`/reservations/${reservaId}/cancelar`, { method: "PATCH" }),
+  const aguardarDevolucao = useMutation({
+    mutationFn: () =>
+      api(`/reservations/${reservaId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "AGUARDANDO_DEVOLUCAO" }),
+      }),
     onSuccess: () => {
-      toast.success("Reserva cancelada. A data e o material voltaram a ficar livres.");
-      setConfirmandoCancelar(false);
+      toast.success("Marcada como aguardando devolução. O material continua reservado.");
       recarregar();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível cancelar."),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível mudar a etapa."),
+  });
+
+  const confirmarDevolucao = useMutation({
+    mutationFn: () => api(`/reservations/${reservaId}/devolucao`, { method: "PATCH" }),
+    onSuccess: () => {
+      toast.success("Devolução confirmada. A reserva está concluída.");
+      recarregar();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível confirmar a devolução."),
   });
 
   const excluir = useMutation({
@@ -276,10 +320,46 @@ export function AcoesDaReserva({
           Alterar data da festa
         </Button>
 
+        {/* Crédito Festaê só aparece quando a cliente tem e a festa ainda
+            tem o que pagar: botão que não leva a lugar nenhum é ruído. */}
+        {!jaCancelada && creditoDisponivel > 0 && saldo > 0 && (
+          <Button variant="outline" className="justify-start" onClick={() => setAplicandoCredito(true)}>
+            <Ticket className="mr-2 size-4" />
+            Aplicar crédito Festaê ({formatarReais(creditoDisponivel)})
+          </Button>
+        )}
+
+        {/* A devolução tem dois passos visíveis: o material saiu e ainda não
+            voltou; voltou e a festa fecha. Concluir direto pelo seletor de
+            etapa continua valendo para quem não precisa do meio-termo. */}
+        {status === "AGUARDANDO_DEVOLUCAO" ? (
+          <Button
+            className="justify-start"
+            disabled={confirmarDevolucao.isPending}
+            onClick={() => confirmarDevolucao.mutate()}
+          >
+            <PackageCheck className="mr-2 size-4" />
+            {confirmarDevolucao.isPending ? "Confirmando..." : "Confirmar devolução e concluir"}
+          </Button>
+        ) : (
+          festaJaChegou &&
+          (status === "CONFIRMED" || status === "PREPARING" || status === "READY") && (
+            <Button
+              variant="outline"
+              className="justify-start"
+              disabled={aguardarDevolucao.isPending}
+              onClick={() => aguardarDevolucao.mutate()}
+            >
+              <PackageOpen className="mr-2 size-4" />
+              Marcar como aguardando devolução
+            </Button>
+          )
+        )}
+
         <Button
           variant="outline"
           className="justify-start"
-          disabled={jaCancelada || cancelar.isPending}
+          disabled={jaCancelada}
           onClick={() => setConfirmandoCancelar(true)}
         >
           <Ban className="mr-2 size-4" />
@@ -339,6 +419,7 @@ export function AcoesDaReserva({
             <p className="text-sm text-muted-foreground">
               Festa de <strong className="text-navy">{cliente}</strong> em {data}. Total{" "}
               {brl(total)} · já recebido {brl(jaPago)} ·{" "}
+              {creditoAplicado > 0 && <>crédito Festaê {brl(creditoAplicado)} · </>}
               <strong className="text-navy">saldo {brl(saldo)}</strong>.
             </p>
 
@@ -537,41 +618,33 @@ export function AcoesDaReserva({
         </DialogContent>
       </Dialog>
 
-      {/* Cancelar: confirmação simples, porque a ação é reversível na prática
-          — a reserva continua no banco e o histórico permanece. */}
-      <Dialog open={confirmandoCancelar} onOpenChange={(v) => !v && setConfirmandoCancelar(false)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancelar a reserva de {cliente}?</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p>
-              A festa de <strong>{data}</strong> deixa de ocupar a agenda, e o material volta para o
-              acervo — a data fica livre para outra cliente na mesma hora.
-            </p>
-            <p className="text-muted-foreground">
-              A reserva continua no sistema com o histórico e os pagamentos já registrados. Fica
-              gravado quem cancelou e quando.
-            </p>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="ghost"
-              className="w-full sm:w-auto"
-              onClick={() => setConfirmandoCancelar(false)}
-            >
-              Voltar
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              disabled={cancelar.isPending}
-              onClick={() => cancelar.mutate()}
-            >
-              {cancelar.isPending ? "Cancelando..." : "Cancelar reserva"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Cancelar: motivo e destino do valor pago. Depois de gerar crédito,
+          o próprio diálogo oferece o voucher e a mensagem para a cliente. */}
+      <CancelarReserva
+        reservaId={reservaId}
+        cliente={cliente}
+        data={data}
+        total={total}
+        jaPago={jaPago}
+        creditoAplicado={creditoAplicado}
+        aberto={confirmandoCancelar}
+        aoFechar={() => setConfirmandoCancelar(false)}
+        aoCancelar={recarregar}
+      />
+
+      {aplicandoCredito && (
+        <AplicarCredito
+          reservaId={reservaId}
+          cliente={cliente}
+          total={total}
+          jaPago={jaPago}
+          creditoAplicado={creditoAplicado}
+          saldoDaCliente={creditoDisponivel}
+          aberto
+          aoFechar={() => setAplicandoCredito(false)}
+          aoAplicar={recarregar}
+        />
+      )}
 
       {/* Excluir: duas etapas. A primeira diz o que some; a segunda exige
           digitar a palavra, para o toque errado num celular não apagar uma

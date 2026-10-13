@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatarReais } from "@festae/shared";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -43,6 +45,8 @@ interface UserRow {
   deletedAt: string | null;
   termsAcceptedAt: string | null;
   termsAcceptedVersion: string | null;
+  /** Saldo de crédito Festaê, somado do extrato pelo servidor. */
+  creditoDisponivel?: number;
 }
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -294,6 +298,7 @@ export default function Users() {
             <TableHead>E-mail</TableHead>
             <TableHead>Telefone</TableHead>
             <TableHead>Perfil</TableHead>
+            <TableHead>Crédito Festaê</TableHead>
             <TableHead>Desde</TableHead>
             {/* Prova de consentimento: se um cliente questionar, é aqui que se
                 mostra quando ele aceitou e qual texto estava valendo. */}
@@ -304,12 +309,21 @@ export default function Users() {
         <TableBody>
           {isLoading && (
             <TableRow>
-              <TableCell colSpan={canResetPassword ? 7 : 6}>Carregando...</TableCell>
+              <TableCell colSpan={canResetPassword ? 8 : 7}>Carregando...</TableCell>
             </TableRow>
           )}
           {data?.map((user) => (
             <TableRow key={user.id}>
-              <TableCell data-label="Nome" className="font-medium">{user.name}</TableCell>
+              <TableCell data-label="Nome" className="font-medium">
+                {/* O cadastro abre o crédito e o extrato; conta da equipe não tem o que mostrar. */}
+                {user.role === "CLIENT" ? (
+                  <Link href={`/clientes/${user.id}`} className="text-navy underline-offset-2 hover:underline">
+                    {user.name}
+                  </Link>
+                ) : (
+                  user.name
+                )}
+              </TableCell>
               <TableCell data-label="E-mail" className="text-muted-foreground">{user.email ?? "—"}</TableCell>
               <TableCell data-label="Telefone">{user.phone ?? "—"}</TableCell>
               <TableCell data-label="Perfil">
@@ -317,6 +331,13 @@ export default function Users() {
                   <Badge variant="outline">Conta excluída</Badge>
                 ) : (
                   <Badge variant={user.role === "CLIENT" ? "secondary" : "default"}>{user.role}</Badge>
+                )}
+              </TableCell>
+              <TableCell data-label="Crédito Festaê" className="tabular-nums">
+                {(user.creditoDisponivel ?? 0) > 0 ? (
+                  <span className="font-medium text-emerald-700">{formatarReais(user.creditoDisponivel ?? 0)}</span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
                 )}
               </TableCell>
               <TableCell data-label="Desde">{new Date(user.createdAt).toLocaleDateString("pt-BR")}</TableCell>

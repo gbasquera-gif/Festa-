@@ -29,6 +29,8 @@ import { montarVisaoGeral } from "../comercial/visao-geral";
  *
  * Competência e caixa ficam em blocos separados e nunca se somam:
  * faturamento é o contrato no mês da festa; recebimento é pagamento PAID.
+ * Retenção de cancelamento é receita operacional em linha própria, nunca
+ * faturamento; reembolso é saída de caixa; crédito Festaê não é caixa.
  */
 
 const MESES = [
@@ -90,20 +92,35 @@ export type RelatorioExecutivo = {
   };
   resultado: {
     faturamento: number;
+    /** Receita de retenção por cancelamento do mês. Fora do faturamento. */
+    retencao: number;
     despesas: number;
     resultado: number;
     margem: number | null;
   };
+  /**
+   * O caixa do mês: pagamentos PAID que entraram (inclusive de reserva
+   * cancelada depois) menos reembolsos feitos. Crédito Festaê não entra.
+   */
+  caixaDoMes: {
+    entradas: number;
+    reembolsos: number;
+    liquido: number;
+  };
+  /** Soma dos saldos de crédito Festaê das clientes. Não é caixa nem receita. */
+  creditoEmAberto: number;
   acervoNoMes: number;
   recebimentos: {
     /** Carteira ativa inteira, não só o mês. */
     contratado: number;
     recebido: number;
+    /** Crédito Festaê aplicado nos contratos vigentes: abate o saldo, não é recebido. */
+    creditoAplicado: number;
     aReceber: number;
     /**
-     * Parte do contratado já coberta por pagamento: (contratado − a receber)
-     * ÷ contratado. É o mesmo saldo da tela, então nunca passa de 100%,
-     * mesmo quando um contrato recebeu a mais.
+     * Parte do contratado já coberta, por pagamento ou por crédito Festaê:
+     * (contratado − a receber) ÷ contratado. É o mesmo saldo da tela, então
+     * nunca passa de 100%, mesmo quando um contrato recebeu a mais.
      */
     indice: number | null;
     /** O que foi recebido além do valor de algum contrato. */
@@ -135,6 +152,7 @@ export function montarRelatorioExecutivo(entrada: {
   ano: number;
   mes: string;
   agora: Date;
+  creditoEmAberto?: number;
 }): RelatorioExecutivo {
   const { contratos, gastos, carteira, ano, mes, agora } = entrada;
 
@@ -173,18 +191,29 @@ export function montarRelatorioExecutivo(entrada: {
     },
     resultado: {
       faturamento: operacional.receita,
+      retencao: operacional.receitaDeRetencao,
       despesas: operacional.despesa,
       resultado: operacional.resultado,
       margem: operacional.margem,
     },
+    caixaDoMes: {
+      entradas: indicadores.entradasNoCaixa,
+      reembolsos: indicadores.reembolsosNoMes,
+      liquido: indicadores.caixa.receita,
+    },
+    creditoEmAberto: entrada.creditoEmAberto ?? 0,
     acervoNoMes: acervoDoMes(gastos, mes),
     recebimentos: {
       contratado: carteiraAtiva.contratado,
       recebido: carteiraAtiva.recebido,
+      creditoAplicado: carteiraAtiva.creditoAplicado,
       aReceber: carteiraAtiva.saldoEmAberto,
       indice: carteiraAtiva.contratado > 0 ? coberto / carteiraAtiva.contratado : null,
       recebidoAlemDoContratado: fromCentsInt(
-        Math.max(0, toCentsInt(carteiraAtiva.recebido) - toCentsInt(coberto)),
+        Math.max(
+          0,
+          toCentsInt(carteiraAtiva.recebido) + toCentsInt(carteiraAtiva.creditoAplicado) - toCentsInt(coberto),
+        ),
       ),
       recebidoSemData: carteiraAtiva.recebidoSemData,
     },
@@ -192,7 +221,7 @@ export function montarRelatorioExecutivo(entrada: {
     comparacao: {
       mesAnterior: anterior,
       periodoAnterior: nomeDoMes(anterior),
-      temBase: doAnterior.receita > 0 || doAnterior.despesa > 0,
+      temBase: doAnterior.receita > 0 || doAnterior.receitaDeRetencao > 0 || doAnterior.despesa > 0,
       faturamento: variacao(operacional.receita, doAnterior.receita),
       resultado: variacao(operacional.resultado, doAnterior.resultado),
     },

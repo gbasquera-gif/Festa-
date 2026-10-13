@@ -18,8 +18,17 @@ export class UsersService {
   }
 
   async findAll() {
-    const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } });
-    return users.map(({ passwordHash: _passwordHash, ...safe }) => safe);
+    const [users, saldos] = await Promise.all([
+      prisma.user.findMany({ orderBy: { createdAt: "desc" } }),
+      prisma.creditoClienteMovimento.groupBy({ by: ["userId"], _sum: { valor: true } }),
+    ]);
+    // O crédito Festaê de cada cliente, somado do extrato — a lista mostra
+    // quem tem saldo sem precisar abrir ficha por ficha.
+    const credito = new Map(saldos.map((g) => [g.userId, Number(g._sum.valor ?? 0)]));
+    return users.map(({ passwordHash: _passwordHash, ...safe }) => ({
+      ...safe,
+      creditoDisponivel: credito.get(safe.id) ?? 0,
+    }));
   }
 
   /**
@@ -77,6 +86,9 @@ export class UsersService {
             tarefasFeitas: true,
             reservasCanceladas: true,
             excecoesAutorizadas: true,
+            creditos: true,
+            creditosRegistrados: true,
+            cancelamentosTratados: true,
           },
         },
       },
@@ -106,6 +118,10 @@ export class UsersService {
     if (c.tarefasFeitas > 0) impedimentos.push(`${c.tarefasFeitas} tarefa(s) de operação concluída(s)`);
     if (c.reservasCanceladas > 0) impedimentos.push(`${c.reservasCanceladas} cancelamento(s) de reserva`);
     if (c.excecoesAutorizadas > 0) impedimentos.push(`${c.excecoesAutorizadas} exceção(ões) comercial(is) autorizada(s)`);
+    if (c.creditos > 0) impedimentos.push(`${c.creditos} movimento(s) no extrato de crédito Festaê`);
+    if (c.creditosRegistrados + c.cancelamentosTratados > 0) {
+      impedimentos.push("crédito ou tratamento de cancelamento registrado por esta conta");
+    }
 
     if (impedimentos.length > 0) {
       throw new ConflictException(

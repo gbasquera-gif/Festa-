@@ -7,17 +7,95 @@ import {
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
 import {
+  creditoAplicadoNaReserva,
   diaDaFesta,
+  diaEmChapeco,
+  formatarReais,
   fromCentsInt,
+  motivoDeRecusaDaDistribuicao,
   normalizarDataDaFesta,
   saldoAPagar,
   toCentsInt,
 } from "@festae/shared";
-import type { CreateReservationInput, UpdateReservationStatusInput } from "@festae/shared";
+import type {
+  CancelarReservaInput,
+  CreateReservationInput,
+  UpdateReservationStatusInput,
+} from "@festae/shared";
+import {
+  creditoAplicadoEmCentavos,
+  pagoEmCentavos,
+  travarCredito,
+  travarPedido,
+} from "../creditos/ledger";
 import { AvailabilityService } from "../availability/availability.service";
 import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-commitment";
 import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
+
+/**
+ * O que a tela de reservas precisa saber do crédito Festaê e do cancelamento.
+ *
+ * Os movimentos de utilização dão o crédito aplicado; o crédito gerado dá o
+ * voucher; o tratamento diz o que foi feito com o dinheiro da cancelada.
+ */
+const INCLUSAO_DO_CREDITO = {
+  creditosUtilizados: { select: { valor: true } },
+  creditosGerados: {
+    where: { tipo: "CREDITO_GERADO_CANCELAMENTO" as const },
+    select: { id: true, numero: true, valor: true, createdAt: true },
+  },
+  tratamentoDoCancelamento: {
+    select: {
+      motivo: true,
+      contratado: true,
+      recebido: true,
+      creditoAplicadoDevolvido: true,
+      creditoGerado: true,
+      reembolsado: true,
+      reembolsadoEm: true,
+      retido: true,
+      definidoEm: true,
+      createdBy: { select: { name: true } },
+    },
+  },
+  cancelledBy: { select: { name: true } },
+};
+
+/** Saldo de crédito por cliente — de todas, ou de uma só. */
+async function saldosDeCredito(userId?: string): Promise<Map<string, number>> {
+  const grupos = await prisma.creditoClienteMovimento.groupBy({
+    by: ["userId"],
+    ...(userId ? { where: { userId } } : {}),
+    _sum: { valor: true },
+  });
+  return new Map(grupos.map((g) => [g.userId, Number(g._sum.valor ?? 0)]));
+}
+
+/**
+ * A reserva com os números de crédito já somados.
+ *
+ * O painel recebe `creditoAplicado` pronto, em vez de somar movimentos: é a
+ * mesma regra de @festae/shared que o Financeiro usa, e uma segunda soma na
+ * tela seria a cópia que envelhece errado.
+ */
+function comCredito<
+  T extends {
+    creditosUtilizados: { valor: unknown }[];
+    order: { event: { userId: string } };
+  },
+>(reserva: T, saldos: Map<string, number>) {
+  return {
+    ...reserva,
+    creditoAplicado: creditoAplicadoNaReserva(
+      reserva.creditosUtilizados.map((m) => ({ valor: Number(m.valor) })),
+    ),
+    creditoDisponivelDaCliente: saldos.get(reserva.order.event.userId) ?? 0,
+  };
+}
+
+/** Estados de que a reserva não volta pelo seletor de etapa. */
+const MORTAS = ["CANCELLED", "REJECTED"];
 
 @Injectable()
 export class ReservationsService {
@@ -94,8 +172,9 @@ export class ReservationsService {
    * itens, o telefone, a logística e os pagamentos junto é o que evita que
    * ela precise abrir outra tela — ou pedir a informação por WhatsApp.
    */
-  findAllAdmin() {
-    return prisma.reservation.findMany({
+  async findAllAdmin() {
+    const [reservas, saldos] = await Promise.all([
+      prisma.reservation.findMany({
       include: {
         order: {
           include: {
@@ -108,9 +187,13 @@ export class ReservationsService {
             payments: { orderBy: { createdAt: "desc" } },
           },
         },
+        ...INCLUSAO_DO_CREDITO,
       },
       orderBy: { eventDate: "asc" },
-    });
+      }),
+      saldosDeCredito(),
+    ]);
+    return reservas.map((r) => comCredito(r, saldos));
   }
 
   /**
@@ -135,10 +218,11 @@ export class ReservationsService {
             payments: { orderBy: { createdAt: "desc" } },
           },
         },
+        ...INCLUSAO_DO_CREDITO,
       },
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
-    return reserva;
+    return comCredito(reserva, await saldosDeCredito(reserva.order.event.userId));
   }
 
   /**
@@ -228,11 +312,14 @@ export class ReservationsService {
 
       // 3. Saldo em centavos: comparar dinheiro em ponto flutuante deixa
       //    passar um centavo, e um centavo a mais é sobrepagamento igual.
+      //    Crédito Festaê aplicado já cobre parte do pedido: o que falta é
+      //    o total menos o pago menos o crédito.
       const pagoEmCentavos = pagamentos
         .filter((p) => p.status === "PAID")
         .reduce((soma, p) => soma + toCentsInt(Number(p.amount)), 0);
+      const creditoEmCentavos = await creditoAplicadoEmCentavos(tx, id);
       const totalEmCentavos = toCentsInt(totalDoPedido);
-      const saldoEmCentavos = totalEmCentavos - pagoEmCentavos;
+      const saldoEmCentavos = totalEmCentavos - pagoEmCentavos - creditoEmCentavos;
       const valorEmCentavos = toCentsInt(dados.valor);
 
       // 4. Pedido quitado não recebe mais nada. A recusa diz os números, em
@@ -240,7 +327,10 @@ export class ReservationsService {
       if (saldoEmCentavos <= 0) {
         throw new ConflictException(
           `Este pedido já está quitado: R$ ${fromCentsInt(pagoEmCentavos).toFixed(2)} ` +
-            `recebidos de R$ ${totalDoPedido.toFixed(2)}. ` +
+            `recebidos de R$ ${totalDoPedido.toFixed(2)}` +
+            (creditoEmCentavos > 0
+              ? `, mais R$ ${fromCentsInt(creditoEmCentavos).toFixed(2)} de crédito Festaê. `
+              : ". ") +
             "Nenhum recebimento novo pode ser lançado.",
         );
       }
@@ -258,8 +348,10 @@ export class ReservationsService {
       const aEncerrar = pendentesAEncerrar(
         pagamentos,
         { tipo: dados.tipo, valor: dados.valor },
+        // O crédito entra como se já tivesse sido pago: é o que faz o
+        // pagamento que fecha o restante encerrar as cobranças pendentes.
         totalDoPedido,
-        fromCentsInt(pagoEmCentavos),
+        fromCentsInt(pagoEmCentavos + creditoEmCentavos),
       );
 
       await tx.payment.create({
@@ -310,6 +402,7 @@ export class ReservationsService {
 
       return {
         pago: fromCentsInt(pagoEmCentavos + valorEmCentavos),
+        credito: fromCentsInt(creditoEmCentavos),
         encerradas: aEncerrar.length,
         quita,
       };
@@ -324,7 +417,7 @@ export class ReservationsService {
       registrado: true,
       total: totalDoPedido,
       pago: apurado.pago,
-      saldo: saldoAPagar(totalDoPedido, apurado.pago),
+      saldo: saldoAPagar(totalDoPedido, apurado.pago + apurado.credito),
       reservaConfirmada: confirmaAReserva,
       pixPendentesEncerrados: apurado.encerradas,
       pedidoQuitado: apurado.quita,
@@ -332,39 +425,172 @@ export class ReservationsService {
   }
 
   /**
-   * Cancela uma reserva, guardando o histórico.
+   * Cancela uma reserva, guardando o histórico e dizendo o que foi feito com
+   * o dinheiro.
    *
    * Cancelar não apaga nada: a reserva continua no banco com status
-   * CANCELLED, e com ela o pedido, os itens e os pagamentos já registrados.
-   * O que muda é o efeito no presente — a data volta a caber uma festa e o
-   * material volta ao acervo, porque as duas contagens ignoram reserva
-   * cancelada.
+   * CANCELLED, e com ela o pedido, os itens e os pagamentos. O que muda é o
+   * efeito no presente — a data e o material voltam a ficar livres — e o
+   * destino do que foi pago, que fica gravado num tratamento:
    *
-   * Registra quem cancelou. A operação inteira sente o efeito de uma data
-   * que abre; sem autoria, "por que essa data liberou?" é uma pergunta sem
-   * resposta, e alguém remarca por cima de uma decisão que não sabe que
-   * existiu.
+   * - **o pago (só PAID) é distribuído por inteiro** entre crédito Festaê,
+   *   reembolso e retenção. A soma tem de ser exatamente o pago, conferida
+   *   sob trava contra o pago lido na hora — não contra o que a tela viu;
+   *
+   * - **o pagamento continua no caixa**, na data em que entrou. O reembolso é
+   *   uma saída, com a data em que saiu. A retenção é receita de retenção do
+   *   mês do cancelamento, nunca faturamento de festa;
+   *
+   * - **crédito Festaê que estava aplicado volta sozinho** ao saldo da
+   *   cliente, por um movimento próprio no extrato. A utilização original
+   *   continua lá: o extrato mostra que foi usado e que voltou.
+   *
+   * Tudo numa transação: reserva cancelada sem tratamento, ou crédito gerado
+   * sem reserva cancelada, é registro pela metade que ninguém encontra.
+   *
+   * Registra quem cancelou. Sem autoria, "por que essa data liberou?" é uma
+   * pergunta sem resposta.
    */
-  async cancelar(id: string, usuarioId: string) {
+  async cancelar(id: string, input: CancelarReservaInput, usuarioId: string) {
     const reserva = await prisma.reservation.findUnique({
       where: { id },
-      select: { id: true, orderId: true, status: true },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        contractSeq: true,
+        order: { select: { total: true, event: { select: { userId: true } } } },
+      },
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
-    if (reserva.status === "CANCELLED") {
+    if (MORTAS.includes(reserva.status)) {
       throw new BadRequestException("Esta reserva já está cancelada.");
     }
 
-    const [atualizada] = await prisma.$transaction([
-      prisma.reservation.update({
-        where: { id },
-        data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: usuarioId },
-      }),
-      prisma.order.update({ where: { id: reserva.orderId }, data: { status: "CANCELLED" } }),
-    ]);
+    const reembolso = toCentsInt(input.reembolso);
+    let reembolsadoEm: Date | null = null;
+    if (reembolso > 0) {
+      if (!input.reembolsadoEm) {
+        throw new BadRequestException("Informe o dia em que o reembolso foi feito.");
+      }
+      // Dia de calendário, ancorado ao meio-dia UTC como o dia de um
+      // pagamento: é a data da saída no caixa.
+      reembolsadoEm = normalizarDataDaFesta(input.reembolsadoEm);
+      if (input.reembolsadoEm > diaEmChapeco(new Date())) {
+        throw new BadRequestException(
+          "O reembolso entra no caixa no dia em que sai. Registre o cancelamento quando o reembolso for feito.",
+        );
+      }
+    }
 
-    this.logger.log(`Reserva ${id} cancelada por ${usuarioId}.`);
-    return atualizada;
+    const userId = reserva.order.event.userId;
+    const resultado = await prisma.$transaction(
+      async (tx) => {
+        // Mesma ordem de travas de todo caminho que mexe em dinheiro do
+        // pedido: o pedido primeiro, o crédito da cliente depois.
+        await travarPedido(tx, reserva.orderId);
+        const atual = await tx.reservation.findUniqueOrThrow({
+          where: { id },
+          select: { status: true, order: { select: { total: true } } },
+        });
+        if (MORTAS.includes(atual.status)) {
+          throw new BadRequestException("Esta reserva já está cancelada.");
+        }
+        await travarCredito(tx, userId);
+
+        const recebido = await pagoEmCentavos(tx, reserva.orderId);
+        const recusa = motivoDeRecusaDaDistribuicao(fromCentsInt(recebido), {
+          credito: input.credito,
+          reembolso: input.reembolso,
+          retencao: input.retencao,
+        });
+        if (recusa) {
+          throw new ConflictException({
+            message: recusa,
+            codigo: "DISTRIBUICAO_INVALIDA",
+            recebido: fromCentsInt(recebido),
+          });
+        }
+
+        const creditoDevolvido = await creditoAplicadoEmCentavos(tx, id);
+        const agora = new Date();
+
+        await tx.reservation.update({
+          where: { id },
+          data: { status: "CANCELLED", cancelledAt: agora, cancelledById: usuarioId },
+        });
+        await tx.order.update({ where: { id: reserva.orderId }, data: { status: "CANCELLED" } });
+
+        if (creditoDevolvido > 0) {
+          await tx.creditoClienteMovimento.create({
+            data: {
+              userId,
+              tipo: "ESTORNO_CREDITO_POR_CANCELAMENTO",
+              valor: fromCentsInt(creditoDevolvido),
+              // Aponta para a reserva onde o crédito estava: o aplicado dela
+              // volta a zero, e o extrato diz de onde o valor voltou.
+              reservationDestinoId: id,
+              observacao: `Reserva nº ${reserva.contractSeq} cancelada`,
+              createdById: usuarioId,
+            },
+          });
+        }
+
+        const credito = toCentsInt(input.credito);
+        const gerado =
+          credito > 0
+            ? await tx.creditoClienteMovimento.create({
+                data: {
+                  userId,
+                  tipo: "CREDITO_GERADO_CANCELAMENTO",
+                  valor: fromCentsInt(credito),
+                  reservationOrigemId: id,
+                  observacao: input.motivo,
+                  createdById: usuarioId,
+                },
+                select: { id: true, numero: true, valor: true },
+              })
+            : null;
+
+        await tx.tratamentoDeCancelamento.create({
+          data: {
+            reservationId: id,
+            motivo: input.motivo,
+            contratado: Number(atual.order.total),
+            recebido: fromCentsInt(recebido),
+            creditoAplicadoDevolvido: fromCentsInt(creditoDevolvido),
+            creditoGerado: fromCentsInt(credito),
+            reembolsado: fromCentsInt(reembolso),
+            reembolsadoEm,
+            retido: fromCentsInt(toCentsInt(input.retencao)),
+            definidoEm: agora,
+            createdById: usuarioId,
+          },
+        });
+
+        return {
+          recebido: fromCentsInt(recebido),
+          creditoDevolvido: fromCentsInt(creditoDevolvido),
+          voucher: gerado ? { id: gerado.id, numero: gerado.numero, valor: Number(gerado.valor) } : null,
+        };
+      },
+      { timeout: 15_000 },
+    );
+
+    this.logger.log(
+      `Reserva ${id} cancelada por ${usuarioId}: recebido ${formatarReais(resultado.recebido)}, ` +
+        `crédito ${formatarReais(input.credito)}, reembolso ${formatarReais(input.reembolso)}, ` +
+        `retenção ${formatarReais(input.retencao)}` +
+        (resultado.creditoDevolvido > 0
+          ? `, crédito usado devolvido ${formatarReais(resultado.creditoDevolvido)}.`
+          : "."),
+    );
+
+    return {
+      cancelada: true,
+      clienteId: userId,
+      ...resultado,
+    };
   }
 
   /**
@@ -407,6 +633,29 @@ export class ReservationsService {
       },
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
+
+    // Crédito Festaê e tratamento de cancelamento são o extrato de outra
+    // pessoa e a explicação de dinheiro que entrou: apagar a reserva levaria
+    // os dois junto (o banco recusaria, e a tela mostraria um erro mudo).
+    const vinculos = await prisma.reservation.findUnique({
+      where: { id },
+      select: {
+        tratamentoDoCancelamento: { select: { id: true } },
+        _count: { select: { creditosGerados: true, creditosUtilizados: true } },
+      },
+    });
+    if (
+      vinculos?.tratamentoDoCancelamento ||
+      (vinculos?._count.creditosGerados ?? 0) > 0 ||
+      (vinculos?._count.creditosUtilizados ?? 0) > 0
+    ) {
+      throw new ConflictException({
+        message:
+          "Esta reserva tem crédito Festaê ou tratamento de cancelamento registrado, e não pode ser excluída: " +
+          "isso apagaria o extrato da cliente e a explicação do dinheiro recebido.",
+        codigo: "TEM_CREDITO_OU_TRATAMENTO",
+      });
+    }
 
     const evento = reserva.order.event;
     const pagos = reserva.order.payments.filter((p) => p.status === "PAID");
@@ -553,13 +802,59 @@ export class ReservationsService {
   }
 
   async updateStatus(id: string, input: UpdateReservationStatusInput) {
-    const reservation = await prisma.reservation.findUnique({ where: { id } });
+    const reservation = await prisma.reservation.findUnique({
+      where: { id },
+      include: {
+        tratamentoDoCancelamento: { select: { id: true } },
+        _count: { select: { creditosUtilizados: true } },
+        order: {
+          select: { payments: { where: { status: "PAID" }, select: { id: true } } },
+        },
+      },
+    });
     if (!reservation) throw new NotFoundException("Reserva não encontrada.");
 
-    // PREPARING, READY e COMPLETED são etapas posteriores à confirmação: o
-    // pedido continua CONFIRMED e só a etapa operacional avança.
+    // Cancelar passa sempre pelo cancelamento: é lá que ficam o motivo e o
+    // destino do dinheiro. Pelo seletor, a reserva paga sairia da agenda sem
+    // ninguém dizer o que foi feito com o sinal.
+    if (input.status === "CANCELLED" && reservation.status !== "CANCELLED") {
+      throw new BadRequestException(
+        'Para cancelar, use "Cancelar reserva": é onde ficam o motivo e o que fazer com o valor pago.',
+      );
+    }
+    // Recusar continua no seletor para a solicitação que nunca foi paga.
+    // Com dinheiro ou crédito, a recusa vira cancelamento com tratamento.
+    if (
+      input.status === "REJECTED" &&
+      reservation.status !== "REJECTED" &&
+      (reservation.order.payments.length > 0 || reservation._count.creditosUtilizados > 0)
+    ) {
+      throw new BadRequestException(
+        'Esta reserva tem pagamento ou crédito Festaê. Use "Cancelar reserva" para dizer o que fazer com esse valor.',
+      );
+    }
+    // Cancelamento com tratamento não volta atrás pelo seletor: o crédito, o
+    // reembolso e a retenção já foram registrados, e reativar deixaria a
+    // festa de pé com o dinheiro dela distribuído.
+    if (
+      MORTAS.includes(reservation.status) &&
+      !MORTAS.includes(input.status) &&
+      reservation.tratamentoDoCancelamento
+    ) {
+      throw new BadRequestException(
+        "Esta reserva foi cancelada com tratamento financeiro registrado. Para retomar a festa, registre uma nova reserva.",
+      );
+    }
+
+    // PREPARING, READY, AGUARDANDO_DEVOLUCAO e COMPLETED são etapas
+    // posteriores à confirmação: o pedido continua CONFIRMED e só a etapa
+    // operacional avança.
     const orderStatus =
-      input.status === "CONFIRMED" || input.status === "PREPARING" || input.status === "READY" || input.status === "COMPLETED"
+      input.status === "CONFIRMED" ||
+      input.status === "PREPARING" ||
+      input.status === "READY" ||
+      input.status === "AGUARDANDO_DEVOLUCAO" ||
+      input.status === "COMPLETED"
         ? ("CONFIRMED" as const)
         : input.status === "CANCELLED" || input.status === "REJECTED"
           ? ("CANCELLED" as const)
@@ -579,5 +874,36 @@ export class ReservationsService {
     ]);
 
     return updated;
+  }
+
+  /**
+   * O material voltou: a festa está concluída.
+   *
+   * Um passo só para as duas coisas que a operação faz ao receber as peças —
+   * marcar a devolução no checklist e fechar a reserva —, para uma não ficar
+   * feita sem a outra. Só sai de "aguardando devolução": concluir direto,
+   * sem passar por ela, continua pelo seletor de etapa como sempre.
+   */
+  async confirmarDevolucao(id: string, usuarioId: string) {
+    const concluida = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.reservation.updateMany({
+        where: { id, status: "AGUARDANDO_DEVOLUCAO" },
+        data: { status: "COMPLETED" },
+      });
+      if (count === 0) {
+        const existe = await tx.reservation.findUnique({ where: { id }, select: { status: true } });
+        if (!existe) throw new NotFoundException("Reserva não encontrada.");
+        throw new BadRequestException("Esta reserva não está aguardando devolução.");
+      }
+      await tx.reservationTask.upsert({
+        where: { reservationId_key: { reservationId: id, key: "devolucao_concluida" } },
+        create: { reservationId: id, key: "devolucao_concluida", doneById: usuarioId },
+        update: {},
+      });
+      return tx.reservation.findUniqueOrThrow({ where: { id } });
+    });
+
+    this.logger.log(`Devolução da reserva ${id} confirmada por ${usuarioId}; reserva concluída.`);
+    return concluida;
   }
 }

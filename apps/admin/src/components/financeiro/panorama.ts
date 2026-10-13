@@ -2,9 +2,14 @@
 export type Panorama = {
   mes: string;
   ano: number;
-  operacional: { faturamento: number; despesas: number; resultado: number; margem: number | null };
+  /** `retencao`: receita de retenção por cancelamento — no resultado, fora do faturamento. */
+  operacional: { faturamento: number; retencao: number; despesas: number; resultado: number; margem: number | null };
+  /** Caixa do mês: pagamentos confirmados que entraram menos reembolsos que saíram. */
+  caixa: { entradas: number; reembolsos: number; liquido: number };
+  /** Soma dos saldos de crédito Festaê das clientes. Não é caixa nem receita. */
+  creditoEmAberto: number;
   ytd: {
-    ano: number; ateMes: string; faturamento: number; despesas: number;
+    ano: number; ateMes: string; faturamento: number; retencao: number; despesas: number;
     resultado: number; margem: number | null; acervo: number; mesesComDados: number;
   };
   aReceber: number;
@@ -23,7 +28,7 @@ export type Panorama = {
     resultado: Variacao;
   };
   serie: {
-    mes: string; numero: number; faturamento: number; despesas: number; resultado: number;
+    mes: string; numero: number; faturamento: number; retencao: number; despesas: number; resultado: number;
     margem: number | null; acumuladoFaturamento: number; acumuladoResultado: number;
     temDados: boolean; futuro: boolean;
   }[];

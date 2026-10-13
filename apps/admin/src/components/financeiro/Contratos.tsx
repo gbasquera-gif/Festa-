@@ -51,7 +51,11 @@ type ContratoComercial = {
   montagem: boolean;
   valor: number;
   recebido: number;
+  /** Crédito Festaê abatendo o contrato. Não é recebimento. */
+  creditoAplicado?: number;
   saldo: number;
+  /** Cancelada com tratamento: o destino do que tinha sido pago. */
+  tratamento?: { creditoGerado: number; reembolsado: number; reembolsadoEm: string | null; retido: number } | null;
   situacao: SituacaoDePagamento;
   venceEm: string;
   temRecebimentoSemData: boolean;
@@ -64,6 +68,7 @@ type Carteira = {
     contratos: number;
     contratado: number;
     recebido: number;
+    creditoAplicado?: number;
     saldoEmAberto: number;
     vencido: number;
     contratosVencidos: number;
@@ -78,6 +83,7 @@ const STATUS_LABEL: Record<string, string> = {
   CONFIRMED: "Confirmada",
   PREPARING: "Preparação",
   READY: "Pronta",
+  AGUARDANDO_DEVOLUCAO: "Aguardando devolução",
   COMPLETED: "Concluída",
   REJECTED: "Rejeitada",
   CANCELLED: "Cancelada",
@@ -168,7 +174,10 @@ export function Contratos({ mes }: { mes: string | null }) {
             />
           </div>
           <p className="mt-4 text-xs text-white/60">
-            Contratado − recebido = a receber. O vencido é um recorte do que está a receber, não
+            {(resumo.creditoAplicado ?? 0) > 0
+              ? `Contratado − recebido − crédito Festaê aplicado (${brl(resumo.creditoAplicado ?? 0)}) = a receber. `
+              : "Contratado − recebido = a receber. "}
+            O vencido é um recorte do que está a receber, não
             uma parcela somada à parte: é a fatia cuja festa já aconteceu e cujo saldo continua
             aberto.
           </p>
@@ -397,6 +406,38 @@ function Detalhe({ contrato: c }: { contrato: ContratoComercial }) {
                 </span>
               </li>
             ))}
+          </ul>
+        )}
+        {(c.creditoAplicado ?? 0) > 0 && (
+          <p className="mt-1 flex justify-between gap-3 text-sm">
+            <span style={{ color: "var(--fin-muted)" }}>Crédito Festaê aplicado · abate o saldo, não é recebido</span>
+            <span className="fin-numero" style={{ fontSize: "0.85rem" }}>{numero(c.creditoAplicado ?? 0)}</span>
+          </p>
+        )}
+        {/* Cancelada com tratamento: o pago continua acima, no dia em que
+            entrou; aqui está o que foi feito com ele. */}
+        {c.tratamento && (
+          <ul className="mt-2 space-y-0.5 border-t pt-2 text-sm" style={{ borderColor: "var(--fin-line)" }}>
+            {c.tratamento.creditoGerado > 0 && (
+              <li className="flex justify-between gap-3">
+                <span style={{ color: "var(--fin-muted)" }}>Virou crédito Festaê</span>
+                <span className="fin-numero" style={{ fontSize: "0.85rem" }}>{numero(c.tratamento.creditoGerado)}</span>
+              </li>
+            )}
+            {c.tratamento.reembolsado > 0 && (
+              <li className="flex justify-between gap-3">
+                <span style={{ color: "var(--fin-muted)" }}>
+                  Reembolsado{c.tratamento.reembolsadoEm ? ` em ${formatarDiaDoMomento(c.tratamento.reembolsadoEm)}` : ""} · saída de caixa
+                </span>
+                <span className="fin-numero" style={{ fontSize: "0.85rem" }}>−{numero(c.tratamento.reembolsado)}</span>
+              </li>
+            )}
+            {c.tratamento.retido > 0 && (
+              <li className="flex justify-between gap-3">
+                <span style={{ color: "var(--fin-muted)" }}>Retido · receita de retenção por cancelamento</span>
+                <span className="fin-numero" style={{ fontSize: "0.85rem" }}>{numero(c.tratamento.retido)}</span>
+              </li>
+            )}
           </ul>
         )}
       </div>

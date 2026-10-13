@@ -47,13 +47,23 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
             aoAbrir={() => setDetalhe({ tipo: "FATURAMENTO", escopo: "MES" })} />
           <NumeroEscuro rotulo="Despesas" valor={brl(op.despesas)} nota="consumo e custeio" />
           <NumeroEscuro rotulo="Resultado operacional" valor={brl(op.resultado)}
-            nota="faturamento − despesas"
+            nota={op.retencao > 0 ? "faturamento + retenção − despesas" : "faturamento − despesas"}
             destaque={op.resultado < 0 ? "alerta" : "bom"} />
           <NumeroEscuro rotulo="Margem operacional" valor={pct(op.margem)}
-            nota={op.margem === null ? "sem faturamento no mês" : "do faturamento"} />
+            nota={op.margem === null ? "sem faturamento no mês" : op.retencao > 0 ? "da receita operacional" : "do faturamento"} />
         </div>
+        {/* A retenção de cancelamento é receita operacional, mas não é
+            festa: aparece em linha própria, só quando existe, e nunca dentro
+            do faturamento bruto. */}
+        {op.retencao > 0 && (
+          <p className="mt-4 text-sm text-white/85" data-retencao>
+            + <span className="fin-numero" style={{ fontSize: "0.95rem", color: "inherit" }}>{brl(op.retencao)}</span>{" "}
+            de receita de retenção por cancelamento — separada do faturamento das festas, entra no resultado.
+          </p>
+        )}
         <p className="mt-4 text-xs text-white/60">
-          Resultado operacional é faturamento menos consumo e custeio. Acervo não entra: é
+          Resultado operacional é faturamento
+          {op.retencao > 0 ? ", mais a receita de retenção por cancelamento," : ""} menos consumo e custeio. Acervo não entra: é
           investimento, não despesa do mês. Não considera impostos, pró-labore nem depreciação —
           por isso não se chama lucro líquido.
         </p>
@@ -107,6 +117,28 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           <Indicador rotulo="Acervo acumulado" valor={brl(data.acervoAcumulado)}
             nota="investimento, fora do resultado" tom="acervo" />
         </div>
+      </div>
+
+      {/* O caixa do mês, ao lado da competência e sem se misturar com ela.
+          Pagamento de reserva cancelada depois continua aqui, no dia em que
+          entrou; o reembolso é a saída, no dia em que saiu. Crédito Festaê
+          não aparece: gerar ou usar crédito não move dinheiro. */}
+      <div>
+        <Rotulo>Caixa · {nomeDoMes(mes)}</Rotulo>
+        <div className="mt-2 grid gap-3 sm:grid-cols-3" data-caixa>
+          <Indicador rotulo="Entradas" valor={brl(data.caixa.entradas)}
+            nota="pagamentos confirmados no mês" />
+          <Indicador rotulo="Reembolsos" valor={brl(data.caixa.reembolsos)}
+            nota="devolvidos a clientes no mês" tom={data.caixa.reembolsos > 0 ? "alerta" : "normal"} />
+          <Indicador rotulo="Caixa do mês" valor={brl(data.caixa.liquido)}
+            nota="entradas − reembolsos" />
+        </div>
+        {data.creditoEmAberto > 0 && (
+          <p className="mt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
+            Crédito Festaê em aberto das clientes: {brl(data.creditoEmAberto)}. Já entrou no caixa quando foi
+            pago — não é receita nova nem dinheiro novo; vira festa quando a cliente usar.
+          </p>
+        )}
       </div>
 
       {/* Comparação com o mês anterior. */}

@@ -38,6 +38,9 @@ const TELAS_INTERNAS: { padrao: RegExp; pai: (m: RegExpMatchArray) => string }[]
   { padrao: /^\/reservas\/nova$/, pai: () => "/reservas" },
   { padrao: /^\/reservas\/([^/]+)\/editar$/, pai: () => "/reservas" },
   { padrao: /^\/reservas\/([^/]+)\/comprovante$/, pai: () => "/reservas" },
+  { padrao: /^\/clientes\/([^/]+)\/creditos\/saldo$/, pai: (m) => `/clientes/${m[1]}` },
+  { padrao: /^\/clientes\/([^/]+)\/creditos\/([^/]+)\/voucher$/, pai: (m) => `/clientes/${m[1]}` },
+  { padrao: /^\/clientes\/([^/]+)$/, pai: () => "/clientes" },
 ];
 
 /** O pai lógico de uma tela interna, ou `null` para tela raiz (sem Voltar). */

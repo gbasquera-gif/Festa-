@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@n
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
   alterarDataSchema,
+  cancelarReservaSchema,
   createReservationSchema,
   editarReservaSchema,
   registrarPagamentoSchema,
@@ -10,6 +11,7 @@ import {
 } from "@festae/shared";
 import type {
   AlterarDataInput,
+  CancelarReservaInput,
   CreateReservationInput,
   EditarReservaInput,
   RegistrarPagamentoInput,
@@ -141,12 +143,28 @@ export class ReservationsController {
 
   /**
    * Cancela a reserva mantendo o histórico. Libera data e material.
+   *
+   * Recebe o motivo e o destino do valor pago — crédito, reembolso,
+   * retenção —, que precisam somar exatamente o pago. Crédito Festaê que
+   * estava aplicado volta sozinho ao saldo da cliente.
    */
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "OPS")
   @Patch("reservations/:id/cancelar")
-  cancelar(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.reservationsService.cancelar(id, user.userId);
+  cancelar(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(cancelarReservaSchema)) body: CancelarReservaInput,
+  ) {
+    return this.reservationsService.cancelar(id, body, user.userId);
+  }
+
+  /** Material devolvido: marca a devolução e conclui a reserva. */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Patch("reservations/:id/devolucao")
+  confirmarDevolucao(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.reservationsService.confirmarDevolucao(id, user.userId);
   }
 
   /**

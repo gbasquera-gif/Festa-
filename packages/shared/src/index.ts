@@ -190,9 +190,13 @@ export {
   NATUREZAS_DE_DESPESA,
   mesEmChapeco,
   recebidoDoContrato,
+  creditoDoContrato,
   saldoDoContrato,
   receitaPorCompetencia,
   receitaPorCaixa,
+  entradasNoCaixa,
+  reembolsosNoMes,
+  receitaDeRetencao,
   recebidoSemData,
   despesaDoMes,
   mesDaDespesa,
@@ -222,6 +226,7 @@ export type {
   NaturezaDoGasto,
   RecebimentoApurado,
   ContratoApurado,
+  TratamentoApurado,
   GastoApurado,
   ResultadoDoMes,
   LinhaDeRitmo,
@@ -281,6 +286,7 @@ export {
   grupoDeProximidade,
   ordenarParaOperacao,
   situacaoOperacional,
+  STATUS_QUE_SEGURAM_ACERVO,
 } from "./reservas";
 export type {
   AbaDeReserva,
@@ -396,3 +402,38 @@ export {
   type PanoramaDeOrcamentos,
   type PropostaDoPanorama,
 } from "./panorama-de-orcamentos";
+
+export {
+  TIPOS_DE_MOVIMENTO_DE_CREDITO,
+  TIPO_DE_MOVIMENTO_LABEL,
+  NOTA_DO_VOUCHER,
+  creditoAplicadoNaReserva,
+  descricaoDoMovimento,
+  extratoDeCredito,
+  formatarReais,
+  frasesDoTratamento,
+  limiteDeAplicacao,
+  mensagemDoVoucher,
+  motivoDeRecusaDaAplicacao,
+  motivoDeRecusaDaDistribuicao,
+  numeroDoCredito,
+  saldoDeCredito,
+  textoDoVoucher,
+} from "./credito";
+export type {
+  DistribuicaoDoCancelamento,
+  LinhaDoExtrato,
+  MovimentoDeCredito,
+  TipoDeMovimentoDeCredito,
+  TratamentoDoCancelamento,
+} from "./credito";
+export {
+  aplicarCreditoSchema,
+  cancelarReservaSchema,
+  estornarCreditoSchema,
+} from "./schemas/credito";
+export type {
+  AplicarCreditoInput,
+  CancelarReservaInput,
+  EstornarCreditoInput,
+} from "./schemas/credito";

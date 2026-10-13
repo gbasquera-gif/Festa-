@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useVoltar } from "@/lib/voltar";
 import { useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Ticket } from "lucide-react";
 import { toast } from "sonner";
 import {
   MANUAL_SALE_CHANNELS,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
+  formatarReais,
+  motivoDeRecusaDaAplicacao,
   saleChannelLabel,
   totalDaVendaManual,
 } from "@festae/shared";
@@ -63,6 +66,44 @@ export default function NovaReservaManual() {
   const [origem, setOrigem] = useState("");
   const [conflitos, setConflitos] = useState<ConflitoDetalhado[] | null>(null);
 
+  /**
+   * O crédito Festaê da ficha que esta venda vai usar.
+   *
+   * Perguntado pelo mesmo contato que, ao salvar, decide de quem é a venda
+   * (e-mail; na falta, telefone). Espera a pessoa parar de digitar para não
+   * consultar a cada tecla.
+   */
+  const [contato, setContato] = useState({ telefone: "", email: "" });
+  useEffect(() => {
+    const t = setTimeout(
+      () => setContato({ telefone: dados.telefone.trim(), email: dados.email.trim() }),
+      400,
+    );
+    return () => clearTimeout(t);
+  }, [dados.telefone, dados.email]);
+  const contatoCompleto = contato.telefone.replace(/\D/g, "").length >= 10 || /\S+@\S+\.\S+/.test(contato.email);
+  const { data: creditoDaFicha } = useQuery<{ cliente: { id: string; nome: string } | null; saldo: number }>({
+    queryKey: ["credito-por-contato", contato.telefone, contato.email],
+    queryFn: () =>
+      api(
+        `/creditos/por-contato?telefone=${encodeURIComponent(contato.telefone)}` +
+          (contato.email ? `&email=${encodeURIComponent(contato.email)}` : ""),
+      ),
+    enabled: contatoCompleto,
+  });
+  const saldoDeCredito = creditoDaFicha?.cliente ? creditoDaFicha.saldo : 0;
+  const fichaComCredito = saldoDeCredito > 0 ? creditoDaFicha!.cliente : null;
+
+  /** Aplicar é escolha de quem vende: nunca automático, e pode ser parcial. */
+  const [usarCredito, setUsarCredito] = useState(false);
+  const [valorDoCredito, setValorDoCredito] = useState("");
+  // Outra ficha na tela (telefone ou e-mail trocado) desfaz a escolha: o
+  // crédito escolhido era de outra pessoa.
+  useEffect(() => {
+    setUsarCredito(false);
+    setValorDoCredito("");
+  }, [fichaComCredito?.id]);
+
   const total = useMemo(
     () =>
       totalDaVendaManual({
@@ -80,22 +121,37 @@ export default function NovaReservaManual() {
    * digitar o valor de novo abriria a porta para R$ 219,00 numa venda de
    * R$ 220,00, e o contrato nasceria com saldo de um real para sempre.
    */
+  const creditoUsado = usarCredito && fichaComCredito ? Number(valorDoCredito) || 0 : 0;
+  // Com crédito, "pago integralmente" é o que sobra depois dele: o crédito
+  // cobre a sua parte, e a cliente pagou o resto.
   const recebido =
-    situacao === "INTEGRAL" ? total : situacao === "SINAL" ? Number(sinal) || 0 : 0;
+    situacao === "INTEGRAL"
+      ? Math.max(0, Math.round((total - creditoUsado) * 100) / 100)
+      : situacao === "SINAL"
+        ? Number(sinal) || 0
+        : 0;
   const statusPagamento = situacao === "NADA" || situacao === "" ? "PENDING" : "PAID";
-  const saldo = Math.max(0, total - recebido);
+  const saldo = Math.max(0, Math.round((total - creditoUsado - recebido) * 100) / 100);
+  const recusaDoCredito =
+    usarCredito && fichaComCredito
+      ? motivoDeRecusaDaAplicacao({
+          valor: creditoUsado,
+          saldoDaCliente: saldoDeCredito,
+          faltaPagar: total - (situacao === "SINAL" ? Number(sinal) || 0 : 0),
+        })
+      : null;
 
   // Sinal sem valor não é uma venda descrita: é a escolha pela metade.
   const faltaEscolher = situacao === "";
   const sinalSemValor = situacao === "SINAL" && recebido <= 0;
-  const sinalMaiorQueTotal = situacao === "SINAL" && total > 0 && recebido > total;
+  const sinalMaiorQueTotal = situacao === "SINAL" && total > 0 && recebido + creditoUsado > total;
   // "Pago integralmente" com total zerado gravaria uma venda marcada como
   // paga sem pagamento nenhum: o valor recebido seria zero, e o servidor não
   // cria lançamento de R$ 0,00. A venda nasceria dizendo uma coisa e
   // registrando outra.
   const integralSemTotal = situacao === "INTEGRAL" && total <= 0;
   const pagamentoIncompleto =
-    faltaEscolher || sinalSemValor || sinalMaiorQueTotal || integralSemTotal;
+    faltaEscolher || sinalSemValor || sinalMaiorQueTotal || integralSemTotal || Boolean(recusaDoCredito);
 
   const dataNoPassado = dados.data !== "" && dados.data < hojeISO();
 
@@ -115,6 +171,9 @@ export default function NovaReservaManual() {
             statusPagamento,
           },
           origem,
+          ...(creditoUsado > 0 && fichaComCredito
+            ? { credito: { clienteId: fichaComCredito.id, valor: creditoUsado } }
+            : {}),
         }),
       }),
     // Com o sinal já recebido, a cliente está esperando o comprovante do
@@ -122,7 +181,7 @@ export default function NovaReservaManual() {
     // que ela acabou de digitar. Sem sinal não há o que comprovar, e o
     // caminho segue para a lista de festas do dia.
     onSuccess: (reserva) => {
-      const sinalRecebido = recebido > 0;
+      const sinalRecebido = recebido > 0 || creditoUsado > 0;
       toast.success(
         sinalRecebido
           ? "Reserva registrada. Aqui está o comprovante para enviar à cliente."
@@ -176,10 +235,69 @@ export default function NovaReservaManual() {
             <CardTitle className="text-base">Pagamento *</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* O aviso de crédito fica no topo do pagamento, onde a decisão
+                de quanto cobrar é tomada — e com destaque, porque esquecer é
+                cobrar da cliente um dinheiro que já é dela na Festaê. */}
+            {fichaComCredito && (
+              <div
+                className="space-y-3 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950"
+                data-aviso-credito
+              >
+                <p className="flex items-start gap-2 font-medium">
+                  <Ticket className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  Esta cliente possui {formatarReais(saldoDeCredito)} em crédito Festaê disponível.
+                </p>
+                {!usarCredito ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full border-emerald-400 bg-white sm:h-9 sm:w-auto"
+                    onClick={() => {
+                      setUsarCredito(true);
+                      setValorDoCredito(Math.min(saldoDeCredito, total || saldoDeCredito).toFixed(2));
+                    }}
+                  >
+                    Aplicar crédito nesta festa
+                  </Button>
+                ) : (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Campo label="Crédito a usar nesta festa">
+                      <Input
+                        id="credito-na-venda"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min={0}
+                        max={saldoDeCredito}
+                        value={valorDoCredito}
+                        onChange={(e) => setValorDoCredito(e.target.value)}
+                      />
+                    </Campo>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 sm:h-9"
+                      onClick={() => {
+                        setUsarCredito(false);
+                        setValorDoCredito("");
+                      }}
+                    >
+                      Não aplicar
+                    </Button>
+                    <p className="w-full text-xs">
+                      Pode ser parcial. O crédito abate o que a cliente tem a pagar; o valor da festa não muda.
+                    </p>
+                  </div>
+                )}
+                {recusaDoCredito && <p className="text-sm text-destructive">{recusaDoCredito}</p>}
+              </div>
+            )}
+
             <div className="rounded-md bg-muted/50 p-3 text-sm">
               <p>
-                Total: <strong>{brl(total)}</strong> · Recebido: {brl(recebido)} · Saldo:{" "}
-                <strong>{brl(saldo)}</strong>
+                Total: <strong>{brl(total)}</strong>
+                {creditoUsado > 0 && <> · Crédito Festaê: {brl(creditoUsado)}</>} · Recebido: {brl(recebido)} ·
+                Saldo: <strong>{brl(saldo)}</strong>
               </p>
             </div>
 

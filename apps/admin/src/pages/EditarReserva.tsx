@@ -26,6 +26,8 @@ import { ApiError, api } from "@/lib/api";
 interface ReservaCompleta {
   id: string;
   status: string;
+  /** Crédito Festaê aplicado, já somado pelo servidor. */
+  creditoAplicado?: number;
   eventDate: string;
   order: {
     id: string;
@@ -164,7 +166,10 @@ export default function EditarReserva() {
     reserva?.order.payments
       .filter((p) => p.status === "PAID")
       .reduce((soma, p) => soma + Number(p.amount), 0) ?? 0;
-  const saldo = Math.max(0, total - pago);
+  // Crédito Festaê aplicado abate o saldo; o servidor recusa baixar o total
+  // abaixo de pago + crédito.
+  const credito = reserva?.creditoAplicado ?? 0;
+  const saldo = Math.max(0, Math.round((total - pago - credito) * 100) / 100);
 
   const dataOriginal = reserva?.eventDate.slice(0, 10) ?? "";
   const mudouDeDia = carregado && dados.data !== dataOriginal;
@@ -272,7 +277,8 @@ export default function EditarReserva() {
           <CardContent className="space-y-3 text-sm">
             <div className="rounded-md bg-muted/50 p-3">
               <p>
-                Total: <strong>{brl(total)}</strong> · Já recebido: {brl(pago)} · Saldo:{" "}
+                Total: <strong>{brl(total)}</strong> · Já recebido: {brl(pago)}
+                {credito > 0 && <> · Crédito Festaê: {brl(credito)}</>} · Saldo:{" "}
                 <strong>{brl(saldo)}</strong>
               </p>
             </div>

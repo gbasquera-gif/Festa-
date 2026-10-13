@@ -66,6 +66,22 @@ export type RecebimentoApurado = {
   recebidoEm: Date | null;
 };
 
+/**
+ * O que foi feito com o dinheiro de um contrato cancelado.
+ *
+ * Só existe para cancelamentos feitos com tratamento registrado. Cancelamento
+ * antigo, sem tratamento, não tem esta informação e não ganha uma inventada.
+ */
+export type TratamentoApurado = {
+  /** Devolvido à cliente: saída de caixa na data do reembolso. */
+  reembolsado: number;
+  reembolsadoEm: Date | null;
+  /** Ficou com a Festaê: receita de retenção no mês do tratamento. */
+  retido: number;
+  /** Quando o tratamento foi definido. */
+  definidoEm: Date;
+};
+
 /** Um contrato, do ponto de vista do dinheiro. */
 export type ContratoApurado = {
   fechadoEm: Date;
@@ -73,6 +89,16 @@ export type ContratoApurado = {
   valor: number;
   recebimentos: readonly RecebimentoApurado[];
   cancelado?: boolean;
+  /**
+   * Crédito Festaê abatendo este contrato, líquido de estornos.
+   *
+   * Reduz o que falta receber, e só isso: não é dinheiro (não entra no
+   * caixa) e não é desconto (o contrato continua valendo `valor` no
+   * faturamento).
+   */
+  creditoAplicado?: number;
+  /** Presente quando o contrato foi cancelado com tratamento registrado. */
+  tratamento?: TratamentoApurado | null;
 };
 
 /** Um lançamento de saída. */
@@ -95,14 +121,44 @@ function vigentes(contratos: readonly ContratoApurado[]): ContratoApurado[] {
   return contratos.filter((contrato) => !contrato.cancelado);
 }
 
+/**
+ * Contratos cujo dinheiro conta no caixa.
+ *
+ * Os vigentes, e os cancelados com tratamento registrado: o pagamento de uma
+ * reserva cancelada depois entrou de verdade, na data em que entrou, e
+ * cancelar a festa não desfaz esse fato. O que sai depois — um reembolso —
+ * é outro fato, com a sua própria data.
+ *
+ * Cancelamento antigo, sem tratamento, continua fora, como sempre esteve:
+ * não há registro do que foi feito com aquele dinheiro, e somá-lo ao caixa
+ * agora mudaria meses já fechados com base num palpite.
+ */
+function contamNoCaixa(contratos: readonly ContratoApurado[]): ContratoApurado[] {
+  return contratos.filter((contrato) => !contrato.cancelado || Boolean(contrato.tratamento));
+}
+
 /** Tudo que já foi recebido de um contrato. */
 export function recebidoDoContrato(contrato: ContratoApurado): number {
   return somar(contrato.recebimentos.map((r) => r.valor));
 }
 
-/** O que falta receber de um contrato. Nunca negativo. */
+/** O crédito Festaê abatendo um contrato. Não é dinheiro. */
+export function creditoDoContrato(contrato: ContratoApurado): number {
+  return fromCentsInt(Math.max(0, toCentsInt(contrato.creditoAplicado ?? 0)));
+}
+
+/**
+ * O que falta receber de um contrato. Nunca negativo.
+ *
+ * Contratado menos o que foi pago menos o crédito Festaê aplicado. O crédito
+ * abate a obrigação da cliente sem ser recebimento: a festa vale o mesmo, e
+ * o caixa não vê dinheiro nenhum entrar por causa dele.
+ */
 export function saldoDoContrato(contrato: ContratoApurado): number {
-  const falta = toCentsInt(contrato.valor) - toCentsInt(recebidoDoContrato(contrato));
+  const falta =
+    toCentsInt(contrato.valor) -
+    toCentsInt(recebidoDoContrato(contrato)) -
+    toCentsInt(creditoDoContrato(contrato));
   return fromCentsInt(Math.max(0, falta));
 }
 
@@ -114,20 +170,35 @@ export function saldoDoContrato(contrato: ContratoApurado): number {
  */
 export type ResultadoDoMes = {
   regime: Regime;
+  /** Por competência, o faturamento das festas do mês. Por caixa, o que entrou menos reembolsos. */
   receita: number;
+  /**
+   * Receita de retenção por cancelamento. Só na competência, e separada do
+   * faturamento: não é festa, é o que ficou com a Festaê de uma festa que
+   * não aconteceu. No caixa ela já está dentro do que entrou.
+   */
+  receitaDeRetencao: number;
   despesa: number;
   resultado: number;
+  /** Sobre a receita operacional inteira: faturamento mais retenção. */
   margem: number | null;
 };
 
-function montarResultado(regime: Regime, receita: number, despesa: number): ResultadoDoMes {
-  const resultado = fromCentsInt(toCentsInt(receita) - toCentsInt(despesa));
+function montarResultado(
+  regime: Regime,
+  receita: number,
+  despesa: number,
+  receitaDeRetencao = 0,
+): ResultadoDoMes {
+  const receitaOperacional = toCentsInt(receita) + toCentsInt(receitaDeRetencao);
+  const resultado = fromCentsInt(receitaOperacional - toCentsInt(despesa));
   return {
     regime,
     receita,
+    receitaDeRetencao,
     despesa,
     resultado,
-    margem: receita > 0 ? resultado / receita : null,
+    margem: receitaOperacional > 0 ? resultado / fromCentsInt(receitaOperacional) : null,
   };
 }
 
@@ -146,14 +217,70 @@ export function receitaPorCompetencia(contratos: readonly ContratoApurado[], mes
   );
 }
 
-/** Receita por caixa: só o que entrou, no mês em que entrou. */
-export function receitaPorCaixa(contratos: readonly ContratoApurado[], mes: string): number {
+/**
+ * O que entrou no mês: pagamentos PAID, pela data em que entraram.
+ *
+ * Inclui o pagamento de reserva cancelada depois, quando o cancelamento tem
+ * tratamento — ver `contamNoCaixa`. Crédito Festaê não entra aqui: usar
+ * crédito não traz dinheiro novo.
+ */
+export function entradasNoCaixa(contratos: readonly ContratoApurado[], mes: string): number {
   return somar(
-    vigentes(contratos).flatMap((contrato) =>
+    contamNoCaixa(contratos).flatMap((contrato) =>
       contrato.recebimentos
         .filter((r) => r.recebidoEm !== null && mesEmChapeco(r.recebidoEm) === mes)
         .map((r) => r.valor),
     ),
+  );
+}
+
+/** O que foi devolvido a clientes no mês, pela data em que o reembolso saiu. */
+export function reembolsosNoMes(contratos: readonly ContratoApurado[], mes: string): number {
+  return somar(
+    contratos
+      .filter(
+        (contrato) =>
+          contrato.tratamento &&
+          contrato.tratamento.reembolsadoEm !== null &&
+          toCentsInt(contrato.tratamento.reembolsado) > 0 &&
+          mesEmChapeco(contrato.tratamento.reembolsadoEm) === mes,
+      )
+      .map((contrato) => contrato.tratamento!.reembolsado),
+  );
+}
+
+/**
+ * Receita por caixa: o que entrou no mês menos o que foi devolvido no mês.
+ *
+ * Entrada e reembolso são dois fatos com duas datas. Um sinal pago em
+ * setembro e devolvido em outubro aparece nos dois meses — entra em
+ * setembro, sai em outubro — e nunca some de setembro retroativamente.
+ */
+export function receitaPorCaixa(contratos: readonly ContratoApurado[], mes: string): number {
+  return fromCentsInt(
+    toCentsInt(entradasNoCaixa(contratos, mes)) - toCentsInt(reembolsosNoMes(contratos, mes)),
+  );
+}
+
+/**
+ * Receita de retenção por cancelamento no mês.
+ *
+ * A parte do que a cliente pagou que ficou com a Festaê quando a festa foi
+ * cancelada. Pertence ao mês em que o tratamento foi definido — é quando a
+ * receita passa a existir —, e não ao mês da festa que não aconteceu. Nunca
+ * entra no faturamento: não é festa.
+ */
+export function receitaDeRetencao(contratos: readonly ContratoApurado[], mes: string): number {
+  return somar(
+    contratos
+      .filter(
+        (contrato) =>
+          contrato.cancelado &&
+          contrato.tratamento &&
+          toCentsInt(contrato.tratamento.retido) > 0 &&
+          mesEmChapeco(contrato.tratamento.definidoEm) === mes,
+      )
+      .map((contrato) => contrato.tratamento!.retido),
   );
 }
 
@@ -167,7 +294,7 @@ export function receitaPorCaixa(contratos: readonly ContratoApurado[], mes: stri
  */
 export function recebidoSemData(contratos: readonly ContratoApurado[]): number {
   return somar(
-    vigentes(contratos).flatMap((contrato) =>
+    contamNoCaixa(contratos).flatMap((contrato) =>
       contrato.recebimentos.filter((r) => r.recebidoEm === null).map((r) => r.valor),
     ),
   );
@@ -274,6 +401,10 @@ export type IndicadoresDoMes = {
   mes: string;
   competencia: ResultadoDoMes;
   caixa: ResultadoDoMes;
+  /** Pagamentos PAID que entraram no mês. */
+  entradasNoCaixa: number;
+  /** Reembolsos que saíram no mês. */
+  reembolsosNoMes: number;
   contratosFechados: number;
   festasNoMes: number;
   ticketMedio: number | null;
@@ -294,8 +425,15 @@ export function indicadoresDoMes(
 
   return {
     mes,
-    competencia: montarResultado("COMPETENCIA", receitaCompetencia, despesa),
+    competencia: montarResultado(
+      "COMPETENCIA",
+      receitaCompetencia,
+      despesa,
+      receitaDeRetencao(contratos, mes),
+    ),
     caixa: montarResultado("CAIXA", receitaPorCaixa(contratos, mes), despesa),
+    entradasNoCaixa: entradasNoCaixa(contratos, mes),
+    reembolsosNoMes: reembolsosNoMes(contratos, mes),
     contratosFechados: vigentes(contratos).filter((c) => mesEmChapeco(c.fechadoEm) === mes).length,
     festasNoMes: doMes.length,
     ticketMedio: doMes.length > 0 ? fromCentsInt(Math.round(toCentsInt(receitaCompetencia) / doMes.length)) : null,
@@ -383,7 +521,9 @@ export function situacaoDePagamento(contrato: ContratoApurado, agora: Date): Sit
   const festaJaPassou = diaEmChapeco(contrato.festaEm) < diaEmChapeco(agora);
   if (festaJaPassou) return "VENCIDO";
 
-  return recebidoDoContrato(contrato) > 0 ? "PARCIAL" : "AGUARDANDO";
+  // Crédito aplicado é parte da obrigação já coberta: a festa não está mais
+  // "aguardando" nada da cliente para aquela parte.
+  return recebidoDoContrato(contrato) > 0 || creditoDoContrato(contrato) > 0 ? "PARCIAL" : "AGUARDANDO";
 }
 
 /** As situações que significam dinheiro a cobrar. */
@@ -398,6 +538,12 @@ export type ResumoDaCarteira = {
   contratos: number;
   contratado: number;
   recebido: number;
+  /**
+   * Crédito Festaê aplicado nos contratos da carteira. Fecha a conta com os
+   * outros dois: contratado = recebido + crédito aplicado + saldo em aberto
+   * (salvo recebimento acima do contratado).
+   */
+  creditoAplicado: number;
   saldoEmAberto: number;
   vencido: number;
   contratosVencidos: number;
@@ -424,6 +570,7 @@ export function resumoDaCarteira(
     contratos: vivos.length,
     contratado,
     recebido: totalRecebido(vivos),
+    creditoAplicado: somar(vivos.map(creditoDoContrato)),
     saldoEmAberto: totalAReceber(vivos),
     vencido: somar(vencidos.map(saldoDoContrato)),
     contratosVencidos: vencidos.length,
@@ -440,7 +587,9 @@ export function resumoDaCarteira(
 /**
  * O resultado operacional de um mês.
  *
- * É faturamento por competência menos consumo e custeio — nada além disso.
+ * É faturamento por competência, mais a receita de retenção por cancelamento
+ * do mês, menos consumo e custeio — nada além disso. A retenção fica numa
+ * linha própria e nunca se mistura ao faturamento das festas.
  * Acervo fica de fora porque é investimento: continua existindo depois da
  * festa e pode ser alugado de novo. Somá-lo aqui faria todo mês de compra
  * parecer prejuízo.
@@ -458,6 +607,7 @@ export function resultadoOperacionalDoMes(
     "COMPETENCIA",
     receitaPorCompetencia(contratos, mes),
     despesaDoMes(gastos, mes),
+    receitaDeRetencao(contratos, mes),
   );
 }
 
@@ -479,6 +629,8 @@ export type MesDaSerie = {
   mes: string;
   numero: number;
   faturamento: number;
+  /** Receita de retenção por cancelamento do mês. Fora do faturamento. */
+  retencao: number;
   despesas: number;
   resultado: number;
   margem: number | null;
@@ -513,8 +665,10 @@ export function serieDoAno(
 
   return mesesDoAno(ano).map((mes, i) => {
     const faturamento = receitaPorCompetencia(contratos, mes);
+    const retencao = receitaDeRetencao(contratos, mes);
     const despesas = despesaDoMes(gastos, mes);
-    const resultado = fromCentsInt(toCentsInt(faturamento) - toCentsInt(despesas));
+    const operacional = toCentsInt(faturamento) + toCentsInt(retencao);
+    const resultado = fromCentsInt(operacional - toCentsInt(despesas));
 
     acumuladoFat = fromCentsInt(toCentsInt(acumuladoFat) + toCentsInt(faturamento));
     acumuladoRes = fromCentsInt(toCentsInt(acumuladoRes) + toCentsInt(resultado));
@@ -528,12 +682,13 @@ export function serieDoAno(
       mes,
       numero: i + 1,
       faturamento,
+      retencao,
       despesas,
       resultado,
-      margem: faturamento > 0 ? resultado / faturamento : null,
+      margem: operacional > 0 ? resultado / fromCentsInt(operacional) : null,
       acumuladoFaturamento: acumuladoFat,
       acumuladoResultado: acumuladoRes,
-      temDados: faturamento > 0 || despesas > 0 || houveAcervo,
+      temDados: faturamento > 0 || retencao > 0 || despesas > 0 || houveAcervo,
     };
   });
 }
@@ -543,6 +698,8 @@ export type AcumuladoDoAno = {
   ano: number;
   ateMes: string;
   faturamento: number;
+  /** Receita de retenção por cancelamento no período. Fora do faturamento. */
+  retencao: number;
   despesas: number;
   resultado: number;
   margem: number | null;
@@ -569,16 +726,19 @@ export function acumuladoNoAno(
   const ateAqui = serie.slice(0, limite);
 
   const faturamento = somar(ateAqui.map((m) => m.faturamento));
+  const retencao = somar(ateAqui.map((m) => m.retencao));
   const despesas = somar(ateAqui.map((m) => m.despesas));
-  const resultado = fromCentsInt(toCentsInt(faturamento) - toCentsInt(despesas));
+  const operacional = toCentsInt(faturamento) + toCentsInt(retencao);
+  const resultado = fromCentsInt(operacional - toCentsInt(despesas));
 
   return {
     ano,
     ateMes,
     faturamento,
+    retencao,
     despesas,
     resultado,
-    margem: faturamento > 0 ? resultado / faturamento : null,
+    margem: operacional > 0 ? resultado / fromCentsInt(operacional) : null,
     acervo: somar(ateAqui.map((m) => acervoDoMes(gastos, m.mes))),
     mesesComDados: ateAqui.filter((m) => m.temDados).length,
   };

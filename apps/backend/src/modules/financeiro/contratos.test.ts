@@ -262,3 +262,42 @@ describe("ordenarLinhas", () => {
     expect(new Set(ordenada.map((l) => l.comercial.numero)).size).toBe(6);
   });
 });
+
+describe("crédito Festaê e cancelamento com tratamento", () => {
+  it("crédito aplicado abate o saldo e não vira recebido", () => {
+    const r = reserva({ creditosUtilizados: [{ valor: "-300.00" }, { valor: "-100.00" }, { valor: "100.00" }] });
+    const c = montarContrato(r, AGORA);
+    expect(c.recebido).toBe(400);
+    expect(c.creditoAplicado).toBe(300);
+    expect(c.saldo).toBe(220);
+    expect(c.valor).toBe(920);
+  });
+
+  it("cancelada com tratamento: fora dos totais, com o destino do dinheiro à vista", () => {
+    const r = reserva({
+      status: "CANCELLED",
+      cancelledAt: new Date("2026-09-10T15:00:00.000Z"),
+      tratamentoDoCancelamento: {
+        creditoGerado: "250.00",
+        reembolsado: "0.00",
+        reembolsadoEm: null,
+        retido: "150.00",
+        definidoEm: new Date("2026-09-10T15:00:00.000Z"),
+      },
+    });
+    const c = montarContrato(r, AGORA);
+    expect(c.vigente).toBe(false);
+    expect(c.situacao).toBe("CANCELADO");
+    expect(c.tratamento).toEqual({ creditoGerado: 250, reembolsado: 0, reembolsadoEm: null, retido: 150 });
+    const apurado = apurar(r);
+    expect(apurado.cancelado).toBe(true);
+    expect(apurado.tratamento?.retido).toBe(150);
+    expect(resumir([montarLinha(r, AGORA)], AGORA).contratado).toBe(0);
+  });
+
+  it("aguardando devolução continua vigente e somando", () => {
+    const r = reserva({ status: "AGUARDANDO_DEVOLUCAO" });
+    expect(montarContrato(r, AGORA).vigente).toBe(true);
+    expect(resumir([montarLinha(r, AGORA)], AGORA).contratado).toBe(920);
+  });
+});

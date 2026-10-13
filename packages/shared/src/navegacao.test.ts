@@ -88,3 +88,12 @@ describe("contexto real, com filtros", () => {
     expect(visitar(muitos)).toHaveLength(LIMITE_DO_REGISTRO);
   });
 });
+
+describe("telas do crédito da cliente", () => {
+  it("cadastro volta para a lista; voucher e saldo voltam para o cadastro", () => {
+    expect(rotaDeRetorno("/clientes/abc")).toBe("/clientes");
+    expect(rotaDeRetorno("/clientes/abc/creditos/mov1/voucher")).toBe("/clientes/abc");
+    expect(rotaDeRetorno("/clientes/abc/creditos/saldo")).toBe("/clientes/abc");
+    expect(rotaDeRetorno("/clientes")).toBeNull();
+  });
+});

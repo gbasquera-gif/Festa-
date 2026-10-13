@@ -7,7 +7,14 @@ import { SELECAO_DO_COMPROMISSO } from "./selecao-do-pedido";
 const MARGEM_DE_RISCO = 1;
 
 /** Estados que seguram material. Recusada e cancelada devolvem o item. */
-const RESERVAS_ATIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"] as const;
+const RESERVAS_ATIVAS = [
+  "PENDING",
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "AGUARDANDO_DEVOLUCAO",
+  "COMPLETED",
+] as const;
 
 export interface ItemDaData {
   productId: string;

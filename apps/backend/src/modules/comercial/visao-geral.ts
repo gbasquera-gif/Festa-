@@ -262,6 +262,7 @@ function totaisDe(linhas: readonly LinhaDaCarteira[]) {
   return {
     contratado: somaCentavos(linhas.map((l) => l.comercial.valor)),
     recebido: somaCentavos(linhas.map((l) => l.comercial.recebido)),
+    creditoAplicado: somaCentavos(linhas.map((l) => l.comercial.creditoAplicado)),
     saldo: somaCentavos(linhas.map((l) => l.comercial.saldo)),
     festas: linhas.length,
   };

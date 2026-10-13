@@ -23,6 +23,9 @@ import {
   type GastoApurado,
   acervoDoMes,
   mesDaDespesa,
+  entradasNoCaixa,
+  reembolsosNoMes,
+  receitaDeRetencao,
 } from "./financeiro";
 
 /**
@@ -529,5 +532,148 @@ describe("mês da despesa: o dia digitado no formulário", () => {
   it("datas já gravadas ao meio-dia continuam no mesmo mês", () => {
     expect(mesDaDespesa(new Date("2026-10-01T12:00:00.000Z"))).toBe("2026-10");
     expect(mesDaDespesa(new Date("2026-09-30T00:00:00.000Z"))).toBe("2026-09");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Cancelamento com tratamento, reembolso, retenção e crédito Festaê
+ * ------------------------------------------------------------------ */
+
+describe("caixa de reserva cancelada com tratamento", () => {
+  /**
+   * O exemplo combinado: pagou R$ 450 de sinal em setembro, cancelou em
+   * outubro; R$ 300 viraram crédito e R$ 150 ficaram retidos.
+   */
+  const canceladaComCredito: ContratoApurado = {
+    fechadoEm: meioDia("2026-09-03"),
+    festaEm: meioDia("2026-11-14"),
+    valor: 1500,
+    recebimentos: [{ valor: 450, recebidoEm: meioDia("2026-09-03") }],
+    cancelado: true,
+    tratamento: { reembolsado: 0, reembolsadoEm: null, retido: 150, definidoEm: meioDia("2026-10-08") },
+  };
+
+  /** Pagou R$ 400 em setembro; R$ 250 devolvidos em outubro, R$ 150 retidos. */
+  const canceladaComReembolso: ContratoApurado = {
+    fechadoEm: meioDia("2026-09-05"),
+    festaEm: meioDia("2026-10-24"),
+    valor: 1000,
+    recebimentos: [{ valor: 400, recebidoEm: meioDia("2026-09-05") }],
+    cancelado: true,
+    tratamento: {
+      reembolsado: 250,
+      reembolsadoEm: new Date("2026-10-12T12:00:00.000Z"),
+      retido: 150,
+      definidoEm: meioDia("2026-10-12"),
+    },
+  };
+
+  /** Cancelamento antigo, sem tratamento: continua fora do caixa. */
+  const canceladaAntiga: ContratoApurado = {
+    fechadoEm: meioDia("2026-08-01"),
+    festaEm: meioDia("2026-09-20"),
+    valor: 800,
+    recebimentos: [{ valor: 240, recebidoEm: meioDia("2026-08-01") }],
+    cancelado: true,
+  };
+
+  it("o pagamento continua no caixa do mês em que entrou", () => {
+    expect(receitaPorCaixa([canceladaComCredito], "2026-09")).toBe(450);
+  });
+
+  it("crédito gerado não é dinheiro e não mexe no caixa de outubro", () => {
+    expect(receitaPorCaixa([canceladaComCredito], "2026-10")).toBe(0);
+  });
+
+  it("reembolso é saída no mês em que saiu, sem apagar a entrada original", () => {
+    expect(entradasNoCaixa([canceladaComReembolso], "2026-09")).toBe(400);
+    expect(receitaPorCaixa([canceladaComReembolso], "2026-09")).toBe(400);
+    expect(reembolsosNoMes([canceladaComReembolso], "2026-10")).toBe(250);
+    expect(receitaPorCaixa([canceladaComReembolso], "2026-10")).toBe(-250);
+  });
+
+  it("cancelamento antigo, sem tratamento, segue fora do caixa como sempre", () => {
+    expect(receitaPorCaixa([canceladaAntiga], "2026-08")).toBe(0);
+    expect(recebidoSemData([{ ...canceladaAntiga, recebimentos: [{ valor: 10, recebidoEm: null }] }])).toBe(0);
+  });
+
+  it("festa cancelada não gera faturamento por competência", () => {
+    expect(receitaPorCompetencia([canceladaComCredito], "2026-11")).toBe(0);
+    expect(receitaPorCompetencia([canceladaComReembolso], "2026-10")).toBe(0);
+  });
+
+  it("retenção é receita do mês do tratamento, separada do faturamento", () => {
+    expect(receitaDeRetencao([canceladaComCredito, canceladaComReembolso], "2026-10")).toBe(300);
+    expect(receitaDeRetencao([canceladaComCredito], "2026-11")).toBe(0);
+    const r = resultadoOperacionalDoMes([canceladaComCredito, canceladaComReembolso], [], "2026-10");
+    expect(r.receita).toBe(0);
+    expect(r.receitaDeRetencao).toBe(300);
+    expect(r.resultado).toBe(300);
+    expect(r.margem).toBe(1);
+  });
+
+  it("caixa = PAID recebido − reembolsos; pendente nunca conta", () => {
+    // Só PAID chega aqui: quem monta o contrato já filtra. O que se confere é
+    // que entrada e reembolso fecham: 450 + 400 entraram, 250 voltaram.
+    const todos = [canceladaComCredito, canceladaComReembolso];
+    const entrou = entradasNoCaixa(todos, "2026-09") + entradasNoCaixa(todos, "2026-10");
+    const saiu = reembolsosNoMes(todos, "2026-09") + reembolsosNoMes(todos, "2026-10");
+    expect(entrou).toBe(850);
+    expect(saiu).toBe(250);
+    // Conciliação: o que ficou (600) = crédito (300) + retenções (150 + 150).
+    expect(entrou - saiu).toBe(300 + 150 + 150);
+  });
+
+  it("a série do ano soma a retenção ao resultado sem tocar no faturamento", () => {
+    const serie = serieDoAno([canceladaComCredito], [{ valor: 50, natureza: "CONSUMO", pagoEm: meioDia("2026-10-02") }], 2026);
+    const outubro = serie[9];
+    expect(outubro.faturamento).toBe(0);
+    expect(outubro.retencao).toBe(150);
+    expect(outubro.resultado).toBe(100);
+    expect(outubro.temDados).toBe(true);
+    const ytd = acumuladoNoAno([canceladaComCredito], [], 2026, "2026-12");
+    expect(ytd.faturamento).toBe(0);
+    expect(ytd.retencao).toBe(150);
+    expect(ytd.resultado).toBe(150);
+  });
+});
+
+describe("crédito Festaê aplicado num contrato", () => {
+  /** Festa nova de R$ 1.000 que usou R$ 300 de crédito e pagou R$ 200. */
+  const comCredito: ContratoApurado = {
+    fechadoEm: meioDia("2026-10-10"),
+    festaEm: meioDia("2026-12-05"),
+    valor: 1000,
+    recebimentos: [{ valor: 200, recebidoEm: meioDia("2026-10-10") }],
+    creditoAplicado: 300,
+  };
+
+  it("não reduz o faturamento da festa nova", () => {
+    expect(receitaPorCompetencia([comCredito], "2026-12")).toBe(1000);
+  });
+
+  it("reduz só o que falta receber", () => {
+    expect(saldoDoContrato(comCredito)).toBe(500);
+    expect(totalAReceber([comCredito])).toBe(500);
+  });
+
+  it("não entra no caixa", () => {
+    expect(receitaPorCaixa([comCredito], "2026-10")).toBe(200);
+    expect(totalRecebido([comCredito])).toBe(200);
+  });
+
+  it("contratado = recebido + crédito aplicado + saldo em aberto", () => {
+    const resumo = resumoDaCarteira([comCredito], meioDia("2026-10-20"));
+    expect(resumo.contratado).toBe(1000);
+    expect(resumo.recebido).toBe(200);
+    expect(resumo.creditoAplicado).toBe(300);
+    expect(resumo.saldoEmAberto).toBe(500);
+  });
+
+  it("festa paga só com crédito não fica 'aguardando'", () => {
+    const soCredito = { ...comCredito, recebimentos: [], creditoAplicado: 400 };
+    expect(situacaoDePagamento(soCredito, meioDia("2026-10-20"))).toBe("PARCIAL");
+    const quitadaComCredito = { ...comCredito, creditoAplicado: 800 };
+    expect(situacaoDePagamento(quitadaComCredito, meioDia("2026-10-20"))).toBe("QUITADO");
   });
 });

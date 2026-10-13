@@ -1,5 +1,7 @@
 import {
   SITUACOES_DE_PAGAMENTO,
+  creditoAplicadoNaReserva,
+  creditoDoContrato,
   mesEmChapeco,
   recebidoDoContrato,
   resumoDaCarteira,
@@ -50,6 +52,7 @@ export const STATUS_VIGENTES = [
   "CONFIRMED",
   "PREPARING",
   "READY",
+  "AGUARDANDO_DEVOLUCAO",
   "COMPLETED",
 ] as const;
 
@@ -88,6 +91,16 @@ export type ReservaCrua = {
       paidAt: Date | null;
     }[];
   };
+  /** Utilizações de crédito Festaê (negativas) e o que voltou delas. */
+  creditosUtilizados?: { valor: ValorDoBanco }[];
+  /** O que foi feito com o dinheiro, quando a reserva foi cancelada com tratamento. */
+  tratamentoDoCancelamento?: {
+    creditoGerado: ValorDoBanco;
+    reembolsado: ValorDoBanco;
+    reembolsadoEm: Date | null;
+    retido: ValorDoBanco;
+    definidoEm: Date;
+  } | null;
 };
 
 export type ContratoComercial = {
@@ -112,8 +125,17 @@ export type ContratoComercial = {
   montagem: boolean;
   valor: number;
   recebido: number;
+  /** Crédito Festaê abatendo o contrato. Não é recebimento. */
+  creditoAplicado: number;
   saldo: number;
   situacao: SituacaoDePagamento;
+  /** Cancelada com tratamento: o destino do que foi pago. */
+  tratamento: {
+    creditoGerado: number;
+    reembolsado: number;
+    reembolsadoEm: string | null;
+    retido: number;
+  } | null;
   /** O saldo vence no dia da festa: é quando a cliente paga, na retirada ou na entrega. */
   venceEm: string;
   /** Recebimento sem data conhecida — herança do painel antigo, nunca recuperável. */
@@ -140,6 +162,7 @@ function dia(data: Date): string {
  * expirar sem nunca ter entrado.
  */
 export function apurar(reserva: ReservaCrua): ContratoApurado {
+  const t = reserva.tratamentoDoCancelamento ?? null;
   return {
     fechadoEm: reserva.requestedAt,
     festaEm: reserva.eventDate,
@@ -148,6 +171,17 @@ export function apurar(reserva: ReservaCrua): ContratoApurado {
     recebimentos: reserva.order.payments
       .filter((p) => p.status === "PAID")
       .map((p) => ({ valor: paraNumero(p.amount), recebidoEm: p.paidAt })),
+    creditoAplicado: creditoAplicadoNaReserva(
+      (reserva.creditosUtilizados ?? []).map((m) => ({ valor: paraNumero(m.valor) })),
+    ),
+    tratamento: t
+      ? {
+          reembolsado: paraNumero(t.reembolsado),
+          reembolsadoEm: t.reembolsadoEm,
+          retido: paraNumero(t.retido),
+          definidoEm: t.definidoEm,
+        }
+      : null,
   };
 }
 
@@ -189,8 +223,17 @@ export function montarContrato(reserva: ReservaCrua, agora: Date): ContratoComer
     montagem: reserva.order.assembly,
     valor: apurado.valor,
     recebido: recebidoDoContrato(apurado),
+    creditoAplicado: creditoDoContrato(apurado),
     saldo: saldoDoContrato(apurado),
     situacao: situacaoDePagamento(apurado, agora),
+    tratamento: reserva.tratamentoDoCancelamento
+      ? {
+          creditoGerado: paraNumero(reserva.tratamentoDoCancelamento.creditoGerado),
+          reembolsado: paraNumero(reserva.tratamentoDoCancelamento.reembolsado),
+          reembolsadoEm: reserva.tratamentoDoCancelamento.reembolsadoEm?.toISOString() ?? null,
+          retido: paraNumero(reserva.tratamentoDoCancelamento.retido),
+        }
+      : null,
     venceEm: dia(reserva.eventDate),
     temRecebimentoSemData: pagos.some((p) => p.paidAt === null),
     pagamentos: pagos

@@ -70,6 +70,9 @@ export class AvailabilityService {
         status: "PENDING",
         requestedAt: { lt: deadline },
         order: { payments: { none: { status: "PAID" } } },
+        // Crédito Festaê aplicado garante a data como o sinal garantiria.
+        // (Aplicar crédito já confirma a reserva; esta é a segunda barreira.)
+        creditosUtilizados: { none: {} },
       },
       select: { id: true, orderId: true },
     });

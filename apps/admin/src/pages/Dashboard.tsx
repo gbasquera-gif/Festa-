@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ListChecks, Wallet, Coins, ArrowRight, ChevronRight } from "lucide-react";
-import { formatarDataDaFesta } from "@festae/shared";
+import { STATUS_QUE_SEGURAM_ACERVO, formatarDataDaFesta } from "@festae/shared";
 import { api } from "@/lib/api";
 import { brl, nomeDoMes, pct } from "@/components/financeiro/formato";
 import type { Panorama, Variacao } from "@/components/financeiro/panorama";
@@ -57,9 +57,10 @@ type AcaoResumo = {
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Solicitação", CONFIRMED: "Confirmada", PREPARING: "Preparação",
-  READY: "Pronta", COMPLETED: "Concluída", REJECTED: "Rejeitada", CANCELLED: "Cancelada",
+  READY: "Pronta", AGUARDANDO_DEVOLUCAO: "Aguardando devolução", COMPLETED: "Concluída",
+  REJECTED: "Rejeitada", CANCELLED: "Cancelada",
 };
-const VIVAS = ["PENDING", "CONFIRMED", "PREPARING", "READY", "COMPLETED"];
+const VIVAS: readonly string[] = STATUS_QUE_SEGURAM_ACERVO;
 
 /**
  * As janelas do filtro.

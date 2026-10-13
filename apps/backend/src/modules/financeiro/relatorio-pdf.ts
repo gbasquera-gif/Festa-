@@ -266,20 +266,34 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
 
   // ------------------------------------------------------------ resultado
 
-  y = secao("Resultado operacional do mês", "Faturamento − consumo e custeio", y + 38);
   const res = r.resultado;
+  // Retenção de cancelamento entra no resultado em linha própria, e só é
+  // citada quando existe: um mês sem cancelamento lê como sempre leu.
+  const comRetencao = res.retencao > 0;
+  y = secao(
+    "Resultado operacional do mês",
+    comRetencao ? "Faturamento + retenção − consumo e custeio" : "Faturamento − consumo e custeio",
+    y + 38,
+  );
   y = linhaDeCartoes(
     [
       {
         rotulo: "Resultado operacional",
         valor: reais(res.resultado),
-        nota: "Faturamento do mês − despesas operacionais",
+        nota: comRetencao
+          ? "Faturamento + retenção por cancelamento − despesas operacionais"
+          : "Faturamento do mês − despesas operacionais",
         corDoValor: res.resultado < 0 ? COR.coralEscuro : COR.tinta,
       },
       {
         rotulo: "Margem operacional",
         valor: percentual(res.margem),
-        nota: res.margem === null ? "Sem faturamento no mês" : "Resultado operacional ÷ faturamento",
+        nota:
+          res.margem === null
+            ? "Sem faturamento no mês"
+            : comRetencao
+              ? "Resultado ÷ (faturamento + retenção)"
+              : "Resultado operacional ÷ faturamento",
       },
       {
         rotulo: "Despesas operacionais do mês",
@@ -291,7 +305,10 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
     80,
   );
   escrever(
-    "Resultado operacional não é lucro líquido: não considera impostos, pró-labore nem depreciação. Investimento em acervo não entra nesta conta.",
+    (comRetencao
+      ? `Inclui ${reais(res.retencao)} de receita de retenção por cancelamento, separada do faturamento das festas. `
+      : "") +
+      "Resultado operacional não é lucro líquido: não considera impostos, pró-labore nem depreciação. Investimento em acervo não entra nesta conta.",
     MARGEM,
     y + 8,
     { tamanho: 7.6, cor: COR.apagado, largura: LARGURA },
@@ -309,7 +326,12 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
       {
         rotulo: "Índice de recebimento",
         valor: percentual(rec.indice, 0),
-        nota: rec.indice === null ? "Nenhum contrato vigente" : `da carteira contratada (${reais(rec.contratado)}) já recebida`,
+        nota:
+          rec.indice === null
+            ? "Nenhum contrato vigente"
+            : rec.creditoAplicado > 0
+              ? `da carteira contratada (${reais(rec.contratado)}) já coberta, com crédito Festaê`
+              : `da carteira contratada (${reais(rec.contratado)}) já recebida`,
       },
     ],
     y,
@@ -331,11 +353,35 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
   if (rec.recebidoAlemDoContratado > 0) {
     notas.push(`${reais(rec.recebidoAlemDoContratado)} recebidos acima do valor de algum contrato não entram no índice.`);
   }
-  if (notas.length > 0) escrever(notas.join(" "), MARGEM, y + 8, { tamanho: 7.6, cor: COR.apagado, largura: LARGURA });
+  // Crédito Festaê abate o saldo da carteira sem ser recebimento: o índice o
+  // conta como coberto, o "total recebido" não.
+  if (rec.creditoAplicado > 0) {
+    notas.push(`${reais(rec.creditoAplicado)} da carteira estão cobertos por crédito Festaê: abatem o saldo, não são recebimento.`);
+  }
+  // O caixa do mês só ganha linha quando houve reembolso: é aí que ele
+  // difere do que entrou, e a saída precisa aparecer com o seu valor.
+  const cx = r.caixaDoMes;
+  if (cx.reembolsos > 0) {
+    notas.push(
+      `Caixa de ${minusculo(r.mes)}: ${reais(cx.entradas)} entraram e ${reais(cx.reembolsos)} saíram em reembolsos de cancelamento (líquido ${reais(cx.liquido)}). ` +
+        "Pagamentos de reservas canceladas depois continuam no caixa do dia em que entraram.",
+    );
+  }
+  if (r.creditoEmAberto > 0) {
+    notas.push(`Crédito Festaê em aberto das clientes: ${reais(r.creditoEmAberto)} — já entrou no caixa quando foi pago; não é receita nova.`);
+  }
+  const fimDasNotas =
+    notas.length > 0
+      ? escrever(notas.join(" "), MARGEM, y + 8, { tamanho: 7.6, cor: COR.apagado, largura: LARGURA })
+      : y;
 
   // ------------------------------------------------------------ acervo e carteira futura
 
-  y = secao("Investimento e compromissos", "Fora do resultado do mês", y + (notas.length > 0 ? 40 : 26));
+  y = secao(
+    "Investimento e compromissos",
+    "Fora do resultado do mês",
+    notas.length > 0 ? Math.max(y + 40, fimDasNotas + 16) : y + 26,
+  );
   const metade = (LARGURA - 10) / 2;
   cartao(
     {
