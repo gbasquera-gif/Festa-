@@ -2,8 +2,13 @@
  * Configuração do Assistente IA, toda vinda do ambiente do servidor.
  *
  * Nenhum segredo tem valor padrão. Sem `OPENAI_API_KEY`, o assistente roda
- * no modo de demonstração em desenvolvimento e fica DESLIGADO em produção —
- * a não ser que `ASSISTENTE_IA_PROVEDOR=simulado` seja pedido explicitamente.
+ * no modo de demonstração em desenvolvimento e fica DESLIGADO em produção.
+ * O modo de demonstração nunca liga em produção, nem pedido: as respostas
+ * dele são montadas por regra e não podem passar por consulta validada.
+ *
+ * Desligar rápido: `ASSISTENTE_IA_PROVEDOR=desligado` (vale no próximo
+ * deploy) ou revogar a chave na OpenAI (vale na hora, em todas as
+ * instâncias — o painel passa a mostrar "sem acesso ao serviço de IA").
  *
  * Os preços são estimativas para a métrica de custo, não cobrança: conferir
  * na página de preços da OpenAI e ajustar aqui quando mudarem.
@@ -22,7 +27,12 @@ export type ConfiguracaoDoAssistente = {
     maxTokensDeSaida: number;
     esforcoDeRaciocinio: string | null;
   };
-  /** OPENAI: voz sintetizada pelo servidor. NAVEGADOR: a tela usa a voz do aparelho (sem custo). */
+  /**
+   * NAVEGADOR (padrão): a tela usa a voz do aparelho, sem custo. OPENAI: voz
+   * sintetizada pelo servidor, só quando pedida — a OpenAI anunciou o fim dos
+   * modelos de /audio/speech, então o modelo fica configurável e a tela cai
+   * para a voz do aparelho se a do servidor falhar.
+   */
   saidaDeVoz: "OPENAI" | "NAVEGADOR";
   transcricaoSimulada: string;
   limites: {
@@ -40,6 +50,9 @@ export type ConfiguracaoDoAssistente = {
     caracteresParaFala: number;
     tempoPorPerguntaMs: number;
     minutosDeConversa: number;
+    /** Teto de gasto estimado (US$), somado no banco entre instâncias. */
+    gastoMaximoPorDiaUsd: number;
+    gastoMaximoPorMesUsd: number;
   };
   /** US$ por 1M tokens e por minuto. Só para estimar custo nas métricas. */
   precos: {
@@ -63,7 +76,7 @@ export function lerConfiguracao(env: NodeJS.ProcessEnv = process.env): Configura
 
   let modo: ModoDoAssistente;
   if (pedido === "desligado") modo = "DESLIGADO";
-  else if (pedido === "simulado") modo = "SIMULADO";
+  else if (pedido === "simulado") modo = producao ? "DESLIGADO" : "SIMULADO";
   else if (pedido === "openai") modo = chave ? "OPENAI" : "DESLIGADO";
   else modo = chave ? "OPENAI" : producao ? "DESLIGADO" : "SIMULADO";
 
@@ -80,7 +93,7 @@ export function lerConfiguracao(env: NodeJS.ProcessEnv = process.env): Configura
       maxTokensDeSaida: numero(env, "ASSISTENTE_IA_MAX_TOKENS", 1200),
       esforcoDeRaciocinio: env.ASSISTENTE_IA_ESFORCO?.trim() || null,
     },
-    saidaDeVoz: modo === "OPENAI" && saidaPedida !== "navegador" ? "OPENAI" : "NAVEGADOR",
+    saidaDeVoz: modo === "OPENAI" && saidaPedida === "openai" ? "OPENAI" : "NAVEGADOR",
     transcricaoSimulada: env.ASSISTENTE_IA_TRANSCRICAO_SIMULADA?.trim() || "Quantas festas temos em novembro?",
     limites: {
       caracteresPorMensagem: 500,
@@ -97,6 +110,8 @@ export function lerConfiguracao(env: NodeJS.ProcessEnv = process.env): Configura
       caracteresParaFala: 1500,
       tempoPorPerguntaMs: numero(env, "ASSISTENTE_IA_TEMPO_LIMITE_MS", 45_000),
       minutosDeConversa: 30,
+      gastoMaximoPorDiaUsd: numero(env, "ASSISTENTE_IA_GASTO_MAXIMO_DIA_USD", 2),
+      gastoMaximoPorMesUsd: numero(env, "ASSISTENTE_IA_GASTO_MAXIMO_MES_USD", 20),
     },
     precos: {
       entradaPorMilhao: numero(env, "ASSISTENTE_IA_PRECO_ENTRADA", 0.75),

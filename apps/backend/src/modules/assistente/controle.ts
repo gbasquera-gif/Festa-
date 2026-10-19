@@ -4,12 +4,12 @@ import type { CanalDoAssistente, PapelAutorizado } from "./contrato";
 import type { ConfiguracaoDoAssistente } from "./configuracao";
 
 /**
- * Limites de uso, conversas e métricas — tudo em memória do processo.
+ * Limites de uso, conversas e métricas.
  *
- * Em memória de propósito nesta fase: não há tabela nova (nenhuma migration),
- * e nada da conversa sobrevive a um reinício. A contrapartida está anotada:
- * com mais de uma instância da API, ou para um teto mensal que resista a
- * reinício, isto passa para o banco ou um cache compartilhado.
+ * Os limites e o teto de gasto valem entre instâncias da API: em produção
+ * ficam no banco (`LimitesNoBanco`, em uso-no-banco.ts). Esta versão em
+ * memória serve aos testes e ao desenvolvimento. Conversas e métricas
+ * detalhadas continuam em memória: nada da conversa sobrevive a um reinício.
  */
 
 const HORA = 3_600_000;
@@ -18,20 +18,62 @@ const HORA = 3_600_000;
 
 export type Recusa = { motivo: string; tentarEmSegundos: number };
 
-export class LimitesDeUso {
+export type TotaisDeUso = {
+  /** Onde os contadores vivem: BANCO vale para todas as instâncias. */
+  onde: "BANCO" | "MEMORIA";
+  dia: string;
+  perguntasNoDia: number;
+  gastoNoDiaUsd: number;
+  mes: string;
+  gastoNoMesUsd: number;
+  tetoDoDiaUsd: number;
+  tetoDoMesUsd: number;
+};
+
+/** O que o núcleo precisa para limitar uso e gasto, venha de onde vier. */
+export interface ControleDeUso {
+  readonly onde: TotaisDeUso["onde"];
+  /** Reserva uma pergunta. Devolve a recusa, ou nula quando pode seguir. */
+  reservarPergunta(usuarioId: string, agora?: Date): Promise<Recusa | null>;
+  liberar(usuarioId: string): void;
+  reservarFala(usuarioId: string, agora?: Date): Promise<Recusa | null>;
+  /** Só o teto de gasto — antes de transcrever, que não conta como pergunta. */
+  conferirGasto(agora?: Date): Promise<Recusa | null>;
+  registrarGasto(usd: number, agora?: Date): Promise<void>;
+  totais(agora?: Date): Promise<TotaisDeUso>;
+}
+
+export const RECUSA_EM_ANDAMENTO: Recusa = { motivo: "Ainda estou respondendo a sua pergunta anterior.", tentarEmSegundos: 5 };
+
+/** O teto de gasto, igual para memória e banco. */
+export function gastoExcedido(limites: ConfiguracaoDoAssistente["limites"], gastoNoDia: number, gastoNoMes: number): Recusa | null {
+  if (gastoNoMes >= limites.gastoMaximoPorMesUsd) {
+    return { motivo: "O assistente atingiu o teto de gasto deste mês. Peça à administração para revisar o limite.", tentarEmSegundos: 3600 };
+  }
+  if (gastoNoDia >= limites.gastoMaximoPorDiaUsd) {
+    return { motivo: "O assistente atingiu o teto de gasto de hoje. Volta amanhã.", tentarEmSegundos: 3600 };
+  }
+  return null;
+}
+
+/** Os limites em memória do processo: testes e desenvolvimento. */
+export class LimitesDeUso implements ControleDeUso {
+  readonly onde = "MEMORIA" as const;
   private readonly perguntas = new Map<string, number[]>();
   private readonly falas = new Map<string, number[]>();
   private readonly emAndamento = new Set<string>();
   private totalDoDia = { dia: "", total: 0 };
+  private gasto = { dia: "", noDia: 0, mes: "", noMes: 0 };
 
   constructor(private readonly limites: ConfiguracaoDoAssistente["limites"]) {}
 
-  /** Reserva uma pergunta. Devolve a recusa, ou nula quando pode seguir. */
-  reservarPergunta(usuarioId: string, agora = Date.now()): Recusa | null {
-    if (this.emAndamento.has(usuarioId)) {
-      return { motivo: "Ainda estou respondendo a sua pergunta anterior.", tentarEmSegundos: 5 };
-    }
-    const dia = diaEmChapeco(new Date(agora));
+  // Tudo síncrono por dentro: a trava "uma por vez" não pode ter espera no meio.
+  async reservarPergunta(usuarioId: string, quando = new Date()): Promise<Recusa | null> {
+    const agora = quando.getTime();
+    if (this.emAndamento.has(usuarioId)) return RECUSA_EM_ANDAMENTO;
+    const teto = this.tetoAgora(quando);
+    if (teto) return teto;
+    const dia = diaEmChapeco(quando);
     if (this.totalDoDia.dia !== dia) this.totalDoDia = { dia, total: 0 };
     if (this.totalDoDia.total >= this.limites.perguntasPorDiaNoTotal) {
       return { motivo: "O assistente atingiu o limite de perguntas de hoje para a Festaê. Volta amanhã.", tentarEmSegundos: 3600 };
@@ -55,7 +97,10 @@ export class LimitesDeUso {
     this.emAndamento.delete(usuarioId);
   }
 
-  reservarFala(usuarioId: string, agora = Date.now()): Recusa | null {
+  async reservarFala(usuarioId: string, quando = new Date()): Promise<Recusa | null> {
+    const teto = this.tetoAgora(quando);
+    if (teto) return teto;
+    const agora = quando.getTime();
     const lista = (this.falas.get(usuarioId) ?? []).filter((t) => agora - t < HORA);
     if (lista.length >= this.limites.falasPorHora) {
       return { motivo: "Limite de respostas faladas por hora atingido.", tentarEmSegundos: Math.ceil((lista[0] + HORA - agora) / 1000) };
@@ -64,6 +109,48 @@ export class LimitesDeUso {
     this.falas.set(usuarioId, lista);
     return null;
   }
+
+  async conferirGasto(quando = new Date()): Promise<Recusa | null> {
+    return this.tetoAgora(quando);
+  }
+
+  private tetoAgora(quando: Date): Recusa | null {
+    this.virarGasto(quando);
+    return gastoExcedido(this.limites, this.gasto.noDia, this.gasto.noMes);
+  }
+
+  async registrarGasto(usd: number, quando = new Date()) {
+    if (!(usd > 0)) return;
+    this.virarGasto(quando);
+    this.gasto.noDia += usd;
+    this.gasto.noMes += usd;
+  }
+
+  async totais(quando = new Date()): Promise<TotaisDeUso> {
+    this.virarGasto(quando);
+    const dia = diaEmChapeco(quando);
+    return {
+      onde: this.onde,
+      dia,
+      perguntasNoDia: this.totalDoDia.dia === dia ? this.totalDoDia.total : 0,
+      gastoNoDiaUsd: arredondar(this.gasto.noDia),
+      mes: dia.slice(0, 7),
+      gastoNoMesUsd: arredondar(this.gasto.noMes),
+      tetoDoDiaUsd: this.limites.gastoMaximoPorDiaUsd,
+      tetoDoMesUsd: this.limites.gastoMaximoPorMesUsd,
+    };
+  }
+
+  private virarGasto(quando: Date) {
+    const dia = diaEmChapeco(quando);
+    const mes = dia.slice(0, 7);
+    if (this.gasto.mes !== mes) this.gasto = { dia, noDia: 0, mes, noMes: 0 };
+    else if (this.gasto.dia !== dia) this.gasto = { ...this.gasto, dia, noDia: 0 };
+  }
+}
+
+export function arredondar(usd: number): number {
+  return Number(usd.toFixed(4));
 }
 
 // ---------------------------------------------------------------- conversas
@@ -160,7 +247,8 @@ export class MetricasDoAssistente {
     return texto + transcricao + voz;
   }
 
-  registrar(e: EventoDeUso, agora = new Date()) {
+  /** Registra o evento e devolve o custo estimado, para o teto de gasto. */
+  registrar(e: EventoDeUso, agora = new Date()): number {
     const dia = diaEmChapeco(agora);
     if (dia !== this.dia) {
       this.dia = dia;
@@ -195,6 +283,7 @@ export class MetricasDoAssistente {
         falha: e.falha,
       }),
     );
+    return custo;
   }
 
   resumoDoDia() {

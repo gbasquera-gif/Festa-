@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { lerConfiguracao } from "./configuracao";
-import { MetricasDoAssistente } from "./controle";
+import { LimitesDeUso, MetricasDoAssistente, type ControleDeUso } from "./controle";
 import { CATALOGO, ferramentasDoPapel, type ServicosDoAssistente } from "./ferramentas";
 import { MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA, type EntradaDoAssistente } from "./contrato";
 import { NucleoDoAssistente, RecusaDoAssistente } from "./nucleo";
@@ -233,6 +233,37 @@ describe("responder", () => {
     await expect(n2.responder(entrada("b"))).rejects.toMatchObject({ codigo: "LIMITE" });
     liberar();
     await primeira;
+  });
+
+  it("teto de gasto do dia: soma o custo estimado de cada resposta e recusa quando passa", async () => {
+    // Cada resposta do roteiro custa ~US$ 0,000165 (100 tokens de entrada, 20 de saída).
+    const roteiro = new Roteiro(Array.from({ length: 5 }, () => diz("ok")));
+    const { nucleo } = montar(roteiro, { ASSISTENTE_IA_GASTO_MAXIMO_DIA_USD: "0.0002" });
+    await nucleo.responder(entrada("a"));
+    await nucleo.responder(entrada("b"));
+    await expect(nucleo.responder(deOps("c"))).rejects.toMatchObject({ codigo: "LIMITE", message: expect.stringContaining("teto de gasto de hoje") });
+    // Transcrição também para: áudio não passa por cima do teto.
+    await expect(nucleo.transcrever(entrada("").identidade, "PAINEL_VOZ", Buffer.from("x"), "audio/webm", 3)).rejects.toMatchObject({ codigo: "LIMITE" });
+    expect((await nucleo.limites.totais(AGORA)).gastoNoDiaUsd).toBeCloseTo(0.0003, 4);
+  });
+
+  it("teto de gasto do mês tem mensagem própria", async () => {
+    const { nucleo } = montar(new Roteiro([diz("ok"), diz("ok")]), { ASSISTENTE_IA_GASTO_MAXIMO_MES_USD: "0.0001" });
+    await nucleo.responder(entrada("a"));
+    await expect(nucleo.responder(entrada("b"))).rejects.toMatchObject({ codigo: "LIMITE", message: expect.stringContaining("teto de gasto deste mês") });
+  });
+
+  it("contador de limites fora do ar: recusa como indisponível, sem chamar a IA", async () => {
+    const roteiro = new Roteiro([diz("ok")]);
+    const { cfg } = montar(roteiro);
+    const quebrado: ControleDeUso = Object.assign(new LimitesDeUso(cfg.limites), {
+      reservarPergunta: async () => {
+        throw new Error("banco fora do ar");
+      },
+    });
+    const nucleo = new NucleoDoAssistente(cfg, roteiro, servicos(), new MetricasDoAssistente(cfg.precos, () => {}), () => AGORA, quebrado);
+    await expect(nucleo.responder(entrada("a"))).rejects.toMatchObject({ codigo: "INDISPONIVEL" });
+    expect(roteiro.recebidas).toHaveLength(0);
   });
 
   it("contexto: a pergunta seguinte recebe as consultas anteriores; conversa é presa ao usuário", async () => {

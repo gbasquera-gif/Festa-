@@ -1313,3 +1313,24 @@ model ConteudoInstitucional {
 
   @@map("conteudo_institucional")
 }
+
+/// Contadores do Assistente IA do painel, no banco para valerem entre
+/// instâncias da API e sobreviverem a deploy e reinício.
+///
+/// Só números: nenhuma pergunta, resposta, nome ou valor de cliente. `janela`
+/// é a hora (UTC, "H:2026-10-19T18"), o dia ("D:2026-10-19") ou o mês
+/// ("M:2026-10"), os dois últimos no fuso de Chapecó; `escopo` é "TOTAL" ou o
+/// hash curto da pessoa da equipe ("U:…"). As linhas por hora são apagadas
+/// depois de alguns dias; as do mês ficam como histórico de gasto.
+model AssistenteUso {
+  janela       String
+  escopo       String
+  perguntas    Int      @default(0)
+  falas        Int      @default(0)
+  /// Gasto estimado em US$ pela tabela de preços da configuração. Não é a fatura.
+  custoUsd     Float    @default(0)
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@id([janela, escopo])
+  @@map("assistente_uso")
+}

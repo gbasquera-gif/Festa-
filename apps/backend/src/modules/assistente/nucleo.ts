@@ -8,7 +8,7 @@ import {
   type RespostaDoAssistente,
 } from "./contrato";
 import type { ConfiguracaoDoAssistente } from "./configuracao";
-import { ConversasEmMemoria, LimitesDeUso, MetricasDoAssistente, type ConsultaFeita, type Recusa } from "./controle";
+import { ConversasEmMemoria, LimitesDeUso, MetricasDoAssistente, type ConsultaFeita, type ControleDeUso, type Recusa } from "./controle";
 import {
   areasForaDoPapel,
   esquemaDaFerramenta,
@@ -67,7 +67,7 @@ export const EXEMPLOS_OPS = [
  * serviços reais.
  */
 export class NucleoDoAssistente {
-  readonly limites: LimitesDeUso;
+  readonly limites: ControleDeUso;
   readonly conversas: ConversasEmMemoria;
 
   constructor(
@@ -76,8 +76,10 @@ export class NucleoDoAssistente {
     private readonly servicos: ServicosDoAssistente,
     readonly metricas: MetricasDoAssistente,
     private readonly relogio: () => Date = () => new Date(),
+    /** Em produção, os contadores no banco (valem entre instâncias). */
+    controle?: ControleDeUso,
   ) {
-    this.limites = new LimitesDeUso(cfg.limites);
+    this.limites = controle ?? new LimitesDeUso(cfg.limites);
     this.conversas = new ConversasEmMemoria(cfg.limites);
   }
 
@@ -116,7 +118,7 @@ export class NucleoDoAssistente {
       throw new RecusaDoAssistente("INVALIDA", `A pergunta pode ter até ${this.cfg.limites.caracteresPorMensagem} caracteres.`);
     }
 
-    const recusa = this.limites.reservarPergunta(identidade.usuarioId);
+    const recusa = await this.conferirLimite(() => this.limites.reservarPergunta(identidade.usuarioId, this.relogio()));
     if (recusa) {
       this.registrarLimite("PERGUNTA", entrada, recusa, inicio);
       throw new RecusaDoAssistente("LIMITE", recusa.motivo, recusa.tentarEmSegundos);
@@ -196,7 +198,7 @@ export class NucleoDoAssistente {
       if (ferramentasUsadas.length === 0 && tipo === "RESPOSTA") tipo = "LIMITACAO";
 
       this.conversas.registrar(conversa, { pergunta: mensagem, resposta: texto, consultas });
-      this.metricas.registrar({
+      const custo = this.metricas.registrar({
         tipo: "PERGUNTA",
         canal: entrada.canal,
         papel: identidade.papel,
@@ -207,6 +209,7 @@ export class NucleoDoAssistente {
         tokens: uso,
         latenciaMs: Date.now() - inicio,
       });
+      await this.somarGasto(custo);
       return {
         conversaId: conversa.id,
         texto,
@@ -217,7 +220,7 @@ export class NucleoDoAssistente {
       };
     } catch (e) {
       const falha = e instanceof FalhaDoProvedor ? e.tipo : "INTERNA";
-      this.metricas.registrar({
+      const custo = this.metricas.registrar({
         tipo: "PERGUNTA",
         canal: entrada.canal,
         papel: identidade.papel,
@@ -229,6 +232,7 @@ export class NucleoDoAssistente {
         latenciaMs: Date.now() - inicio,
         falha,
       });
+      await this.somarGasto(custo);
       if (e instanceof FalhaDoProvedor) throw new RecusaDoAssistente("INDISPONIVEL", MENSAGEM_DE_FALHA[e.tipo]);
       throw e;
     } finally {
@@ -246,11 +250,13 @@ export class NucleoDoAssistente {
   ): Promise<string> {
     const inicio = Date.now();
     const provedor = this.exigirProvedor();
+    const teto = await this.conferirLimite(() => this.limites.conferirGasto(this.relogio()));
+    if (teto) throw new RecusaDoAssistente("LIMITE", teto.motivo, teto.tentarEmSegundos);
     const controle = new AbortController();
     const prazo = setTimeout(() => controle.abort(), 30_000);
     try {
       const texto = await provedor.transcrever(audio, mimeType, controle.signal);
-      this.metricas.registrar({
+      const custo = this.metricas.registrar({
         tipo: "TRANSCRICAO",
         canal,
         papel: identidade.papel,
@@ -259,6 +265,7 @@ export class NucleoDoAssistente {
         segundosDeAudio: segundos,
         latenciaMs: Date.now() - inicio,
       });
+      await this.somarGasto(custo);
       return texto;
     } catch (e) {
       this.metricas.registrar({
@@ -287,13 +294,13 @@ export class NucleoDoAssistente {
     }
     const limpo = texto.trim().slice(0, this.cfg.limites.caracteresParaFala);
     if (!limpo) throw new RecusaDoAssistente("INVALIDA", "Nada para falar.");
-    const recusa = this.limites.reservarFala(identidade.usuarioId);
+    const recusa = await this.conferirLimite(() => this.limites.reservarFala(identidade.usuarioId, this.relogio()));
     if (recusa) throw new RecusaDoAssistente("LIMITE", recusa.motivo, recusa.tentarEmSegundos);
     const controle = new AbortController();
     const prazo = setTimeout(() => controle.abort(), 30_000);
     try {
       const audio = await provedor.falar(limpo, controle.signal);
-      this.metricas.registrar({
+      const custo = this.metricas.registrar({
         tipo: "FALA",
         canal: "PAINEL_VOZ",
         papel: identidade.papel,
@@ -302,6 +309,7 @@ export class NucleoDoAssistente {
         caracteresFalados: limpo.length,
         latenciaMs: Date.now() - inicio,
       });
+      await this.somarGasto(custo);
       return audio;
     } catch (e) {
       this.metricas.registrar({
@@ -321,6 +329,20 @@ export class NucleoDoAssistente {
   }
 
   // ---------------------------------------------------------------- internos
+
+  /** Limites no banco fora do ar: recusa clara, sem passar sem conferir. */
+  private async conferirLimite(conferir: () => Promise<Recusa | null>): Promise<Recusa | null> {
+    try {
+      return await conferir();
+    } catch {
+      throw new RecusaDoAssistente("INDISPONIVEL", "Não consegui conferir os limites de uso agora. Tente de novo em instantes.");
+    }
+  }
+
+  /** Soma o gasto estimado no teto. Uma falha aqui não derruba a resposta já paga. */
+  private async somarGasto(custo: number) {
+    await this.limites.registrarGasto(custo, this.relogio()).catch(() => undefined);
+  }
 
   /**
    * Executa uma chamada do modelo. Tudo que vem do modelo é tratado como

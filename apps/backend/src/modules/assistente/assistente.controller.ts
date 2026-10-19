@@ -121,11 +121,14 @@ export class AssistenteController {
     this.nucleo.conversas.encerrar(user.userId, id);
   }
 
-  /** Métricas técnicas do dia, sem conteúdo de conversa. */
+  /**
+   * Métricas técnicas, sem conteúdo de conversa: o detalhe do dia nesta
+   * instância e, em `uso`, os totais do dia e do mês somados no banco.
+   */
   @Get("metricas")
   @Roles("ADMIN")
-  metricas() {
-    return this.nucleo.metricas.resumoDoDia();
+  async metricas() {
+    return { ...this.nucleo.metricas.resumoDoDia(), uso: await this.nucleo.limites.totais() };
   }
 }
 

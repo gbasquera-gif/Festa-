@@ -151,9 +151,23 @@ describe("configuração", () => {
     expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: "desligado" } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
   });
 
-  it("voz do servidor só com OpenAI, e pode ser trocada pela do navegador", () => {
-    expect(lerConfiguracao({ OPENAI_API_KEY: "k" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("OPENAI");
-    expect(lerConfiguracao({ OPENAI_API_KEY: "k", ASSISTENTE_IA_SAIDA_DE_VOZ: "navegador" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
+  it("modo de demonstração nunca liga em produção, nem pedido", () => {
+    expect(lerConfiguracao({ NODE_ENV: "production", ASSISTENTE_IA_PROVEDOR: "simulado" } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
+    expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: "simulado" } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
+    expect(lerConfiguracao({ NODE_ENV: "development", ASSISTENTE_IA_PROVEDOR: "simulado" } as NodeJS.ProcessEnv).modo).toBe("SIMULADO");
+  });
+
+  it("voz do aparelho é o padrão; a do servidor só quando pedida e com OpenAI", () => {
+    expect(lerConfiguracao({ OPENAI_API_KEY: "k" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
+    expect(lerConfiguracao({ OPENAI_API_KEY: "k", ASSISTENTE_IA_SAIDA_DE_VOZ: "openai" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("OPENAI");
+    expect(lerConfiguracao({ ASSISTENTE_IA_SAIDA_DE_VOZ: "openai" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
     expect(lerConfiguracao({} as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
+  });
+
+  it("teto de gasto com padrão e configurável", () => {
+    const padrao = lerConfiguracao({} as NodeJS.ProcessEnv).limites;
+    expect([padrao.gastoMaximoPorDiaUsd, padrao.gastoMaximoPorMesUsd]).toEqual([2, 20]);
+    const pedido = lerConfiguracao({ ASSISTENTE_IA_GASTO_MAXIMO_DIA_USD: "0.5", ASSISTENTE_IA_GASTO_MAXIMO_MES_USD: "5" } as NodeJS.ProcessEnv).limites;
+    expect([pedido.gastoMaximoPorDiaUsd, pedido.gastoMaximoPorMesUsd]).toEqual([0.5, 5]);
   });
 });

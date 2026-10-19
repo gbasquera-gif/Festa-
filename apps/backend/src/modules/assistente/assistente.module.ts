@@ -21,6 +21,7 @@ import type { ServicosDoAssistente } from "./ferramentas";
 import { NucleoDoAssistente } from "./nucleo";
 import { ProvedorOpenAI, type ProvedorDeIA } from "./provedor";
 import { ProvedorSimulado } from "./provedor-simulado";
+import { LimitesNoBanco } from "./uso-no-banco";
 
 export const CONFIGURACAO_DO_ASSISTENTE = Symbol("CONFIGURACAO_DO_ASSISTENTE");
 
@@ -83,10 +84,15 @@ export function criarProvedor(cfg: ConfiguracaoDoAssistente): ProvedorDeIA | nul
             ? `Assistente IA ligado (OpenAI · texto ${cfg.openai.modeloDeTexto} · transcrição ${cfg.openai.modeloDeTranscricao} · voz ${cfg.saidaDeVoz === "OPENAI" ? cfg.openai.modeloDeVoz : "do navegador"}).`
             : cfg.modo === "SIMULADO"
               ? "Assistente IA em modo de demonstração (provedor simulado, sem chave de API)."
-              : "Assistente IA desligado: sem OPENAI_API_KEY neste ambiente.",
+              : process.env.ASSISTENTE_IA_PROVEDOR?.trim().toLowerCase() === "simulado"
+                ? "Assistente IA desligado: o modo de demonstração não liga em produção."
+                : process.env.ASSISTENTE_IA_PROVEDOR?.trim().toLowerCase() === "desligado"
+                  ? "Assistente IA desligado por ASSISTENTE_IA_PROVEDOR=desligado."
+                  : "Assistente IA desligado: sem OPENAI_API_KEY neste ambiente.",
         );
         const metricas = new MetricasDoAssistente(cfg.precos, (linha) => logger.log(linha));
-        return new NucleoDoAssistente(cfg, criarProvedor(cfg), servicos, metricas);
+        // Limites e teto de gasto no banco: valem para todas as instâncias da API.
+        return new NucleoDoAssistente(cfg, criarProvedor(cfg), servicos, metricas, undefined, new LimitesNoBanco(cfg.limites));
       },
     },
   ],
