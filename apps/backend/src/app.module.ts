@@ -21,6 +21,7 @@ import { PartnersModule } from "./modules/partners/partners.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { AiMagicModule } from "./modules/ai-magic/ai-magic.module";
 import { LegalModule } from "./modules/legal/legal.module";
+import { AssistenteModule } from "./modules/assistente/assistente.module";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
@@ -52,6 +53,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
     PaymentsModule,
     AiMagicModule,
     LegalModule,
+    AssistenteModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

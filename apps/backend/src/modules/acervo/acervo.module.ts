@@ -5,5 +5,6 @@ import { AcervoService } from "./acervo.service";
 @Module({
   controllers: [AcervoController],
   providers: [AcervoService],
+  exports: [AcervoService],
 })
 export class AcervoModule {}

@@ -10,5 +10,6 @@ import { AvailabilityModule } from "../availability/availability.module";
   imports: [ReservationsModule, AvailabilityModule],
   controllers: [OrcamentosController, PropostaController],
   providers: [OrcamentosService, PanoramaDeOrcamentosService],
+  exports: [OrcamentosService, PanoramaDeOrcamentosService],
 })
 export class OrcamentosModule {}

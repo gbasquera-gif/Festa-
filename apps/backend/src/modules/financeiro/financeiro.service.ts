@@ -27,6 +27,8 @@ import {
   mesEmChapeco,
   resultadoOperacionalDoMes,
   serieDoAno,
+  acervoDoMes,
+  despesaDoMes,
   totalAReceber,
   variacao,
   linhaDeRitmo,
@@ -154,6 +156,25 @@ export class FinanceiroService {
    * do mês em que entrou) e que vai virar festa. Aparece ao lado do caixa
    * para ninguém tomá-lo por sobra.
    */
+  /**
+   * As despesas de um mês separadas por natureza.
+   *
+   * Consumo e custeio passam pela MESMA `despesaDoMes` do resultado, cada um
+   * com a sua fatia de gastos: somados, dão a despesa do Resultado
+   * Operacional. Acervo é investimento e fica à parte, como na tela.
+   */
+  async despesasPorNatureza(mes: string) {
+    const gastos = await this.gastos();
+    const da = (natureza: NaturezaDoGasto) => gastos.filter((g) => g.natureza === natureza);
+    return {
+      mes,
+      consumo: despesaDoMes(da("CONSUMO"), mes),
+      custeio: despesaDoMes(da("CUSTEIO"), mes),
+      total: despesaDoMes(gastos, mes),
+      acervo: acervoDoMes(gastos, mes),
+    };
+  }
+
   private async creditoEmAberto(): Promise<number> {
     const soma = await prisma.creditoClienteMovimento.aggregate({ _sum: { valor: true } });
     return paraNumero(soma._sum.valor ?? 0);

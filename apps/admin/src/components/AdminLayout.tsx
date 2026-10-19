@@ -20,6 +20,7 @@ import {
 import { useRegistroDeNavegacao } from "@/lib/voltar";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { useAuth } from "@/lib/auth";
+import { AssistenteFestae } from "@/components/assistente/AssistenteFestae";
 
 /**
  * A navegação, em grupos.
@@ -341,6 +342,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      {/* Assistente IA: consulta, para ADMIN e OPS, em toda tela do painel. */}
+      <AssistenteFestae />
     </div>
   );
 }

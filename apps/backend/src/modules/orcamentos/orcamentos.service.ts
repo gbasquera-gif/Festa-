@@ -1022,8 +1022,11 @@ export class OrcamentosService {
   /**
    * O que as propostas aprovadas e ainda sem reserva seguram no dia — a
    * reserva provisória. Cada uma segura só a opção que a cliente escolheu.
+   *
+   * Público porque o Assistente IA responde disponibilidade com a mesma
+   * conta que a tela da proposta faz.
    */
-  private async seguradoPorAprovadas(festaEm: Date, ignorarId?: string, db: Tx = prisma) {
+  async seguradoPorAprovadas(festaEm: Date, ignorarId?: string, db: Tx = prisma) {
     const inicio = new Date(`${diaDaFesta(festaEm)}T00:00:00.000Z`);
     const fim = new Date(inicio.getTime() + 86_400_000);
     const aprovadas = await db.orcamento.findMany({
