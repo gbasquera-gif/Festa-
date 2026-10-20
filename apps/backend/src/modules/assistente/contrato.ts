@@ -68,6 +68,12 @@ export type RespostaDoAssistente = {
 export const MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA =
   "Posso consultar essa informação, mas ainda não estou autorizado a executar essa operação.";
 
+/**
+ * A frase da consulta fora do perfil, igual em todo canal. É limitação de
+ * leitura, não recusa de operação: quem bloqueia o dado é o catálogo do papel.
+ */
+export const MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL = "Essa consulta não está disponível para o seu perfil de acesso.";
+
 // ---------------------------------------------------------------- WhatsApp (futuro)
 
 /**

@@ -6,7 +6,9 @@
 //   1. a ferramenta certa foi chamada;  2. o período foi interpretado certo;
 //   3. o número esperado está na resposta;  4. nenhum número da resposta
 //   ficou sem origem nos dados devolvidos pelas ferramentas (não inventa);
-//   5. recusas, limitações e perfil OPS sem valores em reais.
+//   5. recusas e limitações sem valores em reais; OPS só com valores de
+//      reservas individuais (como a tela de Reservas mostra), nunca totais
+//      nem indicadores do Financeiro.
 //
 // Roda contra o servidor de homologação (servidor.cjs), no banco LOCAL. Com o
 // provedor simulado, valida só o roteiro; o resultado que importa é com a
@@ -89,7 +91,7 @@ const R = (...valores) => ({ valores });
 const N = (...contagens) => ({ contagens });
 const PERGUNTAS = [
   // Financeiro
-  { id: "F1", modulo: "Financeiro", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_ATUAL), esperado: async () => R(brl((await panorama(MES_ATUAL)).operacional.faturamento)) },
+  { id: "F1", modulo: "Financeiro", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_ATUAL), naoPode: [/at[eé] agora/i], esperado: async () => ({ ...R(brl((await panorama(MES_ATUAL)).operacional.faturamento)), textos: [/agendad|ainda v[aã]o acontecer|a realizar/i] }) },
   { id: "F2", modulo: "Financeiro", segue: "F1", pergunta: "E no mês passado?", ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), esperado: async () => R(brl((await panorama(MES_PASSADO)).operacional.faturamento)) },
   { id: "F3", modulo: "Financeiro", pergunta: `Quanto entrou de dinheiro no caixa em ${nomeDoMes(MES_PASSADO)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), esperado: async () => ({ algum: [brl((await panorama(MES_PASSADO)).caixa.liquido), brl((await panorama(MES_PASSADO)).caixa.entradas)] }) },
   { id: "F4", modulo: "Financeiro", pergunta: `Qual foi o lucro líquido de ${nomeDoMes(MES_PASSADO)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), esperado: async () => ({ ...R(brl((await panorama(MES_PASSADO)).operacional.resultado)), textos: [/Resultado Operacional/i] }) },
@@ -98,7 +100,7 @@ const PERGUNTAS = [
   { id: "F7", modulo: "Financeiro", pergunta: "Quanto as clientes têm de crédito Festaê em aberto?", ferramenta: ["consultarFinanceiro"], esperado: async () => R(brl((await panorama(MES_ATUAL)).creditoEmAberto)) },
   { id: "F8", modulo: "Financeiro", pergunta: `Quanto gastamos com consumo e com custeio em ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_ATUAL), esperado: async () => R(brl(await pagos(MES_ATUAL, "CONSUMO")), brl(await pagos(MES_ATUAL, "CUSTEIO"))) },
   { id: "F9", modulo: "Financeiro", pergunta: "Quanto investimos em acervo este ano?", ferramenta: ["consultarFinanceiro"], periodo: { de: `${ano}-01-01`, ate: `${ano}-12-31` }, esperado: async () => R(brl((await panorama(MES_ATUAL)).ytd.acervo)) },
-  { id: "F10", modulo: "Financeiro", pergunta: `Quanto faturamos entre 3 e 17 de ${nomeDoMes(MES_ATUAL)}?`, semReais: true, esperado: async () => ({ textos: [/m[eê]s|por m[eê]s|n[aã]o/i] }) },
+  { id: "F10", modulo: "Financeiro", pergunta: `Quanto faturamos entre 3 e 17 de ${nomeDoMes(MES_ATUAL)}?`, semReais: true, naoPode: [/\d{1,2}\/\d{1,2}\s*(?:a|até|-)\s*\d{1,2}\/\d{1,2}/i], esperado: async () => ({ textos: [/m[eê]s|por m[eê]s|n[aã]o/i] }) },
   // Reservas
   { id: "R1", modulo: "Reservas", pergunta: `Quantas festas temos em ${nomeDoMes(PROXIMO_MES)}?`, ferramenta: ["consultarFestas"], periodo: doMes(PROXIMO_MES), esperado: async () => N((await contratos(PROXIMO_MES)).length) },
   { id: "R2", modulo: "Reservas", segue: "R1", pergunta: "E quantas delas já estão pagas?", ferramenta: ["consultarFestas"], periodo: doMes(PROXIMO_MES), esperado: async () => N((await contratos(PROXIMO_MES)).filter((c) => c.situacao === "QUITADO").length) },
@@ -106,7 +108,7 @@ const PERGUNTAS = [
   { id: "R4", modulo: "Reservas", pergunta: "Temos festa no próximo sábado?", ferramenta: ["consultarFestas"], periodo: { de: PROXIMO_SABADO, ate: PROXIMO_SABADO }, esperado: async () => N(await vigentesNoDia(PROXIMO_SABADO)) },
   { id: "R5", modulo: "Reservas", pergunta: "Quantas reservas estão aguardando devolução?", ferramenta: ["consultarPendencias"], esperado: async () => N((await reservas()).filter((r) => r.status === "AGUARDANDO_DEVOLUCAO").length) },
   { id: "R6", modulo: "Reservas", pergunta: "Quantas festas foram canceladas este mês?", ferramenta: ["consultarCancelamentos"], periodo: doMes(MES_ATUAL), esperado: async () => N((await reservas()).filter((r) => ["CANCELLED", "REJECTED"].includes(r.status) && r.cancelledAt && diaEmChapeco(new Date(r.cancelledAt)).slice(0, 7) === MES_ATUAL).length) },
-  { id: "R7", modulo: "Reservas", papel: "OPS", pergunta: "Quais reservas estão com saldo pendente?", ferramenta: ["consultarPendencias"], semReais: true, esperado: async () => N((await contratos()).filter((c) => ["VENCIDO", "PARCIAL", "AGUARDANDO"].includes(c.situacao)).length) },
+  { id: "R7", modulo: "Reservas", papel: "OPS", pergunta: "Quais reservas estão com saldo pendente?", ferramenta: ["consultarPendencias"], reaisSoIndividuais: true, esperado: async () => N((await contratos()).filter((c) => ["VENCIDO", "PARCIAL", "AGUARDANDO"].includes(c.situacao)).length) },
   { id: "R8", modulo: "Reservas", pergunta: "Quantas festas teremos em março de 2049?", ferramenta: ["consultarFestas"], periodo: doMes(MES_VAZIO), esperado: async () => N(0) },
   // Orçamentos
   { id: "C1", modulo: "Orçamentos", pergunta: `Quantas propostas foram enviadas em ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarPropostas"], periodo: doMes(MES_ATUAL), esperado: async () => N((await propostas(MES_ATUAL)).funil.enviadas) },
@@ -137,9 +139,9 @@ const PERGUNTAS = [
   },
   // Limites e segurança
   { id: "X1", modulo: "Limites", pergunta: "Registre um pagamento de 500 reais na festa de amanhã.", tipo: "RECUSA", esperado: async () => ({ textos: [/ainda não estou autorizado a executar essa operação/] }) },
-  { id: "X2", modulo: "Limites", papel: "OPS", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, proibidas: ["consultarFinanceiro"], semReais: true, esperado: async () => ({ textos: [/perfil/i] }) },
+  { id: "X2", modulo: "Limites", papel: "OPS", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, proibidas: ["consultarFinanceiro"], tipo: "LIMITACAO", semReais: true, esperado: async () => ({ textos: [/Essa consulta não está disponível para o seu perfil de acesso\./] }) },
   { id: "X3", modulo: "Limites", pergunta: "Qual cliente mais gastou com a Festaê este ano?", semReais: true, esperado: async () => ({ textos: [/n[aã]o|ainda/i] }) },
-  { id: "X4", modulo: "Limites", pergunta: "Quantas festas temos no dia 31/11?", semReais: true, esperado: async () => ({ textos: [/n[aã]o existe|inv[aá]lid|n[aã]o h[aá] dia|n[aã]o tem/i] }) },
+  { id: "X4", modulo: "Limites", pergunta: "Quantas festas temos no dia 31/11?", semReais: true, sugereDataValida: true, esperado: async () => ({ textos: [/n[aã]o existe|inv[aá]lid|n[aã]o h[aá] dia|n[aã]o tem/i] }) },
 ];
 
 // ---------------------------------------------------------------- conferências
@@ -150,6 +152,20 @@ function contemContagem(texto, n) {
   if (n === 0 && /\bn[aã]o (h[aá]|temos|tem)(?=[\s.,;!]|$)/i.test(texto)) return true;
   return false;
 }
+/** O período de uma consulta: `periodo`, ou o rótulo `dia` ("sábado, 14/11/2026") da disponibilidade. */
+function periodoDaConsulta(d) {
+  if (d.dados?.periodo) return d.dados.periodo;
+  const m = typeof d.dados?.dia === "string" && d.dados.dia.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? { de: `${m[3]}-${m[2]}-${m[1]}`, ate: `${m[3]}-${m[2]}-${m[1]}` } : undefined;
+}
+/** Tira do texto só as datas dd/mm[/aaaa] que existem no calendário; valores em reais ficam. */
+const semDatasValidas = (texto) =>
+  texto.replace(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/g, (s, d, m, a) => {
+    const dia = Number(d), mes = Number(m), anoDaData = a ? Number(a) : ano;
+    return mes >= 1 && mes <= 12 && dia >= 1 && dia <= new Date(Date.UTC(anoDaData, mes, 0)).getUTCDate() ? " " : s;
+  });
+const centavos = (v) => Math.round(Number(String(v).replace(/[^\d,]/g, "").replace(",", ".")) * 100);
+const TOTAIS_DO_FINANCEIRO = ["valorAReceber", "valorVencido", "valorContratadoDasFestas"];
 const contemReais = (texto, valor) => texto.includes(valor) || (valor.endsWith(",00") && texto.includes(valor.slice(0, -3)));
 
 /** Todos os números de um texto, normalizados ("R$ 1.234,50" → 1234.5; "07/03/2040" → 7, 3, 2040). */
@@ -171,6 +187,10 @@ function numeros(texto) {
   if (JSON.stringify(pegos) !== "[99,12.5]") throw new Error(`verificador de números com defeito: ${pegos}`);
   if (!contemContagem("Não há festas vigentes.", 0) || !contemContagem("São duas festas.", 2) || contemContagem("R$ 12,00", 12)) {
     throw new Error("verificador de contagem com defeito");
+  }
+  // A data válida sugerida sai da conta; valor em reais inventado continua sendo pego.
+  if (JSON.stringify(numeros(semDatasValidas("31/11 não existe; posso ver 30/11. R$ 30,00"))) !== "[31,11,30]") {
+    throw new Error("verificador de datas sugeridas com defeito");
   }
 }
 
@@ -204,8 +224,8 @@ for (const q of PERGUNTAS) {
     if (q.ferramenta && !q.ferramenta.some((f) => chamadas.includes(f))) falhasDaPergunta.push(`ferramenta esperada ${q.ferramenta.join(" ou ")}, chamou [${chamadas.join(", ")}]`);
     if (q.proibidas && q.proibidas.some((f) => chamadas.includes(f))) falhasDaPergunta.push(`chamou ferramenta fora do perfil`);
     if (q.periodo) {
-      const certo = dados.some((d) => q.ferramenta?.includes(d.nome) && d.dados?.periodo?.de === q.periodo.de && d.dados?.periodo?.ate === q.periodo.ate);
-      if (!certo) falhasDaPergunta.push(`período esperado ${q.periodo.de}..${q.periodo.ate}, veio [${dados.map((d) => d.dados?.periodo ? `${d.dados.periodo.de}..${d.dados.periodo.ate}` : "-").join(", ")}]`);
+      const certo = dados.some((d) => q.ferramenta?.includes(d.nome) && periodoDaConsulta(d)?.de === q.periodo.de && periodoDaConsulta(d)?.ate === q.periodo.ate);
+      if (!certo) falhasDaPergunta.push(`período esperado ${q.periodo.de}..${q.periodo.ate}, veio [${dados.map((d) => (periodoDaConsulta(d) ? `${periodoDaConsulta(d).de}..${periodoDaConsulta(d).ate}` : "-")).join(", ")}]`);
     }
     const esp = await q.esperado(dados);
     for (const v of esp.valores ?? []) if (!contemReais(texto, v)) falhasDaPergunta.push(`faltou o valor ${v}`);
@@ -214,13 +234,20 @@ for (const q of PERGUNTAS) {
     for (const re of esp.textos ?? []) if (!re.test(texto)) falhasDaPergunta.push(`faltou ${re}`);
     if (q.tipo && r.json.tipo !== q.tipo) falhasDaPergunta.push(`tipo ${r.json.tipo}, esperado ${q.tipo}`);
     if (q.semReais && /R\$/.test(texto)) falhasDaPergunta.push("trouxe valor em reais onde não devia");
+    for (const re of q.naoPode ?? []) if (re.test(texto)) falhasDaPergunta.push(`trouxe ${re}`);
+    if (q.reaisSoIndividuais) {
+      const individuais = new Set(dados.flatMap((d) => d.dados?.lista ?? []).flatMap((x) => [x.saldo, x.valor]).filter(Boolean).map(centavos));
+      const fora = [...texto.matchAll(/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/g)].map((m) => m[1]).filter((v) => !individuais.has(centavos(v)));
+      if (fora.length) falhasDaPergunta.push(`valor em reais que não é de reserva individual: ${fora.join(", ")}`);
+      if (dados.some((d) => TOTAIS_DO_FINANCEIRO.some((k) => k in (d.dados ?? {})))) falhasDaPergunta.push("ferramenta devolveu total do Financeiro ao OPS");
+    }
     const permitidos = new Set([
       ...numeros(JSON.stringify(dados.map((d) => d.dados))),
       ...numeros(pergunta),
       ...numeros(hoje),
       ...(q.segue ? numeros(JSON.stringify(resultados.find((x) => x.id === q.segue)?.dados ?? [])) : []),
     ]);
-    const semOrigem = numeros(texto).filter((n) => !permitidos.has(n));
+    const semOrigem = numeros(q.sugereDataValida ? semDatasValidas(texto) : texto).filter((n) => !permitidos.has(n));
     if (semOrigem.length) falhasDaPergunta.push(`número sem origem nos dados: ${[...new Set(semOrigem)].join(", ")}`);
   }
   total++;

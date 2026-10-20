@@ -12,7 +12,7 @@ Para cada resposta, compara com as rotas que as telas do painel usam:
 2. O período foi interpretado corretamente.
 3. O número esperado aparece na resposta.
 4. **Nenhum número da resposta deixa de existir nos dados que as ferramentas devolveram**, ou seja, o assistente não inventa números.
-5. Recusas, limitações e perfil OPS saem sem valores em reais.
+5. Recusas e limitações saem sem valores em reais. O perfil OPS pode ver os valores de reservas individuais, como a tela de Reservas já mostra, mas nunca totais nem indicadores do Financeiro (a receber, faturamento, Resultado Operacional).
 
 `voz.mjs` fala 4 perguntas com a voz do servidor, manda o áudio para a transcrição e confere datas, valores e o período interpretado.
 

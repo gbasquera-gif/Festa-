@@ -3,7 +3,9 @@ import {
   diaEmChapeco,
   formatarReais,
   fromCentsInt,
+  mesEmChapeco,
   numeroDoContrato,
+  receitaPorCompetencia,
   SITUACAO_DE_PAGAMENTO_LABEL,
   SITUACOES_EM_ABERTO,
   toCentsInt,
@@ -116,14 +118,29 @@ function dataCurta(dia: string): string {
   return rotuloDoDia(dia);
 }
 
-function periodoOuErro(expressao: string, agora: Date): { periodo: Periodo } | { erro: ResultadoDaFerramenta } {
+/**
+ * Os períodos que cada ferramenta realmente consulta, ditos para a pessoa.
+ *
+ * Vão junto de toda limitação de período: o modelo oferece só o que está
+ * aqui, em vez de inventar um formato que o servidor também não entende.
+ */
+const ALTERNATIVAS_MES_OU_ANO = ['um mês inteiro (ex.: "outubro", "mês passado")', 'um ano (ex.: "2026", "este ano")'];
+const ALTERNATIVAS_DE_DATAS = [
+  'um dia (ex.: "14/11", "amanhã")',
+  'uma semana (ex.: "esta semana", "próxima semana")',
+  'um mês inteiro (ex.: "novembro")',
+  'um ano (ex.: "2026")',
+];
+const ALTERNATIVAS_DE_DIA = ['um dia (ex.: "14/11", "próximo sábado")'];
+
+function periodoOuErro(expressao: string, agora: Date, alternativas: readonly string[]): { periodo: Periodo } | { erro: ResultadoDaFerramenta } {
   const r = interpretarPeriodo(expressao, agora);
   if (r.ok) return { periodo: r.periodo };
-  return { erro: limitacao(r.erro) };
+  return { erro: limitacao(r.erro, [], alternativas) };
 }
 
-function limitacao(motivo: string, fontes: FonteDaResposta[] = []): ResultadoDaFerramenta {
-  return { tipo: "LIMITACAO", dados: { limitacao: motivo }, fontes };
+function limitacao(motivo: string, fontes: FonteDaResposta[] = [], alternativas?: readonly string[]): ResultadoDaFerramenta {
+  return { tipo: "LIMITACAO", dados: { limitacao: motivo, ...(alternativas ? { alternativasDisponiveis: alternativas } : {}) }, fontes };
 }
 
 function descreverPeriodo(p: Periodo, agora: Date) {
@@ -180,23 +197,54 @@ const CRITERIOS_FINANCEIROS = [
 
 function avisoDeSituacao(situacao: ReturnType<typeof situacaoDoPeriodo>): string | null {
   if (situacao === "FUTURO") return "Período futuro: o faturamento é CONTRATADO (previsão), ainda não realizado.";
-  if (situacao === "EM_ANDAMENTO") return "Período em andamento: o faturamento inclui festas contratadas que ainda vão acontecer.";
+  if (situacao === "EM_ANDAMENTO") {
+    return "Período em andamento: o faturamento por competência soma as festas já realizadas e as ainda agendadas (contratadas, não realizadas). Não é \"até agora\".";
+  }
   return null;
+}
+
+/**
+ * O faturamento por competência do mês em andamento, separado em festas já
+ * realizadas (antes de hoje) e ainda agendadas (de hoje até o fim do mês).
+ *
+ * É a mesma `receitaPorCompetencia` do Financeiro aplicada às duas metades da
+ * carteira — nenhuma fórmula nova. Se as metades não fecharem com o total do
+ * Financeiro, a divisão não vai: um número que não bate com a tela é pior que
+ * nenhum.
+ */
+async function divisaoDoMesEmAndamento(mes: string, faturamento: number, agora: Date, servicos: ServicosDoAssistente) {
+  const hoje = diaEmChapeco(agora);
+  const doMes = (await servicos.carteira(agora))
+    .map((x) => x.linha.apurado)
+    .filter((c) => !c.cancelado && mesEmChapeco(c.festaEm) === mes);
+  const realizadas = doMes.filter((c) => diaEmChapeco(c.festaEm) < hoje);
+  const agendadas = doMes.filter((c) => diaEmChapeco(c.festaEm) >= hoje);
+  const valorRealizadas = receitaPorCompetencia(realizadas, mes);
+  const valorAgendadas = receitaPorCompetencia(agendadas, mes);
+  if (toCentsInt(valorRealizadas) + toCentsInt(valorAgendadas) !== toCentsInt(faturamento)) return null;
+  return {
+    festasJaRealizadas: { festas: realizadas.length, valor: brl(valorRealizadas), criterio: "Festas com data antes de hoje." },
+    festasAindaAgendadas: {
+      festas: agendadas.length,
+      valor: brl(valorAgendadas),
+      criterio: "Festas de hoje até o fim do mês: valor contratado, ainda não realizado.",
+    },
+  };
 }
 
 const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam }>> = {
   nome: "consultarFinanceiro",
   descricao:
-    "Indicadores financeiros de um MÊS ou ANO, iguais aos do Financeiro: faturamento por competência (realizado ou contratado), retenção por cancelamento, despesas (consumo, custeio), Resultado Operacional e margem, caixa (entradas PAID, reembolsos realizados), investimento em acervo, festas e ticket médio do mês, e a posição de hoje (a receber, crédito Festaê em aberto das clientes). Use para faturamento, contratado de um mês, recebimentos, a receber, resultado, despesas, acervo investido e crédito das clientes.",
+    "Indicadores financeiros de um MÊS-CALENDÁRIO ou ANO, iguais aos do Financeiro: faturamento por competência (realizado ou contratado), retenção por cancelamento, despesas (consumo, custeio), Resultado Operacional e margem, caixa (entradas PAID, reembolsos realizados), investimento em acervo, festas e ticket médio do mês, e a posição de hoje (a receber, crédito Festaê em aberto das clientes). Use para faturamento, contratado de um mês (inclusive \"contratado para o mês que vem\" ou \"para novembro\": o mês inteiro), recebimentos, a receber, resultado, despesas, acervo investido e crédito das clientes.",
   natureza: "LEITURA",
   papeis: ["ADMIN"],
   parametros: z.object({ periodo: periodoParam }),
   async executar({ periodo: expressao }, { agora, servicos }) {
-    const r = periodoOuErro(expressao, agora);
+    const r = periodoOuErro(expressao, agora, ALTERNATIVAS_MES_OU_ANO);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
     if (p.tipo === "INTERVALO") {
-      return limitacao("O Financeiro é apurado por mês ou por ano. Pergunte por um mês (ex.: \"outubro\") ou por um ano.");
+      return limitacao("O Financeiro é apurado por mês ou por ano; não por semana nem por intervalo de dias.", [], ALTERNATIVAS_MES_OU_ANO);
     }
     const mesAtual = diaEmChapeco(agora).slice(0, 7);
 
@@ -239,6 +287,8 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
     const periodoDoMes = interpretarPeriodo(mes, agora);
     const descricao = descreverPeriodo(periodoDoMes.ok ? periodoDoMes.periodo : p, agora);
     const aviso = avisoDeSituacao(descricao.situacao);
+    const divisao =
+      descricao.situacao === "EM_ANDAMENTO" ? await divisaoDoMesEmAndamento(mes, panorama.operacional.faturamento, agora, servicos) : null;
     return {
       dados: {
         periodo: {
@@ -248,6 +298,7 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
         },
         competencia: {
           faturamentoDasFestas: brl(panorama.operacional.faturamento),
+          ...(divisao ? { divisaoDoMesEmAndamento: divisao } : {}),
           retencaoPorCancelamento: brl(panorama.operacional.retencao),
           despesas: { total: brl(despesas.total), consumo: brl(despesas.consumo), custeio: brl(despesas.custeio) },
           resultadoOperacional: brl(panorama.operacional.resultado),
@@ -277,7 +328,7 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
 const consultarCarteiraFutura: Ferramenta<z.ZodObject<Record<string, never>>> = {
   nome: "consultarCarteiraFutura",
   descricao:
-    "A carteira futura: festas vigentes de hoje em diante dentro da janela da Visão Geral Comercial, com valor contratado, já recebido e a receber. Use para \"quanto temos contratado daqui para frente\".",
+    "A carteira futura da Visão Geral Comercial: festas vigentes de hoje até o fim de uma janela móvel de dias (NÃO é um mês-calendário), com valor contratado, já recebido e a receber. Use SÓ para \"quanto temos contratado daqui para frente\", sem mês nem período citado. Se a pessoa citar um mês ou período (\"mês que vem\", \"próximo mês\", \"novembro\", \"este mês\"), não use esta: use consultarFinanceiro com esse período.",
   natureza: "LEITURA",
   papeis: ["ADMIN"],
   parametros: z.object({}),
@@ -322,7 +373,7 @@ const consultarFestas: Ferramenta<
       .describe("Filtra a lista: QUITADO (pagas), PARCIAL (sinal recebido), AGUARDANDO (nada pago), VENCIDO, EM_ABERTO (qualquer saldo)."),
   }),
   async executar({ periodo: expressao, situacaoDePagamento }, { agora, papel, servicos }) {
-    const r = periodoOuErro(expressao, agora);
+    const r = periodoOuErro(expressao, agora, ALTERNATIVAS_DE_DATAS);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
     const carteira = await servicos.carteira(agora);
@@ -374,7 +425,7 @@ const consultarCancelamentos: Ferramenta<z.ZodObject<{ periodo: typeof periodoPa
   papeis: ["ADMIN", "OPS"],
   parametros: z.object({ periodo: periodoParam }),
   async executar({ periodo: expressao }, { agora, servicos }) {
-    const r = periodoOuErro(expressao, agora);
+    const r = periodoOuErro(expressao, agora, ALTERNATIVAS_DE_DATAS);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
     const carteira = await servicos.carteira(agora);
@@ -471,11 +522,11 @@ const consultarPropostas: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam 
   papeis: ["ADMIN", "OPS"],
   parametros: z.object({ periodo: periodoParam }),
   async executar({ periodo: expressao }, { agora, servicos }) {
-    const r = periodoOuErro(expressao, agora);
+    const r = periodoOuErro(expressao, agora, ALTERNATIVAS_MES_OU_ANO);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
     if (p.tipo !== "MES" && p.tipo !== "ANO") {
-      return limitacao("As propostas são acompanhadas por mês ou por ano. Pergunte por um mês (ex.: \"outubro\") ou por um ano.");
+      return limitacao("As propostas são acompanhadas por mês ou por ano.", [], ALTERNATIVAS_MES_OU_ANO);
     }
     const ano = Number(p.de.slice(0, 4));
     const mes = p.tipo === "MES" ? p.meses[0] : null;
@@ -584,10 +635,10 @@ const consultarDisponibilidadeDeProduto: Ferramenta<
     quantidade: z.number().int().min(1).max(999).optional().describe("Quantas unidades a pessoa quer, se disse."),
   }),
   async executar({ produto, data, quantidade }, { agora, servicos }) {
-    const r = periodoOuErro(data, agora);
+    const r = periodoOuErro(data, agora, ALTERNATIVAS_DE_DIA);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
-    if (p.tipo !== "DIA") return limitacao("Disponibilidade é conferida por dia. Diga a data exata (ex.: \"14/11\").");
+    if (p.tipo !== "DIA") return limitacao("Disponibilidade é conferida por dia.", [], ALTERNATIVAS_DE_DIA);
 
     const produtos = await servicos.produtos.findAll();
     const busca = normalizar(produto);
@@ -646,7 +697,7 @@ const consultarDisponibilidadeDeProduto: Ferramenta<
 const solicitarOperacao: Ferramenta<z.ZodObject<{ operacao: z.ZodString }>> = {
   nome: "solicitarOperacao",
   descricao:
-    "Use SEMPRE que a pessoa pedir para registrar, cadastrar, confirmar, converter, aplicar, cancelar, excluir, alterar ou atualizar qualquer coisa. Nesta fase nenhuma operação é executada: a ferramenta devolve a recusa padrão.",
+    "Só para pedidos de ESCRITA: use SEMPRE que a pessoa pedir para registrar, cadastrar, confirmar, converter, aplicar, cancelar, excluir, alterar ou atualizar qualquer coisa. Nunca para perguntas de consulta, nem para consultas fora do perfil de acesso. Nesta fase nenhuma operação é executada: a ferramenta devolve a recusa padrão.",
   natureza: "LEITURA",
   papeis: ["ADMIN", "OPS"],
   parametros: z.object({ operacao: z.string().min(1).max(200).describe("O que a pessoa pediu para fazer, resumido.") }),

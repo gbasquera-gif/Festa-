@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { lerConfiguracao } from "./configuracao";
 import { LimitesDeUso, MetricasDoAssistente, type ControleDeUso } from "./controle";
 import { CATALOGO, ferramentasDoPapel, type ServicosDoAssistente } from "./ferramentas";
-import { MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA, type EntradaDoAssistente } from "./contrato";
+import { MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL, MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA, type EntradaDoAssistente } from "./contrato";
 import { NucleoDoAssistente, RecusaDoAssistente } from "./nucleo";
 import { FalhaDoProvedor, type EsquemaDeFerramenta, type MensagemDoModelo, type PassoDoModelo, type ProvedorDeIA } from "./provedor";
 import { PREFIXO_DO_CONTEXTO, ProvedorSimulado } from "./provedor-simulado";
@@ -132,6 +132,69 @@ describe("responder", () => {
     expect((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo).toContain("não disponível para este perfil");
     expect(r.tipo).toBe("LIMITACAO");
     expect((roteiro.recebidas[0].mensagens[0] as { texto: string }).texto).toContain("Fora do perfil OPS");
+  });
+
+  it("OPS: consulta fora do perfil não vira recusa de operação, mesmo que o modelo chame solicitarOperacao", async () => {
+    const roteiro = new Roteiro([chama("solicitarOperacao", { operacao: "Consultar faturamento de outubro" }), diz(MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL)]);
+    const { nucleo, servicos: s } = montar(roteiro);
+    const r = await nucleo.responder(deOps("Qual o faturamento de outubro?"));
+    expect(r).toMatchObject({ tipo: "LIMITACAO", texto: MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL, ferramentas: [] });
+    // O modelo foi reorientado em vez de receber a recusa de operação.
+    const orientacao = (roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo;
+    expect(orientacao).toContain("naoEhPedidoDeOperacao");
+    expect(s.financeiro.panorama).not.toHaveBeenCalled();
+    const sistema = (roteiro.recebidas[0].mensagens[0] as { texto: string }).texto;
+    expect(sistema).toContain(`responda exatamente: "${MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL}"`);
+  });
+
+  it("pedido de escrita que escapa do detector continua sem poder afirmar que executou", async () => {
+    const roteiro = new Roteiro([chama("solicitarOperacao", { operacao: "dar baixa no pagamento" }), diz("Pronto, marquei o pagamento da Ana como recebido.")]);
+    const { nucleo } = montar(roteiro);
+    const r = await nucleo.responder(entrada("Dá baixa no pagamento da Ana"));
+    expect(r).toMatchObject({ tipo: "RECUSA", texto: MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA });
+  });
+
+  it("instruções: 'mês que vem' é o mês-calendário seguinte; limitação só oferece alternativas reais", async () => {
+    const roteiro = new Roteiro([diz("ok")]);
+    const { nucleo } = montar(roteiro);
+    await nucleo.responder(entrada("oi"));
+    const sistema = (roteiro.recebidas[0].mensagens[0] as { texto: string }).texto;
+    expect(sistema).toContain("mês-calendário seguinte inteiro");
+    expect(sistema).toContain("alternativasDisponiveis");
+    const carteira = roteiro.recebidas[0].ferramentas.find((f) => f.nome === "consultarCarteiraFutura")!;
+    expect(carteira.descricao).toContain("NÃO é um mês-calendário");
+  });
+
+  it("mês em andamento: competência separada em festas realizadas e agendadas, com a fórmula do Financeiro", async () => {
+    const contrato = (festaEm: string, valor: number, cancelado = false) => ({
+      linha: { comercial: {}, apurado: { fechadoEm: new Date("2026-09-01T12:00:00Z"), festaEm: new Date(`${festaEm}T12:00:00Z`), valor, recebimentos: [], cancelado } },
+      canceladaEm: null,
+    });
+    const roteiro = new Roteiro([chama("consultarFinanceiro", { periodo: "outubro" }), diz("ok"), chama("consultarFinanceiro", { periodo: "outubro" }), diz("ok")]);
+    const { nucleo, servicos: s } = montar(roteiro);
+    // 1.000,00 já realizada (10/10) + 234,50 agendada (25/10) = 1.234,50 do panorama; cancelada e novembro ficam fora.
+    s.carteira = vi.fn(async () => [contrato("2026-10-10", 1000), contrato("2026-10-25", 234.5), contrato("2026-10-12", 999, true), contrato("2026-11-02", 500)]) as never;
+    await nucleo.responder(entrada("Qual o faturamento de outubro?"));
+    const conteudo = (roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo;
+    const divisao = JSON.parse(conteudo).competencia.divisaoDoMesEmAndamento;
+    expect(divisao.festasJaRealizadas).toMatchObject({ festas: 1, valor: expect.stringContaining("1.000,00") });
+    expect(divisao.festasAindaAgendadas).toMatchObject({ festas: 1, valor: expect.stringContaining("234,50") });
+
+    // Se as partes não fecham com o total do Financeiro, a divisão não vai.
+    s.carteira = vi.fn(async () => [contrato("2026-10-10", 1000)]) as never;
+    await nucleo.responder(entrada("Qual o faturamento de outubro?"));
+    const semDivisao = JSON.parse((roteiro.recebidas[3].mensagens.at(-1) as { conteudo: string }).conteudo);
+    expect(semDivisao.competencia.divisaoDoMesEmAndamento).toBeUndefined();
+    expect(semDivisao.competencia.faturamentoDasFestas).toContain("1.234,50");
+  });
+
+  it("intervalo de dias no Financeiro: limitação com as alternativas que existem", async () => {
+    const roteiro = new Roteiro([chama("consultarFinanceiro", { periodo: "3 a 17 de outubro" }), diz("ok")]);
+    const { nucleo } = montar(roteiro);
+    await nucleo.responder(entrada("Quanto faturamos entre 3 e 17 de outubro?"));
+    const dados = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo);
+    expect(dados.limitacao).toContain("Intervalos de datas escolhidos");
+    expect(dados.alternativasDisponiveis).toEqual([expect.stringContaining("um mês inteiro"), expect.stringContaining("um ano")]);
   });
 
   it("pedido de operação: recusa padrão, sem segunda volta no modelo", async () => {

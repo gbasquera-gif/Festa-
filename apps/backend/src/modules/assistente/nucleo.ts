@@ -1,6 +1,7 @@
 import { diaEmChapeco } from "@festae/shared";
 import {
   CANAIS_ATIVOS,
+  MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL,
   MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA,
   type EntradaDoAssistente,
   type FonteDaResposta,
@@ -33,6 +34,20 @@ export class RecusaDoAssistente extends Error {
 
 const AFIRMA_QUE_EXECUTOU =
   /\b(registrei|cadastrei|confirmei|converti|apliquei|atualizei|cancelei|exclui|excluí|apaguei|lancei|marquei|alterei|estornei|criei|feito!|pronto!)\b/i;
+
+/**
+ * O que o modelo recebe quando chama solicitarOperacao numa mensagem que o
+ * servidor não reconhece como pedido de escrita — tipicamente a consulta de
+ * um dado fora do perfil. Uma consulta não vira recusa de operação; o dado
+ * continua bloqueado porque a ferramenta dele nem está no catálogo do papel.
+ */
+const CONSULTA_NAO_E_OPERACAO = {
+  naoEhPedidoDeOperacao: true,
+  orientacao:
+    `Esta mensagem é uma consulta, não um pedido de operação: não chame solicitarOperacao de novo. ` +
+    `Responda com as ferramentas de consulta disponíveis. Se a consulta for de área fora do seu perfil, responda exatamente: "${MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL}" ` +
+    `Se for mesmo um pedido para registrar ou alterar algo, responda exatamente: "${MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA}"`,
+};
 
 const MENSAGEM_DE_FALHA: Record<FalhaDoProvedor["tipo"], string> = {
   AUTENTICACAO: "O assistente está sem acesso ao serviço de IA. Avise a administração.",
@@ -138,6 +153,7 @@ export class NucleoDoAssistente {
       const consultas: ConsultaFeita[] = [];
       let tipo: RespostaDoAssistente["tipo"] = "RESPOSTA";
       let texto: string | null = null;
+      let chamouOperacao = false;
       const controle = new AbortController();
       const prazo = setTimeout(() => controle.abort(), this.cfg.limites.tempoPorPerguntaMs);
 
@@ -158,6 +174,11 @@ export class NucleoDoAssistente {
 
           let recusou = false;
           for (const chamada of chamadas) {
+            if (chamada.nome === "solicitarOperacao" && !pareceOperacao(mensagem)) {
+              chamouOperacao = true;
+              mensagens.push({ papel: "ferramenta", chamadaId: chamada.id, nome: chamada.nome, conteudo: JSON.stringify(CONSULTA_NAO_E_OPERACAO) });
+              continue;
+            }
             const resultado = await this.executar(chamada.nome, chamada.argumentos, identidade, agora);
             ferramentasUsadas.push(chamada.nome);
             if (resultado.tipo === "RECUSA") recusou = true;
@@ -189,12 +210,14 @@ export class NucleoDoAssistente {
         texto = "Não consegui concluir essa consulta. Tente perguntar de outro jeito, com o período (ex.: \"em novembro\").";
         tipo = "LIMITACAO";
       }
-      // Rede de segurança: o assistente nunca afirma ter executado operação.
-      if (tipo !== "RECUSA" && pareceOperacao(mensagem) && AFIRMA_QUE_EXECUTOU.test(texto)) {
+      // Rede de segurança: o assistente nunca afirma ter executado operação —
+      // nem quando o pedido escapou do detector e só o modelo o viu como operação.
+      if (tipo !== "RECUSA" && (pareceOperacao(mensagem) || chamouOperacao) && AFIRMA_QUE_EXECUTOU.test(texto)) {
         texto = MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA;
         tipo = "RECUSA";
       }
       if (texto.includes(MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA)) tipo = "RECUSA";
+      else if (texto.includes(MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL)) tipo = "LIMITACAO";
       if (ferramentasUsadas.length === 0 && tipo === "RESPOSTA") tipo = "LIMITACAO";
 
       this.conversas.registrar(conversa, { pergunta: mensagem, resposta: texto, consultas });
@@ -425,16 +448,16 @@ export function instrucoes(papel: IdentidadeAutenticada["papel"], agora: Date): 
     `Hoje é ${rotuloDoDia(hoje)} (${hoje}), fuso America/Sao_Paulo. Perfil de quem pergunta: ${papel}.`,
     "Regras:",
     "1. Responda SOMENTE com dados devolvidos pelas ferramentas. Nunca invente números, nomes, datas ou registros. Se a ferramenta não trouxer o dado, diga que não há essa informação.",
-    '2. No parâmetro "periodo", repasse a expressão que a pessoa usou ("novembro", "amanhã", "14/11", "mês passado", "este mês"); o servidor calcula as datas. Se a pergunta precisa de período e não tem, pergunte qual.',
+    '2. No parâmetro "periodo", repasse a expressão que a pessoa usou ("novembro", "amanhã", "14/11", "mês passado", "este mês"); o servidor calcula as datas. Se a pergunta precisa de período e não tem, pergunte qual. "Mês que vem"/"próximo mês" é o mês-calendário seguinte inteiro (do dia 1 ao último dia), nunca os próximos 30 dias.',
     "3. Em continuações (\"e quantas delas…\", \"e desse mês…\"), mantenha o mesmo período e o mesmo conjunto da consulta anterior desta conversa.",
     '4. Sempre diga o período na resposta. Explique em uma frase o critério relevante que veio em "criterios". Se o período tiver "observacao", informe-a.',
-    "5. Regras financeiras: faturamento é por competência (data da festa); caixa é pagamento confirmado (PAID) menos reembolso realizado; canceladas ficam fora do faturamento; retenção por cancelamento é separada; crédito Festaê não é desconto nem entrada de caixa; período futuro é CONTRATADO, não realizado; diga \"Resultado Operacional\", nunca \"lucro\" — se pedirem lucro, explique que o indicador é o Resultado Operacional e que não é lucro líquido; uma proposta com várias opções é uma proposta; aprovado considera só a opção aprovada.",
-    "6. Pedidos para registrar, cadastrar, confirmar, converter, aplicar, cancelar, excluir, alterar ou atualizar qualquer coisa: chame solicitarOperacao. Nunca diga que executou algo.",
+    "5. Regras financeiras: faturamento é por competência (data da festa); caixa é pagamento confirmado (PAID) menos reembolso realizado; canceladas ficam fora do faturamento; retenção por cancelamento é separada; crédito Festaê não é desconto nem entrada de caixa; período futuro é CONTRATADO, não realizado; diga \"Resultado Operacional\", nunca \"lucro\" — se pedirem lucro, explique que o indicador é o Resultado Operacional e que não é lucro líquido; uma proposta com várias opções é uma proposta; aprovado considera só a opção aprovada. Mês em andamento: o faturamento por competência atribui ao mês as festas já realizadas E as ainda agendadas; quando vier \"divisaoDoMesEmAndamento\", diga as duas partes (agendadas = contratado, ainda não realizado). Nunca diga \"até agora\", \"já faturamos\" nem que todas as festas do mês já aconteceram.",
+    "6. Pedidos para registrar, cadastrar, confirmar, converter, aplicar, cancelar, excluir, alterar ou atualizar qualquer coisa: chame solicitarOperacao. Perguntas de consulta nunca são pedido de operação, nem quando estão fora do perfil. Nunca diga que executou algo.",
     fora.length
-      ? `7. Fora do perfil ${papel}: ${fora.join("; ")}. Se perguntarem, diga que essa consulta não está disponível para o seu perfil de acesso.`
+      ? `7. Fora do perfil ${papel}: ${fora.join("; ")}. Se perguntarem algo dessas áreas, não chame ferramenta e responda exatamente: "${MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL}"`
       : "7. O perfil tem acesso a todas as consultas do catálogo.",
     "8. Português do Brasil, objetivo, até 5 frases curtas. Use os valores exatamente como vieram (R$ já formatado). Sem tabelas; listas curtas com • só para poucas festas. Não cite links: a tela mostra as fontes.",
-    "9. Se a pergunta for ambígua, diga o critério que usou ou pergunte. Se não houver ferramenta para a pergunta, diga claramente que ainda não é possível consultar isso.",
+    "9. Se a pergunta for ambígua, diga o critério que usou ou pergunte. Se não houver ferramenta para a pergunta, diga claramente que ainda não é possível consultar isso. Se a ferramenta devolver \"limitacao\", explique-a em uma frase e ofereça só o que vier em \"alternativasDisponiveis\"; nunca sugira outro formato de período ou de consulta.",
     "10. Não repita dados pessoais além do primeiro nome que a ferramenta trouxer.",
   ].join("\n");
 }

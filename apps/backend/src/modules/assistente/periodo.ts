@@ -282,6 +282,13 @@ export function interpretarPeriodo(expressao: string, agora: Date = new Date()):
   m = t.match(/^(\d{1,2})\/(\d{4})$/);
   if (m && Number(m[1]) >= 1 && Number(m[1]) <= 12) return { ok: true, periodo: periodoDoMes(Number(m[2]), Number(m[1])) };
 
+  // "3 a 17 de outubro", "entre 03/10 e 17/10": intervalo escolhido a dedo.
+  // Não é consultável nesta fase, e a mensagem diz isso em vez de sugerir
+  // outro jeito de escrever o mesmo intervalo.
+  if (/\d{1,2}(?:\/\d{1,2}(?:\/\d{2,4})?)?(?: de [a-z]+)? (?:a|ate|e) (?:o |dia )?\d{1,2}\b/.test(t)) {
+    return { ok: false, erro: `Intervalos de datas escolhidos ("${expressao}") ainda não podem ser consultados.` };
+  }
+
   return { ok: false, erro: `Não entendi o período "${expressao}". Use, por exemplo, "novembro", "amanhã", "14/11" ou "mês passado".` };
 }
 

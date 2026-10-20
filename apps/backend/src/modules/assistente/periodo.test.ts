@@ -92,6 +92,17 @@ describe("interpretarPeriodo", () => {
     expect(interpretarPeriodo("quando der", AGORA).ok).toBe(false);
     expect(interpretarPeriodo("", AGORA).ok).toBe(false);
   });
+
+  it("intervalo escolhido a dedo: limitação própria, sem sugerir outro jeito de escrevê-lo", () => {
+    for (const expressao of ["3 a 17 de outubro", "entre 3 e 17 de outubro", "de 03/10 a 17/10", "1 de outubro até 15 de outubro"]) {
+      const r = interpretarPeriodo(expressao, AGORA);
+      expect(r).toMatchObject({ ok: false, erro: expect.stringContaining("Intervalos de datas escolhidos") });
+      expect((r as { erro: string }).erro).not.toMatch(/por exemplo|\buse\b/i);
+    }
+    // O que já era consultável continua igual.
+    expect(resolver("14 de novembro").de).toBe("2026-11-14");
+    expect(resolver("depois de amanhã").de).toBe("2026-10-21");
+  });
 });
 
 describe("situacaoDoPeriodo", () => {
