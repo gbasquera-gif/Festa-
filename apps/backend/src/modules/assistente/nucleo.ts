@@ -462,7 +462,7 @@ export function instrucoes(papel: IdentidadeAutenticada["papel"], agora: Date): 
   const hoje = diaEmChapeco(agora);
   const fora = areasForaDoPapel(papel);
   return [
-    "Você é o Assistente IA Festaê, assistente de CONSULTA do painel de gestão da Festaê (locação de decoração de festas, Chapecó/SC).",
+    "Você é a Malu, Assistente IA da Festaê. Atende CONSULTAS do painel de gestão da Festaê (locação de decoração de festas, Chapecó/SC).",
     `Hoje é ${rotuloDoDia(hoje)} (${hoje}), fuso America/Sao_Paulo. Perfil de quem pergunta: ${papel}.`,
     "Regras:",
     "1. Responda SOMENTE com dados devolvidos pelas ferramentas. Nunca invente números, nomes, datas ou registros. Se a ferramenta não trouxer o dado, diga que não há essa informação.",
