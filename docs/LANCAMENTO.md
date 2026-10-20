@@ -242,7 +242,7 @@ código.
 | Entrega | Retirada na sede. Entrega conforme disponibilidade, com taxa de deslocamento aprovada antes da reserva |
 | Danos | Cliente responde pelos itens da retirada até a devolução; reparo ou reposição conforme avaliação apresentada antes da cobrança |
 | Fotos / IA | Cláusula já publicada: uso exclusivo para gerar a visualização pedida, sem divulgação sem autorização específica |
-| Assistente IA (gestão interna) | Só a administração usa; envia à OpenAI o mínimo para cada consulta (primeiro nome, contrato, data, etapa, pagamento, valores); conversa só em memória, apagada em até 31 min; áudio não armazenado |
+| Assistente IA (gestão interna) | Em uso a partir da data de `ASSISTENTE_IA_EM_USO_A_PARTIR_DE`; só a administração usa; consultas automáticas enviam à OpenAI primeiro nome, contrato, data, etapa, pagamento e valores, e o texto digitado na pergunta segue como foi escrito; conversa só em memória, apagada em até 31 min; áudio não armazenado; `store` desativado não é retenção zero |
 
 **O que ainda vale fazer:** um advogado ler o texto. Ele descreve o serviço
 corretamente; a revisão é para conferir se descreve de um jeito que proteja a

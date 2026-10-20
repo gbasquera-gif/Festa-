@@ -28,6 +28,13 @@ export const TERMS_VERSION = "1.6.0";
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
 export const TERMS_UPDATED_AT = "2026-10-20";
 
+/**
+ * Dia em que o Assistente IA da gestão interna passa a ser usado. A Política
+ * cita esta data, e é nela — nunca antes — que ASSISTENTE_IA_PROVEDOR deixa de
+ * ser "desligado" no servidor. Se a ativação mudar de dia, muda aqui também.
+ */
+export const ASSISTENTE_IA_EM_USO_A_PARTIR_DE = "2026-11-03";
+
 /** ISO vira dd/mm/aaaa — é assim que a data é lida no Brasil. */
 export function formatLegalDate(isoDate: string) {
   const [year, month, day] = isoDate.split("-");
@@ -110,20 +117,20 @@ export const PRIVACY_POLICY: LegalDocument = {
         "Não vendemos seus dados e não os usamos para publicidade de terceiros.",
         "Compartilhamos apenas com quem é necessário para o serviço funcionar: a hospedagem que roda nossos servidores e banco de dados, e o armazenamento das imagens do catálogo.",
         "Quando o pagamento pelo aplicativo estiver ativo, seu e-mail será enviado ao Mercado Pago para gerar a cobrança. Dados de cartão são tratados diretamente por eles e nunca passam pelos nossos servidores.",
-        "Para o assistente de inteligência artificial usado pela equipe na gestão interna, enviamos à OpenAI, empresa que fornece esse serviço, apenas o necessário para responder a cada consulta. A OpenAI atua como operadora, tratando esses dados em nome da Festaê. Os detalhes estão na seção \"Assistente de inteligência artificial na gestão interna\".",
+        "Para o assistente de inteligência artificial usado pela equipe na gestão interna, enviamos à OpenAI, empresa que fornece esse serviço, a pergunta feita pela equipe e os dados do sistema necessários para respondê-la. A OpenAI atua como operadora, tratando esses dados em nome da Festaê. Os detalhes estão na seção \"Assistente de inteligência artificial na gestão interna\".",
       ],
     },
     {
       title: "Assistente de inteligência artificial na gestão interna",
       paragraphs: [
-        "A administração da Festaê usa, no painel interno de gestão, um assistente de inteligência artificial para consultar informações do próprio sistema — por exemplo, quantas festas estão marcadas em um mês, quais reservas têm saldo a receber ou qual foi o faturamento de um período. Só pessoas da administração, com login, têm acesso a ele. Clientes não conversam com o assistente.",
+        `A partir de ${formatLegalDate(ASSISTENTE_IA_EM_USO_A_PARTIR_DE)}, a administração da Festaê passa a usar, no painel interno de gestão, um assistente de inteligência artificial para consultar informações do próprio sistema — por exemplo, quantas festas estão marcadas em um mês, quais reservas têm saldo a receber ou qual foi o faturamento de um período. Só pessoas da administração, com login, têm acesso a ele. Clientes não conversam com o assistente.`,
         "O assistente apenas consulta. Ele não cadastra, não altera, não cancela e não registra pagamentos, e não toma decisões sobre você: as respostas servem de apoio à equipe, que confere as informações nas telas do sistema.",
         "Perguntas e áudios: a pergunta pode ser digitada ou gravada por voz. A gravação só começa quando a pessoa da equipe toca no botão do microfone, depende da permissão do navegador e dura no máximo 60 segundos. O áudio é enviado à OpenAI para ser transformado em texto e não é armazenado pela Festaê: passa apenas pela memória do servidor durante o envio. A resposta pode ser lida em voz alta pelo recurso de voz do próprio aparelho, sem envio à OpenAI.",
-        "O que é enviado à OpenAI: o texto da pergunta e, quando a resposta depende deles, os dados do sistema que a respondem — o primeiro nome da cliente, o número do contrato, a data da festa, a etapa da reserva, a situação do pagamento e valores como o total contratado e o saldo. Para entender perguntas em sequência, como \"e no mês passado?\", seguem também as perguntas e respostas anteriores da mesma conversa. As consultas do assistente não enviam telefone, e-mail, endereço nem sobrenome das clientes, nem o nome de quem pergunta.",
+        "O que é enviado à OpenAI: o texto da pergunta, como a pessoa da equipe a digitou ou falou, e, quando a resposta depende deles, os dados que o sistema consulta automaticamente para respondê-la — o primeiro nome da cliente, o número do contrato, a data da festa, a etapa da reserva, a situação do pagamento e valores como o total contratado e o saldo. Essas consultas automáticas não incluem telefone, e-mail, endereço nem sobrenome das clientes, nem o nome de quem pergunta. Já o que a pessoa da equipe escreve ou fala na pergunta segue como foi dito: se ela incluir, por exemplo, o nome completo de uma cliente, essa informação também é enviada. Para entender perguntas em sequência, como \"e no mês passado?\", seguem também as perguntas e respostas anteriores da mesma conversa.",
         "Transferência internacional: a OpenAI trata os dados em servidores localizados fora do Brasil. Por isso, o uso do assistente envolve transferência internacional de dados pessoais.",
-        "Por quanto tempo: na Festaê, a conversa fica só na memória do servidor, nunca em banco de dados, e é apagada no máximo 31 minutos depois da última pergunta — antes, se a equipe começar uma nova conversa ou o servidor reiniciar. O áudio não é armazenado. Os registros técnicos de uso guardam apenas dados como tipo de consulta, ferramentas usadas, tempo de resposta, contagens e custo estimado, sem o conteúdo das perguntas e respostas e sem dados de clientes. A Festaê pede à OpenAI que não armazene as conversas. Pelos termos que a OpenAI publica para o serviço de API, perguntas e respostas podem ser mantidas por até 30 dias para prestar o serviço e identificar abusos, salvo obrigação legal de guardá-las por mais tempo, e não são usadas para treinar modelos sem autorização do cliente. A Festaê não autoriza esse uso.",
-        "Medidas de proteção: acesso apenas da administração, com login; a chave de acesso à OpenAI fica somente no servidor da Festaê; a comunicação com a OpenAI é criptografada; o assistente só faz consultas; há limites de perguntas e de gasto; e só o mínimo necessário para cada resposta é enviado.",
-        `Seus direitos sobre esses dados são os descritos na seção "Seus direitos". Você também pode se opor a esse uso escrevendo para ${COMPANY.privacyEmail}.`,
+        "Por quanto tempo: na Festaê, a conversa fica só na memória do servidor, nunca em banco de dados, e é apagada no máximo 31 minutos depois da última pergunta — antes, se a equipe começar uma nova conversa ou o servidor reiniciar. O áudio não é armazenado. Os registros técnicos de uso guardam apenas dados como tipo de consulta, ferramentas usadas, tempo de resposta, contagens e custo estimado, sem o conteúdo das perguntas e respostas e sem dados de clientes. Na OpenAI, as consultas são feitas com o armazenamento de conversas do serviço desativado (opção \"store\"), mas isso não significa retenção zero: pelos termos que a OpenAI publica para o serviço de API, perguntas, respostas e áudios podem ser mantidos por até 30 dias para prestar o serviço e identificar abusos, ou por mais tempo quando houver obrigação legal. A OpenAI declara que não usa esses dados para treinar modelos sem autorização do cliente, e a Festaê não deu essa autorização.",
+        "Medidas de proteção: acesso apenas da administração, com login; a chave de acesso à OpenAI fica somente no servidor da Festaê; a comunicação com a OpenAI é criptografada; o assistente só faz consultas; há limites de perguntas e de gasto; e as consultas automáticas enviam só os dados necessários para cada resposta.",
+        `Seus direitos sobre esses dados são os descritos na seção "Seus direitos". Para se opor a esse uso, escreva para ${COMPANY.privacyEmail}: avaliamos cada pedido e respondemos em até 15 dias, informando as medidas possíveis no seu caso. Hoje o assistente não tem como deixar de fora, automaticamente, os dados de uma cliente específica.`,
       ],
     },
     {
