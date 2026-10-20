@@ -26,14 +26,14 @@ import {
 export const TERMS_VERSION = "1.6.0";
 
 /** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
-export const TERMS_UPDATED_AT = "2026-10-20";
+export const TERMS_UPDATED_AT = "2026-10-19";
 
 /**
  * Dia em que o Assistente IA da gestão interna passa a ser usado. A Política
  * cita esta data, e é nela — nunca antes — que ASSISTENTE_IA_PROVEDOR deixa de
  * ser "desligado" no servidor. Se a ativação mudar de dia, muda aqui também.
  */
-export const ASSISTENTE_IA_EM_USO_A_PARTIR_DE = "2026-11-03";
+export const ASSISTENTE_IA_EM_USO_A_PARTIR_DE = "2026-10-20";
 
 /** ISO vira dd/mm/aaaa — é assim que a data é lida no Brasil. */
 export function formatLegalDate(isoDate: string) {
