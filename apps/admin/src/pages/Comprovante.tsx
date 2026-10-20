@@ -298,7 +298,7 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
         nota={
           <>
             Esta reserva segue os Termos de Uso da Festaê, versão {TERMS_VERSION}, disponíveis em{" "}
-            {FESTAE_CONTATO.site}/legal/termos.
+            reservas.{FESTAE_CONTATO.site}/legal/termos.
           </>
         }
       />
