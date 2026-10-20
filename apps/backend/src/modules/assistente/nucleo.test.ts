@@ -188,6 +188,34 @@ describe("responder", () => {
     expect(semDivisao.competencia.faturamentoDasFestas).toContain("1.234,50");
   });
 
+  it("mês em andamento: o servidor completa a resposta com realizadas e agendadas quando o modelo cita só o total", async () => {
+    const contrato = (festaEm: string, valor: number) => ({
+      linha: { comercial: {}, apurado: { fechadoEm: new Date("2026-09-01T12:00:00Z"), festaEm: new Date(`${festaEm}T12:00:00Z`), valor, recebimentos: [] } },
+      canceladaEm: null,
+    });
+    const roteiro = new Roteiro([
+      chama("consultarFinanceiro", { periodo: "outubro" }),
+      diz("Outubro de 2026: faturamento de R$ 1.234,50."),
+      chama("consultarFinanceiro", { periodo: "outubro" }),
+      diz("Outubro: R$ 1.234,50, sendo R$ 1.000,00 de 1 festa realizada e R$ 234,50 de 1 agendada."),
+      chama("consultarFinanceiro", { periodo: "outubro" }),
+      diz("Em outubro gastamos R$ 120,00 com consumo e R$ 80,00 com custeio."),
+    ]);
+    const { nucleo, servicos: s } = montar(roteiro);
+    s.carteira = vi.fn(async () => [contrato("2026-10-10", 1000), contrato("2026-10-24", 117.25), contrato("2026-10-25", 117.25)]) as never;
+
+    const so = await nucleo.responder(entrada("Qual o faturamento de outubro?"));
+    expect(so.texto).toBe(
+      "Outubro de 2026: faturamento de R$ 1.234,50.\n" +
+        "Dos R$ 1.234,50 de faturamento por competência de outubro de 2026, R$ 1.000,00 são de 1 festa já realizada e " +
+        "R$ 234,50 de 2 festas ainda agendadas até o fim do mês (contratado, ainda não realizado).",
+    );
+    // Já disse as duas partes: nada a acrescentar.
+    expect((await nucleo.responder(entrada("Qual o faturamento de outubro?"))).texto).not.toContain("\n");
+    // Não citou o faturamento (pergunta de despesas): nada a acrescentar.
+    expect((await nucleo.responder(entrada("Quanto gastamos em outubro?"))).texto).not.toContain("faturamento");
+  });
+
   it("intervalo de dias no Financeiro: limitação com as alternativas que existem", async () => {
     const roteiro = new Roteiro([chama("consultarFinanceiro", { periodo: "3 a 17 de outubro" }), diz("ok")]);
     const { nucleo } = montar(roteiro);

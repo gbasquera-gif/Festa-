@@ -59,12 +59,26 @@ export type ContextoDaFerramenta = {
   servicos: ServicosDoAssistente;
 };
 
+/**
+ * Uma frase que o servidor acrescenta à resposta quando o modelo citou um
+ * número mas deixou de fora o detalhe que o acompanha. Montada aqui, com os
+ * números do ERP — não depende de o modelo obedecer.
+ */
+export type ComplementoDaResposta = {
+  /** Só entra se a resposta citar este valor. */
+  seCitar: string;
+  /** Se a resposta já trouxer todos estes valores, não entra. */
+  valores: string[];
+  frase: string;
+};
+
 export type ResultadoDaFerramenta = {
   /** O que vai para o modelo. Dados já calculados e formatados; nunca linhas cruas do banco. */
   dados: Record<string, unknown>;
   fontes: FonteDaResposta[];
   /** LIMITACAO quando faltou informação para responder; RECUSA quando é pedido de operação. */
   tipo?: "LIMITACAO" | "RECUSA";
+  complemento?: ComplementoDaResposta;
 };
 
 export type Ferramenta<P extends z.ZodType = z.ZodType> = {
@@ -232,6 +246,27 @@ async function divisaoDoMesEmAndamento(mes: string, faturamento: number, agora: 
   };
 }
 
+function festas(n: number, singular: string, plural: string): string {
+  return n === 1 ? `1 festa ${singular}` : `${n} festas ${plural}`;
+}
+
+/** A frase do mês em andamento, com os números do ERP: total, realizadas e agendadas, valores e quantidades. */
+function complementoDoMesEmAndamento(
+  rotulo: string,
+  faturamento: number,
+  divisao: NonNullable<Awaited<ReturnType<typeof divisaoDoMesEmAndamento>>>,
+): ComplementoDaResposta {
+  const { festasJaRealizadas: r, festasAindaAgendadas: a } = divisao;
+  return {
+    seCitar: brl(faturamento),
+    valores: [r.valor, a.valor],
+    frase:
+      `Dos ${brl(faturamento)} de faturamento por competência de ${rotulo}, ` +
+      `${r.valor} são de ${festas(r.festas, "já realizada", "já realizadas")} e ` +
+      `${a.valor} de ${festas(a.festas, "ainda agendada", "ainda agendadas")} até o fim do mês (contratado, ainda não realizado).`,
+  };
+}
+
 const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam }>> = {
   nome: "consultarFinanceiro",
   descricao:
@@ -321,6 +356,7 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
         criterios: [...(aviso ? [aviso] : []), ...CRITERIOS_FINANCEIROS],
       },
       fontes: [{ rotulo: `Financeiro · ${descricao.rotulo}`, caminho: `/financeiro?ano=${ano}&mes=${mes.slice(5)}` }],
+      ...(divisao ? { complemento: complementoDoMesEmAndamento(descricao.rotulo, panorama.operacional.faturamento, divisao) } : {}),
     };
   },
 };

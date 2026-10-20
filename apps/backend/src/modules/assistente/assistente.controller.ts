@@ -39,14 +39,14 @@ const BYTES_DE_AUDIO = 3 * 1024 * 1024;
  * O canal PAINEL do Assistente IA: texto e voz.
  *
  * A identidade é a do JWT — o mesmo login do painel, relido do banco a cada
- * requisição pela estratégia JWT. ADMIN e OPS entram; o que cada um consulta
- * é decidido no núcleo, pelo catálogo de ferramentas do papel. Cliente da
- * loja não passa do `RolesGuard`.
+ * requisição pela estratégia JWT. Nesta fase só ADMIN entra: OPS, cliente da
+ * loja e quem não está logado não passam do `RolesGuard` (403) ou do
+ * `JwtAuthGuard` (401).
  */
 @ApiTags("assistente")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("ADMIN", "OPS")
+@Roles("ADMIN")
 @Controller("assistente")
 export class AssistenteController {
   constructor(private readonly nucleo: NucleoDoAssistente) {}
@@ -126,14 +126,14 @@ export class AssistenteController {
    * instância e, em `uso`, os totais do dia e do mês somados no banco.
    */
   @Get("metricas")
-  @Roles("ADMIN")
   async metricas() {
     return { ...this.nucleo.metricas.resumoDoDia(), uso: await this.nucleo.limites.totais() };
   }
 }
 
 function identidade(user: AuthUser): IdentidadeAutenticada {
-  if (user.role !== "ADMIN" && user.role !== "OPS") throw new HttpException("Sem acesso ao assistente.", HttpStatus.FORBIDDEN);
+  // Segunda trava, caso alguém mude o decorator da classe sem ler isto.
+  if (user.role !== "ADMIN") throw new HttpException("Sem acesso ao assistente.", HttpStatus.FORBIDDEN);
   return { usuarioId: user.userId, papel: user.role, comprovadaPor: "JWT_PAINEL" };
 }
 

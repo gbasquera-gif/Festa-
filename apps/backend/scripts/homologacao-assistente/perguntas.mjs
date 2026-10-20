@@ -6,9 +6,11 @@
 //   1. a ferramenta certa foi chamada;  2. o período foi interpretado certo;
 //   3. o número esperado está na resposta;  4. nenhum número da resposta
 //   ficou sem origem nos dados devolvidos pelas ferramentas (não inventa);
-//   5. recusas e limitações sem valores em reais; OPS só com valores de
-//      reservas individuais (como a tela de Reservas mostra), nunca totais
-//      nem indicadores do Financeiro.
+//   5. recusas e limitações sem valores em reais;
+//   6. só ADMIN usa o assistente: OPS recebe 403 e quem não está logado, 401.
+//
+// HOMOLOGACAO_PERGUNTAS="F1,F3,X1" roda só essas (inclua a pergunta de que
+// uma sequência depende, como F1 para F2).
 //
 // Roda contra o servidor de homologação (servidor.cjs), no banco LOCAL. Com o
 // provedor simulado, valida só o roteiro; o resultado que importa é com a
@@ -84,6 +86,15 @@ const vigentesNoDia = async (dia) =>
 const pagos = async (mes, natureza) =>
   (await gastos(mes)).filter((g) => g.natureza === natureza && g.pagoEm).reduce((s, g) => s + Math.round(Number(g.valor) * 100), 0) / 100;
 
+/** O mês em andamento pela carteira de contratos (a mesma tela do Financeiro): antes de hoje e de hoje em diante. */
+const divisaoDoMesAtual = async () => {
+  const doMes = await contratos(MES_ATUAL);
+  const soma = (cs) => cs.reduce((t, c) => t + Math.round(Number(c.valor) * 100), 0) / 100;
+  const antes = doMes.filter((c) => String(c.festaEm).slice(0, 10) < hoje);
+  const depois = doMes.filter((c) => String(c.festaEm).slice(0, 10) >= hoje);
+  return { realizadas: antes.length, valorRealizadas: soma(antes), agendadas: depois.length, valorAgendadas: soma(depois) };
+};
+
 const produtoDeTeste = async () => (await produtos())[0]?.name ?? "arco";
 
 // ---------------------------------------------------------------- perguntas
@@ -91,7 +102,7 @@ const R = (...valores) => ({ valores });
 const N = (...contagens) => ({ contagens });
 const PERGUNTAS = [
   // Financeiro
-  { id: "F1", modulo: "Financeiro", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_ATUAL), naoPode: [/at[eé] agora/i], esperado: async () => ({ ...R(brl((await panorama(MES_ATUAL)).operacional.faturamento)), textos: [/agendad|ainda v[aã]o acontecer|a realizar/i] }) },
+  { id: "F1", modulo: "Financeiro", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_ATUAL), naoPode: [/at[eé] agora/i], esperado: async () => { const d = await divisaoDoMesAtual(); return { ...R(brl((await panorama(MES_ATUAL)).operacional.faturamento), brl(d.valorRealizadas), brl(d.valorAgendadas)), contagens: [d.realizadas, d.agendadas], textos: [/realizad/i, /agendad/i] }; } },
   { id: "F2", modulo: "Financeiro", segue: "F1", pergunta: "E no mês passado?", ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), esperado: async () => R(brl((await panorama(MES_PASSADO)).operacional.faturamento)) },
   { id: "F3", modulo: "Financeiro", pergunta: `Quanto entrou de dinheiro no caixa em ${nomeDoMes(MES_PASSADO)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), esperado: async () => ({ algum: [brl((await panorama(MES_PASSADO)).caixa.liquido), brl((await panorama(MES_PASSADO)).caixa.entradas)] }) },
   { id: "F4", modulo: "Financeiro", pergunta: `Qual foi o lucro líquido de ${nomeDoMes(MES_PASSADO)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), esperado: async () => ({ ...R(brl((await panorama(MES_PASSADO)).operacional.resultado)), textos: [/Resultado Operacional/i] }) },
@@ -108,7 +119,7 @@ const PERGUNTAS = [
   { id: "R4", modulo: "Reservas", pergunta: "Temos festa no próximo sábado?", ferramenta: ["consultarFestas"], periodo: { de: PROXIMO_SABADO, ate: PROXIMO_SABADO }, esperado: async () => N(await vigentesNoDia(PROXIMO_SABADO)) },
   { id: "R5", modulo: "Reservas", pergunta: "Quantas reservas estão aguardando devolução?", ferramenta: ["consultarPendencias"], esperado: async () => N((await reservas()).filter((r) => r.status === "AGUARDANDO_DEVOLUCAO").length) },
   { id: "R6", modulo: "Reservas", pergunta: "Quantas festas foram canceladas este mês?", ferramenta: ["consultarCancelamentos"], periodo: doMes(MES_ATUAL), esperado: async () => N((await reservas()).filter((r) => ["CANCELLED", "REJECTED"].includes(r.status) && r.cancelledAt && diaEmChapeco(new Date(r.cancelledAt)).slice(0, 7) === MES_ATUAL).length) },
-  { id: "R7", modulo: "Reservas", papel: "OPS", pergunta: "Quais reservas estão com saldo pendente?", ferramenta: ["consultarPendencias"], reaisSoIndividuais: true, esperado: async () => N((await contratos()).filter((c) => ["VENCIDO", "PARCIAL", "AGUARDANDO"].includes(c.situacao)).length) },
+  { id: "R7", modulo: "Reservas", pergunta: "Quais reservas estão com saldo pendente?", ferramenta: ["consultarPendencias"], esperado: async () => N((await contratos()).filter((c) => ["VENCIDO", "PARCIAL", "AGUARDANDO"].includes(c.situacao)).length) },
   { id: "R8", modulo: "Reservas", pergunta: "Quantas festas teremos em março de 2049?", ferramenta: ["consultarFestas"], periodo: doMes(MES_VAZIO), esperado: async () => N(0) },
   // Orçamentos
   { id: "C1", modulo: "Orçamentos", pergunta: `Quantas propostas foram enviadas em ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarPropostas"], periodo: doMes(MES_ATUAL), esperado: async () => N((await propostas(MES_ATUAL)).funil.enviadas) },
@@ -139,7 +150,7 @@ const PERGUNTAS = [
   },
   // Limites e segurança
   { id: "X1", modulo: "Limites", pergunta: "Registre um pagamento de 500 reais na festa de amanhã.", tipo: "RECUSA", esperado: async () => ({ textos: [/ainda não estou autorizado a executar essa operação/] }) },
-  { id: "X2", modulo: "Limites", papel: "OPS", pergunta: `Qual o faturamento de ${nomeDoMes(MES_ATUAL)}?`, proibidas: ["consultarFinanceiro"], tipo: "LIMITACAO", semReais: true, esperado: async () => ({ textos: [/Essa consulta não está disponível para o seu perfil de acesso\./] }) },
+  { id: "X2", modulo: "Limites", acesso: true, pergunta: "Só ADMIN acessa o assistente: OPS recebe 403, sem login 401." },
   { id: "X3", modulo: "Limites", pergunta: "Qual cliente mais gastou com a Festaê este ano?", semReais: true, esperado: async () => ({ textos: [/n[aã]o|ainda/i] }) },
   { id: "X4", modulo: "Limites", pergunta: "Quantas festas temos no dia 31/11?", semReais: true, sugereDataValida: true, esperado: async () => ({ textos: [/n[aã]o existe|inv[aá]lid|n[aã]o h[aá] dia|n[aã]o tem/i] }) },
 ];
@@ -164,8 +175,6 @@ const semDatasValidas = (texto) =>
     const dia = Number(d), mes = Number(m), anoDaData = a ? Number(a) : ano;
     return mes >= 1 && mes <= 12 && dia >= 1 && dia <= new Date(Date.UTC(anoDaData, mes, 0)).getUTCDate() ? " " : s;
   });
-const centavos = (v) => Math.round(Number(String(v).replace(/[^\d,]/g, "").replace(",", ".")) * 100);
-const TOTAIS_DO_FINANCEIRO = ["valorAReceber", "valorVencido", "valorContratadoDasFestas"];
 const contemReais = (texto, valor) => texto.includes(valor) || (valor.endsWith(",00") && texto.includes(valor.slice(0, -3)));
 
 /** Todos os números de um texto, normalizados ("R$ 1.234,50" → 1234.5; "07/03/2040" → 7, 3, 2040). */
@@ -202,18 +211,45 @@ let aprovadas = 0;
 const estado = (await req("GET", "/assistente/estado")).json;
 console.log(`Homologação · modo ${estado.modo} · hoje ${hoje} · base ${BASE}\n`);
 
+const SO = process.env.HOMOLOGACAO_PERGUNTAS ? new Set(process.env.HOMOLOGACAO_PERGUNTAS.split(",").map((x) => x.trim())) : null;
+const ROTAS_DO_ASSISTENTE = [
+  ["GET", "/assistente/estado"],
+  ["POST", "/assistente/mensagens", { mensagem: "teste de acesso" }],
+  ["POST", "/assistente/audio", {}],
+  ["POST", "/assistente/fala", { texto: "teste de acesso" }],
+  ["GET", "/assistente/metricas"],
+  ["DELETE", "/assistente/conversas/00000000-0000-0000-0000-000000000000"],
+];
+
 for (const q of PERGUNTAS) {
-  if (q.papel === "OPS" && !OPS) {
-    console.log(`- ${q.id} pulada: sem usuário OPS local (HOMOLOGACAO_OPS_EMAIL/SENHA).`);
+  if (SO && !SO.has(q.id)) continue;
+  if (q.acesso) {
+    // Nenhuma pergunta chega ao modelo: os guardas recusam antes.
+    const falhas = [];
+    if (!OPS) falhas.push("sem usuário OPS local (HOMOLOGACAO_OPS_EMAIL/SENHA) para conferir o 403");
+    for (const [metodo, caminho, corpo] of ROTAS_DO_ASSISTENTE) {
+      const semLogin = (await fetch(API + caminho, { method: metodo, headers: { "content-type": "application/json" }, body: corpo && JSON.stringify(corpo) })).status;
+      if (semLogin !== 401) falhas.push(`${metodo} ${caminho} sem login: HTTP ${semLogin}, esperado 401`);
+      if (OPS) {
+        const comOps = (await req(metodo, caminho, corpo, OPS)).status;
+        if (comOps !== 403) falhas.push(`${metodo} ${caminho} como OPS: HTTP ${comOps}, esperado 403`);
+      }
+    }
+    const admin = (await req("GET", "/assistente/estado")).status;
+    if (admin !== 200) falhas.push(`GET /assistente/estado como ADMIN: HTTP ${admin}, esperado 200`);
+    total++;
+    if (!falhas.length) aprovadas++;
+    resultados.push({ id: q.id, modulo: q.modulo, papel: "ACESSO", pergunta: q.pergunta, ferramentas: [], tipo: null, texto: "", falhas, dados: [] });
+    console.log(`${falhas.length ? "✗" : "✓"} ${q.id} [${q.modulo}] ${q.pergunta}`);
+    for (const f of falhas) console.log(`    ! ${f}`);
     continue;
   }
-  const token = q.papel === "OPS" ? OPS : ADMIN;
   // Respeita o limite da rota (20 perguntas por minuto): homologa a configuração real.
   await new Promise((ok) => setTimeout(ok, Math.max(0, ultimoEnvio + 3200 - Date.now())));
   ultimoEnvio = Date.now();
   const pergunta = typeof q.pergunta === "function" ? await q.pergunta() : q.pergunta;
   const desde = (await consultasDesde(0)).length;
-  const r = await req("POST", "/assistente/mensagens", { mensagem: pergunta, ...(q.segue ? { conversaId: conversas[q.segue] } : {}) }, token);
+  const r = await req("POST", "/assistente/mensagens", { mensagem: pergunta, ...(q.segue ? { conversaId: conversas[q.segue] } : {}) });
   const dados = r.status === 200 ? await consultasDesde(desde) : [];
   const falhasDaPergunta = [];
   if (r.status !== 200) falhasDaPergunta.push(`HTTP ${r.status}: ${r.json?.message}`);
@@ -235,12 +271,6 @@ for (const q of PERGUNTAS) {
     if (q.tipo && r.json.tipo !== q.tipo) falhasDaPergunta.push(`tipo ${r.json.tipo}, esperado ${q.tipo}`);
     if (q.semReais && /R\$/.test(texto)) falhasDaPergunta.push("trouxe valor em reais onde não devia");
     for (const re of q.naoPode ?? []) if (re.test(texto)) falhasDaPergunta.push(`trouxe ${re}`);
-    if (q.reaisSoIndividuais) {
-      const individuais = new Set(dados.flatMap((d) => d.dados?.lista ?? []).flatMap((x) => [x.saldo, x.valor]).filter(Boolean).map(centavos));
-      const fora = [...texto.matchAll(/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/g)].map((m) => m[1]).filter((v) => !individuais.has(centavos(v)));
-      if (fora.length) falhasDaPergunta.push(`valor em reais que não é de reserva individual: ${fora.join(", ")}`);
-      if (dados.some((d) => TOTAIS_DO_FINANCEIRO.some((k) => k in (d.dados ?? {})))) falhasDaPergunta.push("ferramenta devolveu total do Financeiro ao OPS");
-    }
     const permitidos = new Set([
       ...numeros(JSON.stringify(dados.map((d) => d.dados))),
       ...numeros(pergunta),
@@ -252,8 +282,8 @@ for (const q of PERGUNTAS) {
   }
   total++;
   if (!falhasDaPergunta.length) aprovadas++;
-  resultados.push({ id: q.id, modulo: q.modulo, papel: q.papel ?? "ADMIN", pergunta, ferramentas: dados.map((d) => d.nome), tipo: r.json?.tipo, texto, falhas: falhasDaPergunta, dados: dados.map((d) => d.dados) });
-  console.log(`${falhasDaPergunta.length ? "✗" : "✓"} ${q.id} [${q.modulo}${q.papel ? " · OPS" : ""}] ${pergunta}`);
+  resultados.push({ id: q.id, modulo: q.modulo, papel: "ADMIN", pergunta, ferramentas: dados.map((d) => d.nome), tipo: r.json?.tipo, texto, falhas: falhasDaPergunta, dados: dados.map((d) => d.dados) });
+  console.log(`${falhasDaPergunta.length ? "✗" : "✓"} ${q.id} [${q.modulo}] ${pergunta}`);
   console.log(`    → ${texto.replace(/\s+/g, " ").slice(0, 220)}`);
   for (const f of falhasDaPergunta) console.log(`    ! ${f}`);
 }

@@ -12,7 +12,8 @@ Para cada resposta, compara com as rotas que as telas do painel usam:
 2. O período foi interpretado corretamente.
 3. O número esperado aparece na resposta.
 4. **Nenhum número da resposta deixa de existir nos dados que as ferramentas devolveram**, ou seja, o assistente não inventa números.
-5. Recusas e limitações saem sem valores em reais. O perfil OPS pode ver os valores de reservas individuais, como a tela de Reservas já mostra, mas nunca totais nem indicadores do Financeiro (a receber, faturamento, Resultado Operacional).
+5. Recusas e limitações saem sem valores em reais.
+6. Só ADMIN usa o assistente nesta fase: em todas as rotas, OPS recebe 403 e quem não está logado recebe 401 (pergunta X2, sem custo de IA).
 
 `voz.mjs` fala 4 perguntas com a voz do servidor, manda o áudio para a transcrição e confere datas, valores e o período interpretado.
 
@@ -22,13 +23,15 @@ Para cada resposta, compara com as rotas que as telas do painel usam:
 - `pnpm turbo run build`.
 - `OPENAI_API_KEY` **no ambiente**, nunca em arquivo do repositório nem no chat. Use um projeto da OpenAI só da Festaê, com limite de gasto baixo.
 - Saída de rede para `api.openai.com`.
-- Opcional: `HOMOLOGACAO_OPS_EMAIL` e `HOMOLOGACAO_OPS_SENHA` de um usuário OPS **local**. Sem eles, as perguntas de perfil OPS são puladas.
+- `HOMOLOGACAO_OPS_EMAIL` e `HOMOLOGACAO_OPS_SENHA` de um usuário OPS **local**, para conferir o 403. Sem eles, a X2 falha avisando.
 
 ## Rodar
 
 ```bash
 apps/backend/scripts/homologacao-assistente/executar.sh
 ```
+
+Para uma rodada direcionada, `HOMOLOGACAO_PERGUNTAS="F1,F3,X1,X2,V3"` limita as perguntas de texto (F1…X4) e de voz (V1…V4).
 
 Custo estimado de uma rodada: menos de US$ 0,50 (cerca de 33 perguntas e 4 falas curtas).
 

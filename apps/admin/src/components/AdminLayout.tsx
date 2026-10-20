@@ -228,6 +228,7 @@ const CHAVE_RECOLHIDA = "festae:sidebar-recolhida";
  */
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const { user } = useAuth();
   useRegistroDeNavegacao();
   const [gaveta, setGaveta] = useState(false);
   const [recolhida, setRecolhida] = useState(() => {
@@ -342,8 +343,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
-      {/* Assistente IA: consulta, para ADMIN e OPS, em toda tela do painel. */}
-      <AssistenteFestae />
+      {/* Assistente IA: consulta, só para ADMIN nesta fase, em toda tela do
+          painel. O servidor recusa os outros papéis; aqui o botão nem aparece. */}
+      {user?.role === "ADMIN" && <AssistenteFestae />}
     </div>
   );
 }

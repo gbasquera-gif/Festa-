@@ -25,8 +25,12 @@ const FRASES = [
   { fala: "Temos festa depois de amanhã?", transcricao: /depois de amanh[ãa]/i },
 ];
 
+// HOMOLOGACAO_PERGUNTAS="V3" fala só essa (V1 a V4, na ordem abaixo).
+const SO = process.env.HOMOLOGACAO_PERGUNTAS ? new Set(process.env.HOMOLOGACAO_PERGUNTAS.split(",").map((x) => x.trim())) : null;
+const escolhidas = FRASES.filter((_, i) => !SO || SO.has(`V${i + 1}`));
+
 let ok = 0;
-for (const f of FRASES) {
+for (const f of escolhidas) {
   const sintese = await fetch(`${API}/assistente/fala`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ texto: f.fala }) });
   if (sintese.status !== 200) {
     console.log(`✗ "${f.fala}" — voz do servidor falhou (${sintese.status})`);
@@ -49,5 +53,5 @@ for (const f of FRASES) {
   console.log(`    → ${(j.resposta?.texto ?? "").replace(/\s+/g, " ").slice(0, 200)}`);
   for (const x of falhas) console.log(`    ! ${x}`);
 }
-console.log(`\n${ok}/${FRASES.length} perguntas por voz aprovadas`);
-process.exit(ok === FRASES.length ? 0 : 1);
+console.log(`\n${ok}/${escolhidas.length} perguntas por voz aprovadas`);
+process.exit(ok === escolhidas.length ? 0 : 1);

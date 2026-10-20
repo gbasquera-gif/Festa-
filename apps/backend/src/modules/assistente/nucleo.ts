@@ -13,6 +13,7 @@ import { ConversasEmMemoria, LimitesDeUso, MetricasDoAssistente, type ConsultaFe
 import {
   areasForaDoPapel,
   esquemaDaFerramenta,
+  type ComplementoDaResposta,
   ferramentasDoPapel,
   type ResultadoDaFerramenta,
   type ServicosDoAssistente,
@@ -154,6 +155,7 @@ export class NucleoDoAssistente {
       let tipo: RespostaDoAssistente["tipo"] = "RESPOSTA";
       let texto: string | null = null;
       let chamouOperacao = false;
+      const complementos: ComplementoDaResposta[] = [];
       const controle = new AbortController();
       const prazo = setTimeout(() => controle.abort(), this.cfg.limites.tempoPorPerguntaMs);
 
@@ -181,6 +183,7 @@ export class NucleoDoAssistente {
             }
             const resultado = await this.executar(chamada.nome, chamada.argumentos, identidade, agora);
             ferramentasUsadas.push(chamada.nome);
+            if (resultado.complemento) complementos.push(resultado.complemento);
             if (resultado.tipo === "RECUSA") recusou = true;
             if (resultado.tipo === "LIMITACAO" && tipo === "RESPOSTA") tipo = "LIMITACAO";
             for (const f of resultado.fontes) if (!fontes.some((x) => x.caminho === f.caminho)) fontes.push(f);
@@ -219,6 +222,7 @@ export class NucleoDoAssistente {
       if (texto.includes(MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA)) tipo = "RECUSA";
       else if (texto.includes(MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL)) tipo = "LIMITACAO";
       if (ferramentasUsadas.length === 0 && tipo === "RESPOSTA") tipo = "LIMITACAO";
+      if (tipo === "RESPOSTA") texto = completar(texto, complementos);
 
       this.conversas.registrar(conversa, { pergunta: mensagem, resposta: texto, consultas });
       const custo = this.metricas.registrar({
@@ -423,6 +427,20 @@ export class NucleoDoAssistente {
       falha: recusa.motivo,
     });
   }
+}
+
+/**
+ * Acrescenta as frases que o servidor montou com os números do ERP quando a
+ * resposta citou o valor de referência e deixou de fora o detalhe dele.
+ */
+function completar(texto: string, complementos: readonly ComplementoDaResposta[]): string {
+  const comparavel = (s: string) => s.replace(/\s+/g, " ");
+  let saida = texto;
+  for (const c of complementos) {
+    const atual = comparavel(saida);
+    if (atual.includes(comparavel(c.seCitar)) && !c.valores.every((v) => atual.includes(comparavel(v)))) saida = `${saida}\n${c.frase}`;
+  }
+  return saida;
 }
 
 function argsSeguros(argumentos: string): Record<string, unknown> {
