@@ -214,7 +214,8 @@ Nenhuma variável é necessária: a URL da API já é o padrão do Dockerfile
 ## 5. Política de privacidade e termos — CONCLUÍDO, revisão jurídica recomendada
 
 O texto dos dois documentos existe, está no ar, é exigido no cadastro e
-**já contém todas as decisões oficiais do negócio** (versão 1.1.0).
+**já contém todas as decisões oficiais do negócio** (versão atual: 1.6.0, com a
+seção do Assistente IA da gestão interna).
 
 **Onde está no ar** (páginas públicas, sem login, no domínio da empresa):
 
@@ -241,6 +242,7 @@ código.
 | Entrega | Retirada na sede. Entrega conforme disponibilidade, com taxa de deslocamento aprovada antes da reserva |
 | Danos | Cliente responde pelos itens da retirada até a devolução; reparo ou reposição conforme avaliação apresentada antes da cobrança |
 | Fotos / IA | Cláusula já publicada: uso exclusivo para gerar a visualização pedida, sem divulgação sem autorização específica |
+| Assistente IA (gestão interna) | Só a administração usa; envia à OpenAI o mínimo para cada consulta (primeiro nome, contrato, data, etapa, pagamento, valores); conversa só em memória, apagada em até 31 min; áudio não armazenado |
 
 **O que ainda vale fazer:** um advogado ler o texto. Ele descreve o serviço
 corretamente; a revisão é para conferir se descreve de um jeito que proteja a

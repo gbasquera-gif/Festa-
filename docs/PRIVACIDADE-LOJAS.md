@@ -128,7 +128,8 @@ Messages, Health and fitness, Web browsing, nem Financial info → Payment info
 
 **Compartilhamento:** o Google diferencia *coletar* de *compartilhar*. Os
 dados vão para prestadores de serviço (hospedagem Railway, armazenamento
-Cloudflare, pagamento Mercado Pago) — pela definição do Google isso **não
+Cloudflare, pagamento Mercado Pago e, no painel interno da equipe, o assistente
+de IA da OpenAI) — pela definição do Google isso **não
 conta como compartilhamento**, porque são operadores processando em nome da
 Festaê, não terceiros usando os dados para fins próprios. Marque "Não
 compartilhado".
@@ -187,5 +188,6 @@ nova nas lojas, confira que os quatro estão dizendo a mesma coisa:
 | Danos | Termos §Responsabilidade pelos itens alugados | Cliente responde da retirada à devolução |
 | Fotos/IA | Política §Fotos que você envia | Cláusula publicada, recurso ainda não existe |
 | Dados coletados | Política §Quais dados coletamos | Espelhado na tabela deste documento |
+| Assistente IA (gestão interna) | Política §Assistente de inteligência artificial na gestão interna | Só ADMIN; OpenAI como operadora; conversa em memória, apagada em até 31 min; áudio não armazenado |
 
 Alterou o texto? Suba `TERMS_VERSION` em `packages/shared/src/legal.ts`.
