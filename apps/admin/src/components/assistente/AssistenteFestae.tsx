@@ -8,7 +8,10 @@ import { MENSAGEM_DE_ERRO_DE_GRAVACAO, useGravador, type AudioGravado } from "./
 import { falar, pararDeFalar } from "./voz";
 
 /**
- * Assistente IA Festaê — o canal do painel.
+ * Malu, a Assistente IA da Festaê — o canal do painel.
+ *
+ * O nome nunca aparece sozinho: botão, cabeçalho e leitura de tela dizem
+ * também "Assistente IA", para ninguém confundir a Malu com uma pessoa.
  *
  * Esta tela só conversa com a API do assistente: não sabe de modelo, chave,
  * ferramenta nem regra financeira. Tudo isso mora no servidor, e o mesmo
@@ -57,13 +60,19 @@ export function AssistenteFestae() {
         <button
           type="button"
           onClick={() => setAberto(true)}
-          aria-label="Abrir Assistente IA Festaê"
+          aria-label="Abrir a Malu, Assistente IA da Festaê"
+          title="Malu · Assistente IA da Festaê"
           data-assistente-botao
           className="fixed right-4 z-[60] flex size-14 items-center justify-center gap-2 rounded-full text-white shadow-[0_8px_24px_rgba(15,42,79,0.28)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#F06853]/40 print:hidden lg:right-6 lg:h-12 lg:w-auto lg:px-5"
           style={{ background: NAVY, bottom: "calc(1rem + env(safe-area-inset-bottom))" }}
         >
           <Sparkles className="size-5 shrink-0" style={{ color: GOLD }} aria-hidden />
-          <span className="hidden text-sm font-semibold tracking-tight lg:inline">Assistente IA</span>
+          <span className="hidden items-center gap-1.5 lg:inline-flex" aria-hidden>
+            <span className="text-sm font-semibold tracking-tight">Malu</span>
+            <span className="rounded-full border px-1.5 py-px text-[10px] font-semibold tracking-[0.06em]" style={{ borderColor: "rgba(199,163,96,0.55)", color: GOLD }}>
+              IA
+            </span>
+          </span>
         </button>
       )}
       {aberto && <Painel estado={estado} aoFechar={() => setAberto(false)} />}
@@ -211,6 +220,7 @@ function Painel({
       role="dialog"
       aria-modal="false"
       aria-labelledby="assistente-titulo"
+      aria-describedby="assistente-identificacao"
       data-assistente-painel
       className="fixed inset-0 z-[70] flex flex-col bg-[#FDF9F4] print:hidden lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[440px] lg:border-l lg:shadow-[-12px_0_32px_rgba(15,42,79,0.12)]"
       style={{ borderColor: "#E8DFD5" }}
@@ -221,9 +231,12 @@ function Painel({
         </span>
         <div className="min-w-0 flex-1">
           <h2 id="assistente-titulo" className="text-[15px] font-semibold leading-tight tracking-tight">
-            Assistente IA Festaê
+            Malu
           </h2>
-          <p className="mt-0.5 text-xs text-white/70">Consulta os dados do painel. Não altera nada.</p>
+          <p id="assistente-identificacao" className="mt-0.5 text-xs font-medium text-white/80">
+            Assistente IA da Festaê
+          </p>
+          <p className="mt-0.5 text-[11px] text-white/60">Consulta os dados do painel. Não altera nada.</p>
           {estado.modo === "SIMULADO" && (
             <span
               className="mt-1.5 inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
@@ -247,7 +260,7 @@ function Painel({
         <button
           type="button"
           onClick={fechar}
-          aria-label="Fechar assistente"
+          aria-label="Fechar a Malu"
           className="-mr-1 flex size-10 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10"
         >
           <X className="size-5" />
@@ -258,11 +271,11 @@ function Painel({
         {mensagens.length === 0 && (
           <div className="space-y-4" data-assistente-boas-vindas>
             <div>
-              <p className="text-[15px] font-semibold" style={{ color: NAVY }}>
-                Pergunte por texto ou por voz.
+              <p className="text-[15px] font-semibold leading-snug" style={{ color: NAVY }}>
+                Oi! Eu sou a Malu, sua assistente virtual da Festaê. Como posso ajudar você hoje?
               </p>
-              <p className="mt-1 text-sm leading-relaxed text-[#5B6B80]">
-                Respondo com os números do sistema — festas, pagamentos, propostas e acervo — e mostro onde conferir.
+              <p className="mt-1.5 text-sm leading-relaxed text-[#5B6B80]">
+                Sou uma inteligência artificial. Respondo com os números do sistema — festas, pagamentos, propostas e acervo — e mostro onde conferir. Pergunte por texto ou por voz.
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -291,6 +304,7 @@ function Painel({
                       <Mic className="size-3" aria-hidden /> Transcrição
                     </span>
                   )}
+                  <span className="sr-only">Você: </span>
                   <span className="whitespace-pre-wrap break-words">{m.texto}</span>
                 </div>
               </li>
@@ -303,6 +317,7 @@ function Painel({
                     color: "#1F2F44",
                   }}
                 >
+                  <span className="sr-only">Malu: </span>
                   <p className="whitespace-pre-wrap break-words">{m.texto}</p>
                   <div className="mt-2.5 flex items-end justify-between gap-2">
                   {(m.resposta?.fontes.length ?? 0) > 0 ? (
@@ -327,7 +342,7 @@ function Painel({
                       type="button"
                       onClick={() => ouvir(m)}
                       className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-[#5B6B80] transition-colors hover:bg-[#F4EFE8]"
-                      aria-label={falando === m.id ? "Parar a leitura" : "Ouvir a resposta"}
+                      aria-label={falando === m.id ? "Parar a leitura" : "Ouvir a resposta da Malu"}
                     >
                       {falando === m.id ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
                       {falando === m.id ? "Parar" : "Ouvir"}
@@ -395,7 +410,7 @@ function Painel({
         ) : (
           <form onSubmit={enviarFormulario} className="flex items-end gap-2">
             <label htmlFor="assistente-pergunta" className="sr-only">
-              Sua pergunta
+              Sua pergunta para a Malu
             </label>
             <textarea
               id="assistente-pergunta"
@@ -409,7 +424,7 @@ function Painel({
                 }
               }}
               rows={1}
-              placeholder="Digite sua pergunta"
+              placeholder="Pergunte à Malu"
               disabled={ocupado}
               className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border bg-[#FDF9F4] px-3.5 py-2.5 text-base leading-snug outline-none transition-colors placeholder:text-[#9AA6B5] focus:border-[#C7A360] focus:bg-white disabled:opacity-60 lg:text-sm"
               style={{ borderColor: "#E8DFD5", color: NAVY }}
