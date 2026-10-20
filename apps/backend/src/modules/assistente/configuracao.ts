@@ -7,8 +7,9 @@
  * dele são montadas por regra e não podem passar por consulta validada.
  *
  * Desligar rápido: `ASSISTENTE_IA_PROVEDOR=desligado` (vale no próximo
- * deploy) ou revogar a chave na OpenAI (vale na hora, em todas as
- * instâncias — o painel passa a mostrar "sem acesso ao serviço de IA").
+ * deploy; qualquer valor desconhecido também desliga) ou revogar a chave na
+ * OpenAI (vale na hora, em todas as instâncias — o painel passa a mostrar
+ * "sem acesso ao serviço de IA"). Desligado, nada é enviado à OpenAI.
  *
  * Os preços são estimativas para a métrica de custo, não cobrança: conferir
  * na página de preços da OpenAI e ajustar aqui quando mudarem.
@@ -78,6 +79,9 @@ export function lerConfiguracao(env: NodeJS.ProcessEnv = process.env): Configura
   if (pedido === "desligado") modo = "DESLIGADO";
   else if (pedido === "simulado") modo = producao ? "DESLIGADO" : "SIMULADO";
   else if (pedido === "openai") modo = chave ? "OPENAI" : "DESLIGADO";
+  // Valor que não é nenhum dos três ("desligada", "off"): desliga. Quem quis
+  // desligar e errou a digitação não pode acabar ligando a IA.
+  else if (pedido) modo = "DESLIGADO";
   else modo = chave ? "OPENAI" : producao ? "DESLIGADO" : "SIMULADO";
 
   const saidaPedida = env.ASSISTENTE_IA_SAIDA_DE_VOZ?.trim().toLowerCase();

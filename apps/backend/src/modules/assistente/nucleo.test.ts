@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { lerConfiguracao } from "./configuracao";
-import { LimitesDeUso, MetricasDoAssistente, type ControleDeUso } from "./controle";
+import { ConversasEmMemoria, LimitesDeUso, MetricasDoAssistente, type ControleDeUso } from "./controle";
 import { CATALOGO, ferramentasDoPapel, type ServicosDoAssistente } from "./ferramentas";
 import { MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL, MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA, type EntradaDoAssistente } from "./contrato";
 import { NucleoDoAssistente, RecusaDoAssistente } from "./nucleo";
@@ -368,6 +368,22 @@ describe("responder", () => {
 
     const outro = await nucleo.conversas.abrir("u-ops", r1.conversaId);
     expect(outro.id).not.toBe(r1.conversaId);
+  });
+
+  it("conversa vencida sai da memória em até 31 minutos, mesmo sem nova pergunta", () => {
+    vi.useFakeTimers();
+    try {
+      const conversas = new ConversasEmMemoria(lerConfiguracao({} as NodeJS.ProcessEnv).limites);
+      const guardadas = () => (conversas as unknown as { conversas: Map<string, unknown> }).conversas.size;
+      const c = conversas.abrir("u1", undefined);
+      conversas.registrar(c, { pergunta: "Quantas festas em novembro?", resposta: "4.", consultas: [] });
+      vi.advanceTimersByTime(29 * 60_000);
+      expect(guardadas()).toBe(1);
+      vi.advanceTimersByTime(2 * 60_000);
+      expect(guardadas()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("métricas: sem pergunta, sem resposta, sem nomes; usuário como hash", async () => {

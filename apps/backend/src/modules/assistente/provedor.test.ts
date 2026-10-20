@@ -72,7 +72,7 @@ describe("ProvedorOpenAI", () => {
     expect(pedido.caminho).toBe("/v1/chat/completions");
     expect(pedido.cabecalhos.authorization).toBe("Bearer sk-teste-local");
     const corpo = JSON.parse(pedido.corpo.toString());
-    expect(corpo).toMatchObject({ model: "gpt-5.4-mini", tool_choice: "auto", max_completion_tokens: 1200 });
+    expect(corpo).toMatchObject({ model: "gpt-5.4-mini", tool_choice: "auto", max_completion_tokens: 1200, store: false });
     expect(corpo.temperature).toBeUndefined();
     expect(corpo.tools[0]).toEqual({
       type: "function",
@@ -149,6 +149,15 @@ describe("configuração", () => {
     expect(lerConfiguracao({ NODE_ENV: "production", ASSISTENTE_IA_PROVEDOR: "openai" } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
     expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k" } as NodeJS.ProcessEnv).modo).toBe("OPENAI");
     expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: "desligado" } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
+  });
+
+  it("valor desconhecido em ASSISTENTE_IA_PROVEDOR desliga, mesmo com chave", () => {
+    for (const valor of ["desligada", "off", "false", "0", "não"]) {
+      expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: valor } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
+    }
+    expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: " Desligado " } as NodeJS.ProcessEnv).modo).toBe("DESLIGADO");
+    expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: "OpenAI" } as NodeJS.ProcessEnv).modo).toBe("OPENAI");
+    expect(lerConfiguracao({ NODE_ENV: "production", OPENAI_API_KEY: "k", ASSISTENTE_IA_PROVEDOR: "" } as NodeJS.ProcessEnv).modo).toBe("OPENAI");
   });
 
   it("modo de demonstração nunca liga em produção, nem pedido", () => {

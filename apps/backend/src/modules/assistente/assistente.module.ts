@@ -88,7 +88,9 @@ export function criarProvedor(cfg: ConfiguracaoDoAssistente): ProvedorDeIA | nul
                 ? "Assistente IA desligado: o modo de demonstração não liga em produção."
                 : process.env.ASSISTENTE_IA_PROVEDOR?.trim().toLowerCase() === "desligado"
                   ? "Assistente IA desligado por ASSISTENTE_IA_PROVEDOR=desligado."
-                  : "Assistente IA desligado: sem OPENAI_API_KEY neste ambiente.",
+                  : process.env.ASSISTENTE_IA_PROVEDOR?.trim() && process.env.ASSISTENTE_IA_PROVEDOR.trim().toLowerCase() !== "openai"
+                    ? "Assistente IA desligado: ASSISTENTE_IA_PROVEDOR com valor desconhecido (use openai, simulado ou desligado)."
+                    : "Assistente IA desligado: sem OPENAI_API_KEY neste ambiente.",
         );
         const metricas = new MetricasDoAssistente(cfg.precos, (linha) => logger.log(linha));
         // Limites e teto de gasto no banco: valem para todas as instâncias da API.

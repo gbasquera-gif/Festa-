@@ -165,12 +165,19 @@ export type Conversa = { id: string; usuarioId: string; turnos: Turno[]; atualiz
  * Vive 30 minutos sem uso e guarda só os últimos turnos. Está presa ao
  * usuário: o id de conversa de outra pessoa simplesmente abre uma nova.
  * Nunca vai para log.
+ *
+ * A varredura roda a cada minuto, e não só na pergunta seguinte: sem ela, a
+ * conversa vencida ficaria na memória até alguém voltar a usar o assistente.
+ * Assim o prazo que a Política de Privacidade declara (no máximo 31 minutos
+ * depois da última pergunta) vale mesmo sem uso.
  */
 export class ConversasEmMemoria {
   private readonly conversas = new Map<string, Conversa>();
   private static readonly MAXIMO = 500;
 
-  constructor(private readonly limites: ConfiguracaoDoAssistente["limites"]) {}
+  constructor(private readonly limites: ConfiguracaoDoAssistente["limites"]) {
+    setInterval(() => this.varrer(Date.now()), 60_000).unref();
+  }
 
   abrir(usuarioId: string, conversaId: string | undefined, agora = Date.now()): Conversa {
     this.varrer(agora);

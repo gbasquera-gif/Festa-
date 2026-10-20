@@ -95,6 +95,9 @@ export class ProvedorOpenAI implements ProvedorDeIA {
       })),
       tool_choice: "auto",
       max_completion_tokens: this.cfg.maxTokensDeSaida,
+      // Não pede à OpenAI que guarde a conversa como "stored completion".
+      // Explícito para não depender do padrão da API, que pode mudar.
+      store: false,
     };
     if (this.cfg.esforcoDeRaciocinio) corpo.reasoning_effort = this.cfg.esforcoDeRaciocinio;
 
