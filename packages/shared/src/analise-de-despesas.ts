@@ -81,6 +81,8 @@ export type SelecaoDeDespesas = {
   /** Fora do total, mas dito na resposta para a conta fechar com a tela. */
   pagasComDataFutura: DespesaAnalisada[];
   aPagarSemVencimento: DespesaAnalisada[];
+  /** A pagar que já venciam antes do período: dívida anterior, nunca somada ao período. */
+  vencidasAntesDoPeriodo: DespesaAnalisada[];
 };
 
 export function selecionarDespesas(despesas: readonly DespesaParaAnalise[], recorte: RecorteDeDespesas): SelecaoDeDespesas {
@@ -95,6 +97,7 @@ export function selecionarDespesas(despesas: readonly DespesaParaAnalise[], reco
   // A pagar olha o período inteiro: o que vence até o fim dele, inclusive depois de hoje.
   const aPagar = linhas.filter((l) => !l.paga && l.dia !== null && l.dia >= recorte.de && l.dia <= recorte.ate);
   const aPagarSemVencimento = linhas.filter((l) => !l.paga && l.dia === null);
+  const vencidasAntesDoPeriodo = linhas.filter((l) => !l.paga && l.dia !== null && l.dia < recorte.de);
 
   const principais =
     recorte.situacao === "PAGO"
@@ -111,6 +114,7 @@ export function selecionarDespesas(despesas: readonly DespesaParaAnalise[], reco
     principais: principais.sort((a, b) => (b.dia ?? "").localeCompare(a.dia ?? "") || b.centavos - a.centavos),
     pagasComDataFutura: pedePago ? pagasComDataFutura : [],
     aPagarSemVencimento: pedeAPagar ? aPagarSemVencimento : [],
+    vencidasAntesDoPeriodo: pedeAPagar ? vencidasAntesDoPeriodo : [],
   };
 }
 
@@ -139,7 +143,7 @@ export type AnaliseDeDespesas = {
   /** Meses do período com valor realizado possível (o mês em andamento conta). */
   meses: number;
   mediaMensalCentavos: number | null;
-  foraDoTotal: { pagasComDataFutura: Subtotal; aPagarSemVencimento: Subtotal };
+  foraDoTotal: { pagasComDataFutura: Subtotal; aPagarSemVencimento: Subtotal; vencidasAntesDoPeriodo: Subtotal };
   linhas: DespesaAnalisada[];
 };
 
@@ -205,6 +209,7 @@ export function analisarDespesas(
     foraDoTotal: {
       pagasComDataFutura: subtotal(selecao.pagasComDataFutura),
       aPagarSemVencimento: subtotal(selecao.aPagarSemVencimento),
+      vencidasAntesDoPeriodo: subtotal(selecao.vencidasAntesDoPeriodo),
     },
     linhas,
   };

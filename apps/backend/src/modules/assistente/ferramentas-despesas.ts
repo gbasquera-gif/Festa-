@@ -372,6 +372,13 @@ async function executarConsulta(args: Parametros, { agora, servicos }: { agora: 
       nota: "Marcados como pagos com data depois de hoje: ainda não saíram do caixa. O painel Financeiro os soma no mês da data.",
     };
   }
+  if (a.foraDoTotal.vencidasAntesDoPeriodo.quantidade) {
+    foraDoTotal.vencidosAntesDoPeriodo = {
+      total: brl(a.foraDoTotal.vencidasAntesDoPeriodo.totalCentavos),
+      lancamentos: a.foraDoTotal.vencidasAntesDoPeriodo.quantidade,
+      nota: `A pagar que venceram antes de ${dataCurta(p.de)}: dívida de períodos anteriores, fora do total do período.`,
+    };
+  }
   if (a.foraDoTotal.aPagarSemVencimento.quantidade) {
     foraDoTotal.aPagarSemVencimento = {
       total: brl(a.foraDoTotal.aPagarSemVencimento.totalCentavos),
@@ -448,6 +455,9 @@ async function executarConsulta(args: Parametros, { agora, servicos }: { agora: 
     separacao +
     situacoes +
     (situacao !== "PAGO" && periodo.notaDoCorte ? ` ${periodo.notaDoCorte}` : "") +
+    (a.foraDoTotal.vencidasAntesDoPeriodo.quantidade
+      ? ` À parte, vencidos antes de ${dataCurta(p.de)}: ${brl(a.foraDoTotal.vencidasAntesDoPeriodo.totalCentavos)} (${lancamentos(a.foraDoTotal.vencidasAntesDoPeriodo.quantidade)}).`
+      : "") +
     fraseDaComparacao;
 
   return {

@@ -31,6 +31,7 @@ const DESPESAS: DespesaParaAnalise[] = [
   g(100, "CONSUMO", { fornecedor: "Loja de Balões", pagoEm: dia("2026-08-15") }),
   g(35.25, "CONSUMO", { fornecedor: "Papelaria Central", pagoEm: dia("2026-10-12") }),
   g(40, "CONSUMO", { fornecedor: "Papelaria Central", venceEm: dia("2026-10-18") }),
+  g(30, "CONSUMO", { fornecedor: "Gráfica Antiga", venceEm: dia("2026-09-28") }),
   g(1500, "PRO_LABORE", { pagoEm: dia("2026-10-05") }),
   g(800, "ACERVO", { fornecedor: "Atacado Festa", pagoEm: dia("2026-10-11") }),
 ];
@@ -133,6 +134,9 @@ describe("consultarDespesas — cenários da homologação", () => {
     });
     const aPagar = await consultar({ periodo: "este mês", situacao: "A_PAGAR" });
     expect(aPagar.d.resultado).toMatchObject({ total: "R$ 160,00", lancamentos: 2 });
+    // Dívida vencida em setembro: fora do total de outubro, dita à parte.
+    expect(aPagar.d.foraDoTotal.vencidosAntesDoPeriodo).toMatchObject({ total: "R$ 30,00", lancamentos: 1 });
+    expect(aPagar.d.resumo).toContain("À parte, vencidos antes de 01/10/2026: R$ 30,00");
     const vencido = await consultar({ periodo: "este mês", situacao: "VENCIDO" });
     expect(vencido.d.resultado).toMatchObject({ total: "R$ 40,00", lancamentos: 1 });
   });

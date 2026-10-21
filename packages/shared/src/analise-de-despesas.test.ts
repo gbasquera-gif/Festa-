@@ -32,6 +32,8 @@ const base: DespesaParaAnalise[] = [
   despesa({ valor: 60, natureza: "CONSUMO", venceEm: dia("2026-10-28") }),
   despesa({ valor: 65, natureza: "CONSUMO", venceEm: dia("2026-11-03") }),
   despesa({ valor: 15, natureza: "CONSUMO" }),
+  // Dívida de setembro ainda não paga.
+  despesa({ valor: 30, natureza: "CONSUMO", venceEm: dia("2026-09-28") }),
 ];
 
 const outubro = (extra: Partial<RecorteDeDespesas> = {}): RecorteDeDespesas => ({
@@ -92,6 +94,8 @@ describe("seleção de despesas", () => {
     expect(s.principais.find((l) => l.valor === 50)?.vencida).toBe(true);
     expect(s.principais.find((l) => l.valor === 60)?.vencida).toBe(false);
     expect(s.aPagarSemVencimento.map((l) => l.valor)).toEqual([15]);
+    // Vencida em setembro: não entra no "a pagar de outubro", vem separada.
+    expect(s.vencidasAntesDoPeriodo.map((l) => l.valor)).toEqual([30]);
   });
 
   it("vencido: a pagar com vencimento antes de hoje", () => {
