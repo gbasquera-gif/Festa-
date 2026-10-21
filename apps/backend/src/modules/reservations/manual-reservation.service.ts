@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { prisma } from "@festae/database";
+import { prisma, type Prisma } from "@festae/database";
 import {
   diaDaFesta,
   formasDoTelefone,
@@ -24,6 +24,37 @@ import {
   registrarConflitosDeAcervo,
   type ContextoDoConflito,
 } from "../availability/registro-de-conflitos";
+
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Um recebimento que nasce junto com a venda, na mesma transação.
+ *
+ * Só a aprovação manual da proposta usa: o Pix já caiu, e a reserva e o
+ * pagamento existem juntos ou não existem. A data é a do recebimento, não a
+ * do lançamento; origem, autor, observação e chave ficam no pagamento.
+ */
+export type PagamentoInicial = {
+  valor: number;
+  recebidoEm: Date;
+  metodo: "PIX" | "CARTAO" | "BOLETO" | "OUTRO";
+  origem: "REGISTRO_MANUAL" | "APROVACAO_MANUAL_DA_PROPOSTA";
+  registradoPorId: string;
+  observacao?: string;
+  chaveDeIdempotencia?: string;
+};
+
+/**
+ * O que roda dentro da transação da venda, antes e depois de gravar.
+ *
+ * É como a conversão de proposta fica atômica sem uma segunda lógica de
+ * venda: a trava e a reconferência de material vêm antes; a proposta passa a
+ * apontar para a reserva depois. Se qualquer passo recusa, nada fica gravado.
+ */
+export type NaMesmaTransacao = {
+  antes?: (tx: Tx) => Promise<void>;
+  depois?: (tx: Tx, reserva: { id: string; orderId: string }) => Promise<void>;
+};
 
 /** Estados que seguram data e material. Recusada e cancelada devolvem tudo. */
 const RESERVAS_ATIVAS = [
@@ -89,6 +120,8 @@ export class ManualReservationService {
      * rota de venda manual não o expõe.
      */
     kitCombinado?: { itens: { productId: string; nome: string; quantity: number }[] },
+    /** Só a aprovação manual da proposta passa estes dois. */
+    extra: { pagamentoInicial?: PagamentoInicial; naMesmaTransacao?: NaMesmaTransacao } = {},
   ) {
     // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
     // segunda regra de fuso à espera de divergir da primeira.
@@ -166,7 +199,16 @@ export class ManualReservationService {
       });
     }
 
+    // O recebimento inicial não passa do total da venda: é sobrepagamento.
+    if (extra.pagamentoInicial && toCentsInt(extra.pagamentoInicial.valor) > toCentsInt(total)) {
+      throw new ConflictException(
+        `O valor recebido (${formatarReais(extra.pagamentoInicial.valor)}) passa do total da venda (${formatarReais(total)}).`,
+      );
+    }
+
     const reserva = await prisma.$transaction(async (tx) => {
+      await extra.naMesmaTransacao?.antes?.(tx);
+
       const evento = await tx.event.create({
         data: {
           userId: cliente.id,
@@ -228,6 +270,26 @@ export class ManualReservationService {
             method: input.financeiro.formaPagamento,
             status: input.financeiro.statusPagamento,
             paidAt: input.financeiro.statusPagamento === "PAID" ? new Date() : null,
+            origem: "REGISTRO_MANUAL",
+            registradoPorId: criadoPorId,
+          },
+        });
+      }
+
+      if (extra.pagamentoInicial) {
+        const p = extra.pagamentoInicial;
+        await tx.payment.create({
+          data: {
+            orderId: ordem.id,
+            type: "DEPOSIT",
+            amount: p.valor,
+            method: p.metodo,
+            status: "PAID",
+            paidAt: p.recebidoEm,
+            origem: p.origem,
+            registradoPorId: p.registradoPorId,
+            observacao: p.observacao || undefined,
+            chaveDeIdempotencia: p.chaveDeIdempotencia,
           },
         });
       }
@@ -258,6 +320,8 @@ export class ManualReservationService {
           observacao: "Aplicado na venda",
         });
       }
+
+      await extra.naMesmaTransacao?.depois?.(tx, { id: criada.id, orderId: ordem.id });
 
       return criada;
     }, { timeout: 15_000 });

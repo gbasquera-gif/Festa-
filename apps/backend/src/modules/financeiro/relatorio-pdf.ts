@@ -375,6 +375,20 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
   if (r.creditoEmAberto > 0) {
     notas.push(`Crédito Festaê em aberto das clientes: ${reais(r.creditoEmAberto)} — já entrou no caixa quando foi pago; não é receita nova.`);
   }
+  // Retiradas dos sócios: saída de caixa, nunca despesa. Só aparecem quando
+  // houve retirada no mês, com o movimento líquido do caixa que elas afetam.
+  const ret = r.fluxoDeCaixa?.retiradas;
+  if (ret && ret.total > 0) {
+    const partes = [
+      ret.DISTRIBUICAO_DE_LUCROS > 0 ? `distribuição de lucros ${reais(ret.DISTRIBUICAO_DE_LUCROS)}` : null,
+      ret.PRO_LABORE > 0 ? `pró-labore ${reais(ret.PRO_LABORE)}` : null,
+      ret.DEVOLUCAO_DE_APORTE > 0 ? `devolução de aporte ${reais(ret.DEVOLUCAO_DE_APORTE)}` : null,
+    ].filter(Boolean);
+    notas.push(
+      `Retiradas dos sócios em ${minusculo(r.mes)}: ${reais(ret.total)} (${partes.join("; ")}) — saídas de caixa fora do Resultado Operacional. ` +
+        `Movimento líquido do caixa no mês: ${reais(r.fluxoDeCaixa.movimentoLiquido)}.`,
+    );
+  }
   const fimDasNotas =
     notas.length > 0
       ? escrever(notas.join(" "), MARGEM, y + 8, { tamanho: 7.6, cor: COR.apagado, largura: LARGURA })

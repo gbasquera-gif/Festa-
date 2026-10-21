@@ -2,6 +2,7 @@ import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Contratos } from "@/components/financeiro/Contratos";
 import { Evolucao } from "@/components/financeiro/Evolucao";
 import { Gastos } from "@/components/financeiro/Gastos";
+import { Retiradas } from "@/components/financeiro/Retiradas";
 import { VisaoGeral } from "@/components/financeiro/VisaoGeral";
 import { MESES, anosDisponiveis, nomeDoMes } from "@/components/financeiro/formato";
 
@@ -27,6 +28,7 @@ const ABAS = [
   { chave: "contratos", rotulo: "Vendas / Contratos" },
   { chave: "despesas", rotulo: "Despesas" },
   { chave: "aportes", rotulo: "Aportes / Acervo" },
+  { chave: "retiradas", rotulo: "Retiradas dos sócios" },
 ] as const;
 
 type Aba = (typeof ABAS)[number]["chave"];
@@ -41,7 +43,7 @@ type Aba = (typeof ABAS)[number]["chave"];
  *
  * Carteira e lançamentos são listas: ver tudo é uma pergunta legítima.
  */
-const ACEITAM_TODOS: readonly Aba[] = ["contratos", "despesas", "aportes"];
+const ACEITAM_TODOS: readonly Aba[] = ["contratos", "despesas", "aportes", "retiradas"];
 const TODOS = "todos";
 
 export default function Financeiro() {
@@ -156,6 +158,7 @@ export default function Financeiro() {
           explicacao="O que vira patrimônio alugável. É capital que fica, não despesa do mês — por isso não derruba o lucro."
         />
       )}
+      {aba === "retiradas" && <Retiradas ano={ano} mes={mesFiltrado} />}
     </div>
   );
 }

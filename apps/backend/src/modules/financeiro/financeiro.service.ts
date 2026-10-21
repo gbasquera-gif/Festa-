@@ -33,6 +33,12 @@ import {
   variacao,
   linhaDeRitmo,
   totalRecebido,
+  fluxoDeCaixaDoAno,
+  fluxoDeCaixaDoMes,
+  retiradasDoAno,
+  retiradasDoMes,
+  type CategoriaDaRetirada,
+  type RetiradaApurada,
   type ContratoApurado,
   type CriarGastoInput,
   type EditarGastoInput,
@@ -191,6 +197,23 @@ export class FinanceiroService {
     }));
   }
 
+  /**
+   * As retiradas dos sócios, como a apuração as lê. Estornadas vêm marcadas
+   * e as funções de @festae/shared as deixam fora dos totais.
+   */
+  private async retiradas(): Promise<RetiradaApurada[]> {
+    const linhas = await prisma.retiradaDeSocio.findMany({
+      select: { socioId: true, categoria: true, valor: true, retiradaEm: true, estornadaEm: true },
+    });
+    return linhas.map((r) => ({
+      socioId: r.socioId,
+      categoria: r.categoria as CategoriaDaRetirada,
+      valor: paraNumero(r.valor),
+      retiradaEm: r.retiradaEm,
+      estornada: r.estornadaEm !== null,
+    }));
+  }
+
   /** Tudo que a tela de saúde financeira mostra de um mês. */
   async indicadores(mes: string) {
     const [contratos, gastos, meta] = await Promise.all([
@@ -232,11 +255,12 @@ export class FinanceiroService {
    * ano e aos doze pontos do gráfico.
    */
   async panorama(ano: number, mes: string) {
-    const [contratos, gastos, meta, creditoEmAberto] = await Promise.all([
+    const [contratos, gastos, meta, creditoEmAberto, retiradas] = await Promise.all([
       this.contratos(),
       this.gastos(),
       prisma.metaMensal.findUnique({ where: { competencia: mes } }),
       this.creditoEmAberto(),
+      this.retiradas(),
     ]);
 
     const operacional = resultadoOperacionalDoMes(contratos, gastos, mes);
@@ -275,6 +299,21 @@ export class FinanceiroService {
       creditoEmAberto,
 
       ytd: acumuladoNoAno(contratos, gastos, ano, mes),
+
+      /**
+       * Retiradas dos sócios e o fluxo de caixa que as mostra. Campos novos,
+       * ao lado dos existentes: nenhum número acima depende deles. Retirada
+       * não é despesa e não entra no Resultado Operacional; aparece aqui como
+       * saída de caixa, classificada.
+       */
+      retiradas: {
+        mes: retiradasDoMes(retiradas, mes),
+        ano: retiradasDoAno(retiradas, ano, mes),
+      },
+      fluxoDeCaixa: {
+        mes: fluxoDeCaixaDoMes(contratos, gastos, retiradas, mes),
+        ano: fluxoDeCaixaDoAno(contratos, gastos, retiradas, ano, mes),
+      },
 
       aReceber: totalAReceber(contratos),
       recebidoSemData: indicadores.recebidoSemData,
@@ -327,15 +366,17 @@ export class FinanceiroService {
    */
   async relatorioExecutivo(ano: number, mes: string) {
     const agora = new Date();
-    const [contratos, gastos, reservas, creditoEmAberto] = await Promise.all([
+    const [contratos, gastos, reservas, creditoEmAberto, retiradas] = await Promise.all([
       this.contratos(),
       this.gastos(),
       this.carteiraCrua(),
       this.creditoEmAberto(),
+      this.retiradas(),
     ]);
     return montarRelatorioExecutivo({
       contratos,
       gastos,
+      retiradas,
       carteira: reservas.map((reserva) => montarLinha(reserva, agora)),
       ano,
       mes,

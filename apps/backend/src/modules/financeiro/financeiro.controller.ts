@@ -11,8 +11,22 @@ import {
   type DefinirMetaInput,
   type EditarGastoInput,
   mesEmChapeco,
+  socioSchema,
+  editarSocioSchema,
+  registrarRetiradaSchema,
+  editarRetiradaSchema,
+  estornarRetiradaSchema,
+  filtroDeRetiradasSchema,
+  type SocioInput,
+  type EditarSocioInput,
+  type RegistrarRetiradaInput,
+  type EditarRetiradaInput,
+  type EstornarRetiradaInput,
+  type FiltroDeRetiradas,
 } from "@festae/shared";
 import { FinanceiroService } from "./financeiro.service";
+import { RetiradasService } from "./retiradas.service";
+import { CurrentUser, type AuthUser } from "../../common/decorators/current-user.decorator";
 import { ehSituacao } from "./contratos";
 import { ehTipoDeDetalhe, type EscopoDoDetalhe, type TipoDeDetalhe } from "./detalhamento";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
@@ -34,7 +48,10 @@ import { Roles } from "../../common/decorators/roles.decorator";
 @Roles("ADMIN")
 @Controller("financeiro")
 export class FinanceiroController {
-  constructor(private readonly financeiro: FinanceiroService) {}
+  constructor(
+    private readonly financeiro: FinanceiroService,
+    private readonly retiradas: RetiradasService,
+  ) {}
 
   @Get("indicadores")
   indicadores(@Query("mes") mes: string) {
@@ -158,6 +175,74 @@ export class FinanceiroController {
   @Delete("gastos/:id")
   apagarGasto(@Param("id") id: string) {
     return this.financeiro.apagarGasto(id);
+  }
+
+  // ---------------------------------------------------------- sócios
+
+  @Get("socios")
+  listarSocios() {
+    return this.retiradas.socios();
+  }
+
+  @Post("socios")
+  criarSocio(@Body(new ZodValidationPipe(socioSchema)) body: SocioInput) {
+    return this.retiradas.criarSocio(body);
+  }
+
+  @Patch("socios/:id")
+  editarSocio(@Param("id") id: string, @Body(new ZodValidationPipe(editarSocioSchema)) body: EditarSocioInput) {
+    return this.retiradas.editarSocio(id, body);
+  }
+
+  // ---------------------------------------------------------- retiradas
+
+  /** Lista filtrada + indicadores (mês, ano, histórico, por sócio). */
+  @Get("retiradas")
+  listarRetiradas(@Query(new ZodValidationPipe(filtroDeRetiradasSchema)) filtro: FiltroDeRetiradas) {
+    return this.retiradas.listar(filtro);
+  }
+
+  /** A mesma lista em CSV, para planilha. */
+  @Get("retiradas.csv")
+  async retiradasCsv(@Res() resposta: Response, @Query(new ZodValidationPipe(filtroDeRetiradasSchema)) filtro: FiltroDeRetiradas) {
+    const csv = await this.retiradas.csv(filtro);
+    resposta.set({
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="retiradas-dos-socios.csv"`,
+      "Cache-Control": "no-store",
+    });
+    resposta.end(csv);
+  }
+
+  @Get("retiradas/:id/historico")
+  historicoDaRetirada(@Param("id") id: string) {
+    return this.retiradas.historico(id);
+  }
+
+  @Post("retiradas")
+  registrarRetirada(
+    @Body(new ZodValidationPipe(registrarRetiradaSchema)) body: RegistrarRetiradaInput,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.retiradas.registrar(body, user.userId);
+  }
+
+  @Patch("retiradas/:id")
+  editarRetirada(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(editarRetiradaSchema)) body: EditarRetiradaInput,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.retiradas.editar(id, body, user.userId);
+  }
+
+  @Post("retiradas/:id/estorno")
+  estornarRetirada(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(estornarRetiradaSchema)) body: EstornarRetiradaInput,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.retiradas.estornar(id, body, user.userId);
   }
 
   @Post("meta")

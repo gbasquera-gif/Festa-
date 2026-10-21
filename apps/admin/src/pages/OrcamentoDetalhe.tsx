@@ -25,11 +25,13 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { urlDaProposta } from "@/lib/site";
 import { brl } from "@/components/financeiro/formato";
 import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
 import { DisponibilidadeDaProposta } from "@/components/orcamento/DisponibilidadeDaProposta";
+import { mensagemDeConflito } from "@/components/orcamento/conflito";
+import { AprovacaoManual } from "@/components/orcamento/AprovacaoManual";
 
 /**
  * A proposta vista por dentro.
@@ -39,28 +41,6 @@ import { DisponibilidadeDaProposta } from "@/components/orcamento/Disponibilidad
  * estoque, e é a única que pode ser recusada pelo sistema — por isso o
  * conflito dela aparece inteiro na tela, com o que faltou.
  */
-/**
- * O 409 de disponibilidade traz os conflitos detalhados.
- *
- * Mostrar só "erro" esconderia exatamente a informação que permite decidir:
- * qual peça faltou, e para quando.
- */
-function mensagemDeConflito(e: unknown): string {
-  if (e instanceof ApiError && e.detalhes?.conflitos) {
-    const lista = (e.detalhes.conflitos as any[])
-      .map((c) => {
-        const falta =
-          typeof c.necessario === "number" && typeof c.disponivel === "number"
-            ? `precisa de ${c.necessario}, há ${c.disponivel} livre${c.disponivel === 1 ? "" : "s"}`
-            : "sem quantidade suficiente";
-        return `${c.produto ?? "item"} (${falta})`;
-      })
-      .join(" · ");
-    return `${e.message} ${lista}`;
-  }
-  return e instanceof Error ? e.message : "Não foi possível concluir.";
-}
-
 /**
  * Copiar sem depender de o navegador cooperar.
  *
@@ -88,6 +68,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   const [perdendo, setPerdendo] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
   const [conflito, setConflito] = useState<string | null>(null);
+  /** O diálogo de aprovação manual com Pix recebido. */
+  const [aprovandoManual, setAprovandoManual] = useState(false);
 
   const { data: o, isLoading } = useQuery<any>({
     queryKey: ["orcamento", id],
@@ -228,6 +210,13 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
   const podeMarcarPerdida = situacao !== "RECUSADO" && !o.reservaId;
   const podeExcluir =
     !o.reservaId && ["RASCUNHO", "ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
+  /**
+   * Aprovação manual com Pix recebido por fora: enviada (inclusive vencida)
+   * ou aprovada pelo link e ainda sem reserva, com a data definida.
+   * Convertida não: outro recebimento se lança na reserva.
+   */
+  const podeAprovarManual =
+    !o.reservaId && Boolean(o.festaEm) && ["ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
   const tipoDeFesta = isEventType(String(o.tipoDeFesta))
     ? EVENT_TYPE_META[String(o.tipoDeFesta) as keyof typeof EVENT_TYPE_META].label
     : String(o.tipoDeFesta);
@@ -267,7 +256,22 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               {situacao === "RASCUNHO" ? "Marcar como enviada" : "Reenviar"}
             </Button>
           )}
-          {situacao === "APROVADO" && o.sinal && !o.sinal.pago && (
+          {podeAprovarManual && (
+            <Button
+              className="min-h-11 whitespace-normal text-left"
+              variant={situacao === "APROVADO" ? "outline" : "default"}
+              onClick={() => { setConflito(null); setAprovandoManual(true); }}
+              data-aprovar-manual
+            >
+              {situacao === "APROVADO" ? "Registrar Pix recebido" : "Aprovar manualmente / Registrar Pix recebido"}
+            </Button>
+          )}
+          {o.reservaId && (
+            <Button variant="outline" className="min-h-11" asChild>
+              <Link href={`/reservas/${o.reservaId}/editar`}>Ver reserva</Link>
+            </Button>
+          )}
+          {situacao === "APROVADO" && o.sinal && !o.sinal.pago && o.sinal.recebido === 0 && (
             <Button
               className="min-h-11"
               onClick={() => { setConflito(null); confirmarSinal.mutate(); }}
@@ -336,8 +340,16 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
 
       {situacao === "APROVADO" && (
         <div className="painel-cartao p-4" style={{ background: "rgba(46,155,107,0.06)" }}>
-          <p className="text-sm" style={{ color: "#2e9b6b" }}>
-            Aprovada por <strong>{o.aprovadoPorNome ?? "—"}</strong> em{" "}
+          <p className="text-sm" style={{ color: "#2e9b6b" }} data-aprovacao-registrada>
+            {o.aprovadoPelaEquipe ? (
+              <>
+                Aprovada pela equipe (Pix recebido por fora) — lançada por <strong>{o.aprovadoPelaEquipe.nome}</strong> em{" "}
+              </>
+            ) : (
+              <>
+                Aprovada por <strong>{o.aprovadoPorNome ?? "—"}</strong> em{" "}
+              </>
+            )}
             {o.aprovadoEm ? new Date(o.aprovadoEm).toLocaleString("pt-BR") : "—"}
             {o.opcaoAprovadaNome && o.opcoes.length > 1 ? (
               <> · opção escolhida: <strong>{o.opcaoAprovadaNome}</strong></>
@@ -530,6 +542,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           {o.motivoDaPerda ?? ""}
         </p>
       )}
+
+      <AprovacaoManual proposta={o} aberto={aprovandoManual} aoFechar={() => setAprovandoManual(false)} />
 
       <AlertDialog open={excluindo} onOpenChange={(v) => !v && setExcluindo(false)}>
         <AlertDialogContent>

@@ -4,7 +4,7 @@ import { FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { api, baixarArquivo } from "@/lib/api";
 import { Barra, Indicador, NumeroEscuro, Rotulo } from "./pecas";
-import { brl, nomeDoMes, pct } from "./formato";
+import { brl, nomeDoMes, numero, pct } from "./formato";
 import { DetalheDoIndicador, type TipoDeDetalhe } from "./DetalheDoIndicador";
 import type { Panorama } from "./panorama";
 
@@ -147,6 +147,8 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
         )}
       </div>
 
+      <FluxoDeCaixaDoMes data={data} mes={mes} />
+
       {/* Comparação com o mês anterior. */}
       <div className="fin-cartao">
         <Rotulo>Contra {nomeDoMes(cmp.mesAnterior)}</Rotulo>
@@ -228,5 +230,68 @@ function BotaoDoRelatorio({ ano, mes }: { ano: number; mes: string }) {
       <FileDown className="size-4" aria-hidden />
       {gerando ? "Gerando relatório…" : "Relatório executivo (PDF)"}
     </button>
+  );
+}
+
+/**
+ * O fluxo de caixa: o dinheiro que entrou e saiu, por natureza.
+ *
+ * Bloco novo, abaixo do caixa e sem mexer nele nem no Resultado Operacional.
+ * É aqui que as retiradas dos sócios aparecem — como saída, separadas por
+ * categoria —, ao lado de despesas e acervo, para a pergunta "para onde foi o
+ * dinheiro?" ter resposta numa tela só.
+ */
+function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
+  if (!data.fluxoDeCaixa) return null;
+  const { mes: m, ano: a } = data.fluxoDeCaixa;
+  const linhas: { rotulo: string; mes: number; ano: number; sinal: "+" | "−"; destaque?: boolean }[] = [
+    { rotulo: "Entradas (pagamentos recebidos)", mes: m.entradas, ano: a.entradas, sinal: "+" },
+    { rotulo: "Reembolsos a clientes", mes: m.reembolsos, ano: a.reembolsos, sinal: "−" },
+    { rotulo: "Despesas (consumo e custeio)", mes: m.despesasOperacionais, ano: a.despesasOperacionais, sinal: "−" },
+    { rotulo: "Acervo (investimento)", mes: m.acervo, ano: a.acervo, sinal: "−" },
+    { rotulo: "Retiradas · distribuição de lucros", mes: m.retiradas.DISTRIBUICAO_DE_LUCROS, ano: a.retiradas.DISTRIBUICAO_DE_LUCROS, sinal: "−", destaque: true },
+    { rotulo: "Retiradas · pró-labore", mes: m.retiradas.PRO_LABORE, ano: a.retiradas.PRO_LABORE, sinal: "−", destaque: true },
+    { rotulo: "Retiradas · devolução de aporte", mes: m.retiradas.DEVOLUCAO_DE_APORTE, ano: a.retiradas.DEVOLUCAO_DE_APORTE, sinal: "−", destaque: true },
+  ];
+  const valor = (v: number, sinal: "+" | "−") => (v === 0 ? "—" : `${sinal} ${numero(v)}`);
+  return (
+    <div className="fin-cartao overflow-x-auto p-0" data-fluxo-de-caixa>
+      <div className="px-4 pt-4">
+        <Rotulo>Fluxo de caixa · {nomeDoMes(mes)}</Rotulo>
+      </div>
+      <table className="fin-tabela">
+        <thead>
+          <tr>
+            <th>Pela data em que o dinheiro entrou ou saiu</th>
+            <th className="num">No mês</th>
+            <th className="num">No ano, até o mês</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((l) => (
+            <tr key={l.rotulo}>
+              <td style={l.destaque ? { color: "var(--fin-navy-ink)" } : undefined}>{l.rotulo}</td>
+              <td className="num">{valor(l.mes, l.sinal)}</td>
+              <td className="num">{valor(l.ano, l.sinal)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Movimento líquido do caixa</td>
+            <td className="num" style={{ color: m.movimentoLiquido < 0 ? "var(--fin-coral-dark)" : undefined }} data-movimento-liquido>
+              {brl(m.movimentoLiquido)}
+            </td>
+            <td className="num" style={{ color: a.movimentoLiquido < 0 ? "var(--fin-coral-dark)" : undefined }}>
+              {brl(a.movimentoLiquido)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      <p className="px-4 pb-4 pt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
+        Retiradas dos sócios não são despesa e não entram no Resultado Operacional acima. O movimento líquido não é o
+        saldo do banco: o sistema não tem o saldo inicial da conta, e recebimentos importados sem data ficam de fora.
+      </p>
+    </div>
   );
 }

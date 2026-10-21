@@ -16,6 +16,9 @@ import {
   type ContratoApurado,
   type GastoApurado,
   type Variacao,
+  fluxoDeCaixaDoMes,
+  type FluxoDeCaixa,
+  type RetiradaApurada,
 } from "@festae/shared";
 import type { LinhaDaCarteira } from "./contratos";
 import { montarVisaoGeral } from "../comercial/visao-geral";
@@ -113,6 +116,11 @@ export type RelatorioExecutivo = {
   /** Soma dos saldos de crédito Festaê das clientes. Não é caixa nem receita. */
   creditoEmAberto: number;
   acervoNoMes: number;
+  /**
+   * O fluxo de caixa do mês, com as retiradas dos sócios como saídas
+   * classificadas. Fora do Resultado Operacional, que não muda.
+   */
+  fluxoDeCaixa: FluxoDeCaixa;
   recebimentos: {
     /** Carteira ativa inteira, não só o mês. */
     contratado: number;
@@ -156,6 +164,7 @@ export function montarRelatorioExecutivo(entrada: {
   mes: string;
   agora: Date;
   creditoEmAberto?: number;
+  retiradas?: readonly RetiradaApurada[];
 }): RelatorioExecutivo {
   const { contratos, gastos, carteira, ano, mes, agora } = entrada;
 
@@ -207,6 +216,7 @@ export function montarRelatorioExecutivo(entrada: {
     },
     creditoEmAberto: entrada.creditoEmAberto ?? 0,
     acervoNoMes: acervoDoMes(gastos, mes),
+    fluxoDeCaixa: fluxoDeCaixaDoMes(contratos, gastos, entrada.retiradas ?? [], mes),
     recebimentos: {
       contratado: carteiraAtiva.contratado,
       recebido: carteiraAtiva.recebido,

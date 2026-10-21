@@ -106,6 +106,28 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+
+  /// Lançamento manual desfeito por correção administrativa: o dinheiro
+  /// nunca entrou (lançado em duplicidade, na reserva errada). Não é
+  /// reembolso — reembolso é dinheiro que entrou e voltou para a cliente, e
+  /// tem registro próprio. A linha continua no banco com o histórico da
+  /// correção; nenhuma conta de dinheiro a lê, porque todas leem só PAID.
+  ANULADO
+}
+
+/// Como um pagamento chegou ao sistema.
+///
+/// Nulo nos pagamentos anteriores a este campo (e nos do checkout do
+/// Mercado Pago, que se identificam pela referência externa). Serve para a
+/// tela dizer de onde veio cada recebimento e para a correção administrativa
+/// saber o que pode tocar: só lançamento manual se corrige à mão.
+enum OrigemDoPagamento {
+  /// Lançado pela equipe na reserva ou na venda manual.
+  REGISTRO_MANUAL
+
+  /// Pix recebido por fora (WhatsApp, conta da Festaê) e registrado na
+  /// aprovação manual da proposta, pelo painel.
+  APROVACAO_MANUAL_DA_PROPOSTA
 }
 
 enum PaymentType {
@@ -200,12 +222,17 @@ model User {
   excecoesAutorizadas ExcecaoComercial[] @relation("ExcecoesAutorizadas")
 
   /// O extrato de crédito Festaê desta cliente.
-  creditos                  CreditoClienteMovimento[]              @relation("CreditosDaCliente")
+  creditos                   CreditoClienteMovimento[]              @relation("CreditosDaCliente")
   /// Movimentos de crédito que esta pessoa da equipe registrou.
-  creditosRegistrados       CreditoClienteMovimento[]              @relation("CreditosRegistrados")
-  cancelamentosTratados     TratamentoDeCancelamento[]             @relation("CancelamentosTratados")
-  tratamentosComplementares TratamentoComplementarDeCancelamento[] @relation("TratamentosComplementares")
-  reembolsosRegistrados     ReembolsoRealizado[]                   @relation("ReembolsosRegistrados")
+  creditosRegistrados        CreditoClienteMovimento[]              @relation("CreditosRegistrados")
+  cancelamentosTratados      TratamentoDeCancelamento[]             @relation("CancelamentosTratados")
+  tratamentosComplementares  TratamentoComplementarDeCancelamento[] @relation("TratamentosComplementares")
+  reembolsosRegistrados      ReembolsoRealizado[]                   @relation("ReembolsosRegistrados")
+  pagamentosRegistrados      Payment[]                              @relation("PagamentosRegistrados")
+  propostasAprovadasNoPainel Orcamento[]                            @relation("PropostasAprovadasNoPainel")
+  alteracoesFinanceiras      AlteracaoFinanceira[]                  @relation("AlteracoesFinanceiras")
+  retiradasRegistradas       RetiradaDeSocio[]                      @relation("RetiradasRegistradas")
+  retiradasEstornadas        RetiradaDeSocio[]                      @relation("RetiradasEstornadas")
 
   @@map("users")
 }
@@ -819,12 +846,30 @@ model Payment {
   paidAt    DateTime?
   createdAt DateTime  @default(now())
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// De onde veio o lançamento. Ver `OrigemDoPagamento`.
+  origem OrigemDoPagamento?
+
+  /// Quem lançou, quando foi a equipe. Nulo no checkout e nos antigos.
+  registradoPorId String?
+
+  /// O que a equipe anotou no lançamento ("Pix do dia 12, conta PJ").
+  observacao String?
+
+  /// A chave que a tela manda junto com o lançamento.
+  ///
+  /// É o que torna o lançamento repetível sem duplicar: clique duplo, rede
+  /// que cai e o navegador que reenvia chegam com a mesma chave, e a segunda
+  /// tentativa devolve o que a primeira gravou em vez de lançar de novo.
+  chaveDeIdempotencia String? @unique
+
+  order         Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  registradoPor User? @relation("PagamentosRegistrados", fields: [registradoPorId], references: [id], onDelete: SetNull)
 
   /// Presente quando este pagamento foi confirmado com a reserva já cancelada.
   aposCancelamento PagamentoAposCancelamento?
 
   @@index([orderId])
+  @@index([registradoPorId])
   @@map("payments")
 }
 
@@ -1187,6 +1232,14 @@ model Orcamento {
   opcaoAprovadaId   String?
   opcaoAprovadaNome String?
 
+  /// Quem aprovou pelo painel, quando a aprovação não veio do link.
+  ///
+  /// A negociação muitas vezes termina no WhatsApp: a cliente manda o Pix
+  /// antes de abrir a proposta. A equipe registra o recebimento e a
+  /// aprovação de uma vez. Nulo quando a cliente aprovou pelo link — aí a
+  /// evidência é `aprovadoPorNome`, `aprovadoPorIp` e `aprovadoPorAgente`.
+  aprovadoPelaEquipePorId String?
+
   /// A reserva que nasceu desta proposta. Um para um: proposta aprovada vira
   /// uma venda, não várias.
   reservationId String? @unique
@@ -1195,13 +1248,14 @@ model Orcamento {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  theme       Theme?            @relation(fields: [themeId], references: [id])
-  kit         Kit?              @relation(fields: [kitId], references: [id])
-  reservation Reservation?      @relation(fields: [reservationId], references: [id], onDelete: SetNull)
-  itens       OrcamentoItem[]
-  opcoes      OrcamentoOpcao[]
-  versoes     OrcamentoVersao[]
+  user                  User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  aprovadoPelaEquipePor User?             @relation("PropostasAprovadasNoPainel", fields: [aprovadoPelaEquipePorId], references: [id], onDelete: SetNull)
+  theme                 Theme?            @relation(fields: [themeId], references: [id])
+  kit                   Kit?              @relation(fields: [kitId], references: [id])
+  reservation           Reservation?      @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  itens                 OrcamentoItem[]
+  opcoes                OrcamentoOpcao[]
+  versoes               OrcamentoVersao[]
 
   @@index([status])
   @@index([festaEm])
@@ -1333,4 +1387,131 @@ model AssistenteUso {
 
   @@id([janela, escopo])
   @@map("assistente_uso")
+}
+
+// ---------- Auditoria financeira ----------
+
+/// O que foi alterado num registro de dinheiro.
+enum EntidadeAlterada {
+  PAGAMENTO
+  RETIRADA_DE_SOCIO
+}
+
+enum AcaoDeAlteracao {
+  /// Valor e/ou data corrigidos.
+  CORRECAO
+  /// Lançamento de pagamento desfeito (status ANULADO).
+  ANULACAO
+  /// Retirada editada.
+  EDICAO
+  /// Retirada estornada: continua no histórico, sai de todos os totais.
+  ESTORNO
+}
+
+/// Uma alteração num registro de dinheiro, com o antes, o depois e o porquê.
+///
+/// Dinheiro registrado não se reescreve em silêncio. Corrigir é permitido —
+/// digitação errada existe —, mas toda correção deixa aqui o valor anterior,
+/// o novo, quem mudou, quando e a justificativa. Uma tabela só para
+/// pagamentos e retiradas: a pergunta "o que mudou no financeiro e por quê?"
+/// se responde num lugar.
+model AlteracaoFinanceira {
+  id            String           @id @default(cuid())
+  entidade      EntidadeAlterada
+  entidadeId    String
+  acao          AcaoDeAlteracao
+  /// Os campos alterados como estavam, e como ficaram.
+  antes         Json
+  depois        Json
+  justificativa String
+  usuarioId     String?
+  criadoEm      DateTime         @default(now())
+
+  usuario User? @relation("AlteracoesFinanceiras", fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([entidade, entidadeId])
+  @@map("alteracoes_financeiras")
+}
+
+// ---------- Retiradas dos sócios ----------
+
+/// Um sócio da Festaê, para as retiradas terem a quem se referir.
+///
+/// Cadastro mínimo de propósito: nome e se está ativo. Não é login nem
+/// cadastro de cliente — sócio pode nem usar o painel. Desativar tira da
+/// lista de escolha sem apagar o histórico de quem já recebeu.
+model Socio {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  retiradas RetiradaDeSocio[]
+
+  @@map("socios")
+}
+
+/// Por que o dinheiro foi para o sócio. Cada natureza se lê diferente.
+enum CategoriaDaRetirada {
+  /// Parte do resultado entregue ao sócio. Saída de caixa; não é despesa e
+  /// não mexe no Resultado Operacional.
+  DISTRIBUICAO_DE_LUCROS
+
+  /// Remuneração pelo trabalho do sócio. Classificação própria: fica fora
+  /// do Resultado Operacional, que por definição não inclui pró-labore, e
+  /// aparece em linha separada.
+  PRO_LABORE
+
+  /// Devolução de dinheiro que o sócio colocou na empresa. Saída de caixa;
+  /// não é lucro nem despesa. Nada a ver com a aba "Aportes / Acervo", que
+  /// é compra de acervo.
+  DEVOLUCAO_DE_APORTE
+}
+
+enum FormaDaRetirada {
+  PIX
+  TRANSFERENCIA
+  DINHEIRO
+  OUTRO
+}
+
+/// Dinheiro que saiu da Festaê para um sócio.
+///
+/// Tabela própria, e não `Gasto`: retirada não é consumo, custeio nem
+/// acervo. Misturá-la às despesas a faria derrubar o Resultado Operacional
+/// — que mede a operação, não o que os sócios decidem tirar dela. Ela entra
+/// só onde é dinheiro saindo: no fluxo de caixa, como saída classificada.
+///
+/// Não se apaga. Lançamento errado é estornado: continua no histórico,
+/// riscado, com motivo e autor, e sai de todos os totais.
+model RetiradaDeSocio {
+  id         String              @id @default(cuid())
+  socioId    String
+  categoria  CategoriaDaRetirada
+  valor      Decimal             @db.Decimal(10, 2)
+  /// O dia em que o dinheiro saiu, ao meio-dia UTC (dia de calendário).
+  retiradaEm DateTime
+  forma      FormaDaRetirada
+  descricao  String?
+
+  registradoPorId String?
+  registradoEm    DateTime @default(now())
+  atualizadoEm    DateTime @updatedAt
+
+  estornadaEm     DateTime?
+  estornadaPorId  String?
+  motivoDoEstorno String?
+
+  /// Ver `Payment.chaveDeIdempotencia`: o mesmo clique não lança duas vezes.
+  chaveDeIdempotencia String? @unique
+
+  socio         Socio @relation(fields: [socioId], references: [id], onDelete: Restrict)
+  registradoPor User? @relation("RetiradasRegistradas", fields: [registradoPorId], references: [id], onDelete: SetNull)
+  estornadaPor  User? @relation("RetiradasEstornadas", fields: [estornadaPorId], references: [id], onDelete: SetNull)
+
+  @@index([retiradaEm])
+  @@index([socioId])
+  @@index([categoria])
+  @@map("retiradas_de_socios")
 }

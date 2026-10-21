@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NATUREZAS_DO_GASTO } from "../financeiro";
+import { CATEGORIAS_DA_RETIRADA, FORMAS_DA_RETIRADA } from "../retiradas";
 
 /**
  * Um lançamento de saída, digitado no painel.
@@ -93,3 +94,63 @@ export type CriarGastoInput = z.infer<typeof criarGastoSchema>;
 export type EditarGastoInput = z.infer<typeof editarGastoSchema>;
 export type DefinirMetaInput = z.infer<typeof definirMetaSchema>;
 export type MesQuery = z.infer<typeof mesQuerySchema>;
+
+/* ------------------------------------------------------------------ *
+ * Retiradas dos sócios
+ * ------------------------------------------------------------------ */
+
+const diaSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD.");
+
+/** Cadastro de sócio: só o nome. */
+export const socioSchema = z.object({
+  nome: z.string().trim().min(2, "Diga o nome do sócio.").max(120),
+});
+export const editarSocioSchema = z.object({
+  nome: z.string().trim().min(2).max(120).optional(),
+  ativo: z.boolean().optional(),
+});
+
+const camposDaRetirada = z.object({
+  socioId: z.string().min(1, "Escolha o sócio."),
+  categoria: z.enum(CATEGORIAS_DA_RETIRADA, { message: "Escolha a categoria da retirada." }),
+  valor: z.coerce.number().positive("O valor precisa ser maior que zero.").max(10_000_000),
+  /** O dia em que o dinheiro saiu. */
+  retiradaEm: diaSchema,
+  forma: z.enum(FORMAS_DA_RETIRADA, { message: "Escolha a forma da transferência." }),
+  descricao: z.string().trim().max(500).optional().nullable(),
+});
+
+/** `chave` vem da tela: o mesmo envio, repetido, não lança duas vezes. */
+export const registrarRetiradaSchema = camposDaRetirada.extend({
+  chave: z.string().uuid("Chave de envio inválida. Feche e abra o formulário de novo."),
+});
+
+/** Editar exige dizer por quê: o antes e o depois ficam no histórico. */
+export const editarRetiradaSchema = camposDaRetirada.partial().extend({
+  justificativa: z.string().trim().min(10, "Explique a alteração em ao menos 10 caracteres.").max(500),
+});
+
+export const estornarRetiradaSchema = z.object({
+  motivo: z.string().trim().min(10, "Explique o estorno em ao menos 10 caracteres.").max(500),
+});
+
+/**
+ * O recorte da lista de retiradas. `de`/`ate` valem sobre `ano`/`mes`; sem
+ * nada, é o histórico inteiro.
+ */
+export const filtroDeRetiradasSchema = z.object({
+  ano: z.string().regex(/^\d{4}$/).optional(),
+  mes: z.string().regex(/^\d{2}$|^todos$/).optional(),
+  de: diaSchema.optional(),
+  ate: diaSchema.optional(),
+  socioId: z.string().min(1).optional(),
+  categoria: z.enum(CATEGORIAS_DA_RETIRADA).optional(),
+  incluirEstornadas: z.enum(["sim", "nao"]).optional(),
+});
+
+export type SocioInput = z.infer<typeof socioSchema>;
+export type EditarSocioInput = z.infer<typeof editarSocioSchema>;
+export type RegistrarRetiradaInput = z.infer<typeof registrarRetiradaSchema>;
+export type EditarRetiradaInput = z.infer<typeof editarRetiradaSchema>;
+export type EstornarRetiradaInput = z.infer<typeof estornarRetiradaSchema>;
+export type FiltroDeRetiradas = z.infer<typeof filtroDeRetiradasSchema>;

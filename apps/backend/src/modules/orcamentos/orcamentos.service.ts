@@ -16,9 +16,12 @@ import {
   fromCentsInt,
   toCentsInt,
   exigeNovaVersao,
+  conferirPixDaAprovacao,
+  normalizarDataDaFesta,
   normalizarTelefone,
   podeSerAprovada,
   situacaoDoOrcamento,
+  type AprovarManualmenteInput,
   type CategoriaDaPerda,
   type OrcamentoInput,
   type SaleChannel,
@@ -108,6 +111,7 @@ export class OrcamentosService {
         theme: { select: { id: true, name: true, coverImageUrl: true } },
         opcoes: OPCOES_PARA_MOSTRAR,
         versoes: { orderBy: { versao: "desc" }, select: { versao: true, total: true, criadoEm: true } },
+        aprovadoPelaEquipePor: { select: { name: true } },
       },
     });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
@@ -532,6 +536,9 @@ export class OrcamentosService {
       aprovadoPorNome: o.aprovadoPorNome,
       valorAprovado: o.valorAprovado === null ? null : num(o.valorAprovado),
       sinal: await this.sinalDa(o, conteudo),
+      // Confirmada pela equipe, com o Pix já recebido: a página não diz
+      // "aprovada por" um nome que a cliente não digitou. Sem nome da equipe.
+      aprovadaPelaEquipe: Boolean(o.aprovadoPelaEquipePorId),
       conteudo,
     };
   }
@@ -556,12 +563,17 @@ export class OrcamentosService {
     const conta = calcularSinal(num(o.total), this.percentualDoSinal(o, conteudo));
 
     let recebido = 0;
+    let sinalRecebido = false;
     if (o.reservationId) {
       const reserva = await prisma.reservation.findUnique({
         where: { id: o.reservationId },
-        select: { order: { select: { payments: { where: { status: "PAID" }, select: { amount: true } } } } },
+        select: {
+          order: { select: { payments: { where: { status: "PAID" }, select: { amount: true, type: true } } } },
+        },
       });
-      recebido = (reserva?.order.payments ?? []).reduce((soma, p) => soma + num(p.amount), 0);
+      const pagos = reserva?.order.payments ?? [];
+      recebido = fromCentsInt(pagos.reduce((soma, p) => soma + toCentsInt(num(p.amount)), 0));
+      sinalRecebido = pagos.some((p) => p.type === "DEPOSIT");
     }
 
     return {
@@ -569,7 +581,11 @@ export class OrcamentosService {
       valor: conta.valor,
       saldo: conta.saldo,
       recebido,
-      pago: toCentsInt(recebido) >= toCentsInt(conta.valor) && toCentsInt(conta.valor) > 0,
+      // A regra única de confirmação: sinal recebido, de qualquer valor,
+      // confirma (ver `confirmaAReserva` em @festae/shared). Um sinal
+      // combinado abaixo do padrão — R$ 200 numa proposta de R$ 1.000 — é
+      // sinal pago, e a tela não pode seguir cobrando os R$ 300 do padrão.
+      pago: sinalRecebido || (toCentsInt(recebido) >= toCentsInt(conta.valor) && toCentsInt(conta.valor) > 0),
       pix: {
         chave: conteudo.pix_chave?.texto ?? null,
         favorecido: conteudo.pix_favorecido?.texto ?? null,
@@ -736,50 +752,10 @@ export class OrcamentosService {
     const festaEm = o.festaEm;
 
     const opcao = opcaoParaConverter(o);
-
-    const itensDeCatalogo = opcao.itens
-      .filter((i) => i.productId)
-      .map((i) => ({ productId: i.productId as string, quantity: i.quantidade }));
-
-    // Proposta enviada com a composição congelada: é ela que a cliente
-    // aceitou, e é ela que vira reserva — conferida no estoque e congelada no
-    // pedido. O kit atual do catálogo só é lido para proposta antiga, que
-    // saiu antes de a composição ser registrada.
-    const kitCombinado = kitDaConversao({
-      numero: o.numero,
-      kitId: opcao.kitId,
-      composicaoDoKit: opcao.composicaoDoKit,
-    });
+    const { entrada, kitCombinado } = this.entradaDaVenda(o, opcao, canal, festaEm);
 
     const reserva = await this.reservas.criar(
-      {
-        cliente: {
-          nome: o.clienteNome,
-          telefone: o.clienteTelefone,
-          email: o.clienteEmail ?? undefined,
-        },
-        evento: {
-          data: festaEm,
-          tipo: o.tipoDeFesta as never,
-          themeId: o.themeId ?? undefined,
-          guestCount: o.convidados ?? undefined,
-          observacoes: o.observacoes ?? undefined,
-          nomeDoFestejado: o.nomeDoFestejado ?? undefined,
-        },
-        produtos: { kitId: opcao.kitId ?? undefined, itens: itensDeCatalogo },
-        logistica: {
-          fulfillment: num(opcao.entrega) > 0 ? "DELIVERY" : "PICKUP",
-          assembly: num(opcao.montagem) > 0,
-          endereco: o.local ?? undefined,
-          cidade: o.cidade,
-        },
-        financeiro: this.financeiroDaConversao({ ...opcao, valorAprovado: o.valorAprovado }),
-        origem: canal,
-        observacoesInternas:
-          o.opcoes.length > 1
-            ? `Nasceu da proposta nº ${o.numero} (versão ${o.versao}), opção “${opcao.nome}”.`
-            : `Nasceu da proposta nº ${o.numero} (versão ${o.versao}).`,
-      } as never,
+      entrada as never,
       criadoPorId,
       { tipo: "CONVERSAO_DE_PROPOSTA", referencia: o.id },
       kitCombinado ?? undefined,
@@ -796,6 +772,293 @@ export class OrcamentosService {
     });
 
     return { reservaId: (reserva as { id: string }).id };
+  }
+
+  /**
+   * A venda que nasce da proposta: a mesma entrada da venda manual.
+   *
+   * Extraída do `converter` para a aprovação manual usar exatamente a mesma
+   * montagem — cliente, data, itens da opção, kit congelado, logística e
+   * valores. Uma conversão só, com dois jeitos de chegar a ela.
+   */
+  private entradaDaVenda(
+    o: Prisma.OrcamentoGetPayload<{ include: { opcoes: typeof OPCOES_COM_ITENS } }>,
+    opcao: Prisma.OrcamentoGetPayload<{ include: { opcoes: typeof OPCOES_COM_ITENS } }>["opcoes"][number],
+    canal: SaleChannel,
+    festaEm: Date,
+  ) {
+    const itensDeCatalogo = opcao.itens
+      .filter((i) => i.productId)
+      .map((i) => ({ productId: i.productId as string, quantity: i.quantidade }));
+
+    // Proposta enviada com a composição congelada: é ela que a cliente
+    // aceitou, e é ela que vira reserva — conferida no estoque e congelada no
+    // pedido. O kit atual do catálogo só é lido para proposta antiga, que
+    // saiu antes de a composição ser registrada.
+    const kitCombinado = kitDaConversao({
+      numero: o.numero,
+      kitId: opcao.kitId,
+      composicaoDoKit: opcao.composicaoDoKit,
+    });
+
+    const entrada = {
+      cliente: {
+        nome: o.clienteNome,
+        telefone: o.clienteTelefone,
+        email: o.clienteEmail ?? undefined,
+      },
+      evento: {
+        data: festaEm,
+        tipo: o.tipoDeFesta as never,
+        themeId: o.themeId ?? undefined,
+        guestCount: o.convidados ?? undefined,
+        observacoes: o.observacoes ?? undefined,
+        nomeDoFestejado: o.nomeDoFestejado ?? undefined,
+      },
+      produtos: { kitId: opcao.kitId ?? undefined, itens: itensDeCatalogo },
+      logistica: {
+        fulfillment: num(opcao.entrega) > 0 ? "DELIVERY" : "PICKUP",
+        assembly: num(opcao.montagem) > 0,
+        endereco: o.local ?? undefined,
+        cidade: o.cidade,
+      },
+      financeiro: this.financeiroDaConversao({ ...opcao, valorAprovado: o.valorAprovado }),
+      origem: canal,
+      observacoesInternas:
+        o.opcoes.length > 1
+          ? `Nasceu da proposta nº ${o.numero} (versão ${o.versao}), opção “${opcao.nome}”.`
+          : `Nasceu da proposta nº ${o.numero} (versão ${o.versao}).`,
+    };
+    return { entrada, kitCombinado };
+  }
+
+  /**
+   * Aprovação pelo painel, com o Pix que a cliente já mandou por fora.
+   *
+   * A negociação termina no WhatsApp e o Pix cai na conta antes de a cliente
+   * abrir o link. Aqui a equipe registra as duas coisas de uma vez: aprova a
+   * proposta, converte em reserva e lança o recebimento — numa transação só.
+   * Ou acontece tudo, ou nada: proposta aprovada sem reserva, ou reserva sem
+   * o Pix, seria registro pela metade.
+   *
+   * Nada de lógica nova de venda nem de dinheiro:
+   *  - a reserva nasce pela MESMA venda manual da conversão (`entradaDaVenda`
+   *    + `ManualReservationService.criar`), com a mesma checagem de estoque;
+   *  - a disponibilidade é reconferida sob a mesma trava por data do aceite
+   *    pelo link, contando o que outras propostas aprovadas seguram;
+   *  - o pagamento é um Payment PAID comum, na data em que o Pix caiu, com
+   *    origem "aprovação manual" e quem lançou — o Financeiro lê como lê
+   *    qualquer recebimento.
+   *
+   * O valor é livre (acima de zero, até o total): o sinal combinado pode ser
+   * menor que o padrão, e o total não muda por causa dele.
+   *
+   * Repetir é seguro: a mesma `chave` devolve o que já foi gravado. Proposta
+   * já convertida recusa — outro recebimento se lança na reserva.
+   */
+  async aprovarManualmente(id: string, dados: AprovarManualmenteInput, usuarioId: string) {
+    // 1. Repetição do mesmo envio: devolve o que foi gravado, sem lançar.
+    const repetido = await this.resultadoDaChave(dados.chave);
+    if (repetido) return repetido;
+
+    const o = await prisma.orcamento.findUnique({ where: { id }, include: { opcoes: OPCOES_COM_ITENS } });
+    if (!o) throw new NotFoundException("Orçamento não encontrado.");
+
+    if (o.reservationId) {
+      throw new ConflictException({
+        message:
+          "Esta proposta já virou reserva. Para lançar outro recebimento, use “Registrar pagamento” na reserva.",
+        codigo: "JA_CONVERTIDA",
+        reservaId: o.reservationId,
+      });
+    }
+    if (o.status === "RASCUNHO") {
+      throw new ConflictException(
+        "Esta proposta ainda é rascunho. Marque como enviada (é o que congela a versão que a cliente aceitou) e aprove em seguida.",
+      );
+    }
+    if (o.status === "RECUSADO") {
+      throw new ConflictException("Esta proposta está marcada como perdida. Envie uma versão nova para aprovar.");
+    }
+    if (o.status !== "ENVIADO" && o.status !== "APROVADO") {
+      throw new ConflictException("Esta proposta não pode ser aprovada no estado atual.");
+    }
+    if (!o.festaEm) throw new ConflictException(MENSAGEM_DATA_A_DEFINIR);
+    const festaEm = o.festaEm;
+
+    const canal = o.canal ?? dados.canal ?? null;
+    if (!canal) {
+      throw new BadRequestException("Informe por qual canal esta cliente chegou antes de aprovar a proposta.");
+    }
+
+    // A opção: a que a cliente já aprovou pelo link, ou a escolhida agora.
+    const aprovadaAntes = o.status === "APROVADO";
+    const opcao = aprovadaAntes ? opcaoParaConverter(o) : opcaoEscolhida(o.opcoes, dados.opcaoId);
+    if (aprovadaAntes && dados.opcaoId && dados.opcaoId !== opcao.id) {
+      throw new ConflictException(
+        "A cliente já aprovou outra opção pelo link. Recarregue a página para ver a opção aprovada.",
+      );
+    }
+
+    // 2. O valor: acima de zero e até o total da opção. A proposta ainda não
+    //    tem reserva, então não há nada recebido antes.
+    const conferido = conferirPixDaAprovacao(dados.valor, num(opcao.total), 0, this.percentualDoSinal(o, await this.conteudo()));
+    if (!conferido.ok) throw new BadRequestException(conferido.erro);
+
+    const recebidoEm = normalizarDataDaFesta(dados.recebidoEm);
+    if (recebidoEm.getTime() > Date.now() + 86_400_000) {
+      throw new BadRequestException("A data do recebimento não pode estar no futuro.");
+    }
+
+    const { entrada, kitCombinado } = this.entradaDaVenda(o, opcao, canal, festaEm);
+    const agora = new Date();
+
+    let reservaId: string;
+    try {
+      const reserva = await this.reservas.criar(
+        entrada as never,
+        usuarioId,
+        { tipo: "CONVERSAO_DE_PROPOSTA", referencia: o.id },
+        kitCombinado ?? undefined,
+        {
+          pagamentoInicial: {
+            valor: dados.valor,
+            recebidoEm,
+            metodo: "PIX",
+            origem: "APROVACAO_MANUAL_DA_PROPOSTA",
+            registradoPorId: usuarioId,
+            observacao: dados.observacao,
+            chaveDeIdempotencia: dados.chave,
+          },
+          naMesmaTransacao: {
+            // A mesma trava por data do aceite pelo link: aprovações do mesmo
+            // dia passam uma de cada vez. Sob ela, a proposta é relida (outra
+            // pessoa pode ter aprovado ou convertido agora) e o material é
+            // reconferido contando o que outras aprovadas seguram.
+            antes: async (tx) => {
+              await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`aprovacao-de-proposta:${diaDaFesta(festaEm)}`}))`;
+              const agoraEsta = await tx.orcamento.findUnique({
+                where: { id: o.id },
+                select: { status: true, versao: true, reservationId: true },
+              });
+              if (!agoraEsta || agoraEsta.reservationId) {
+                throw new ConflictException({
+                  message: "Esta proposta acabou de virar reserva. Recarregue a página.",
+                  codigo: "JA_CONVERTIDA",
+                });
+              }
+              if (agoraEsta.status !== o.status || agoraEsta.versao !== o.versao) {
+                throw new ConflictException(
+                  "Esta proposta mudou enquanto a tela estava aberta. Recarregue para ver a versão atual.",
+                );
+              }
+              const { resultado } = await this.faltasPorOpcao({ id: o.id, festaEm, opcoes: [opcao] }, tx);
+              const conflitos = resultado[0]?.conflitos ?? [];
+              if (conflitos.length > 0) {
+                throw new ConflictException({ message: mensagemDeFaltaNaAprovacao(conflitos), codigo: "FALTA_DE_MATERIAL" });
+              }
+            },
+            // Dentro da mesma transação: a proposta aprovada aponta para a
+            // reserva. A condição vai no próprio UPDATE.
+            depois: async (tx, criada) => {
+              const { count } = await tx.orcamento.updateMany({
+                where: { id: o.id, status: o.status, versao: o.versao, reservationId: null },
+                data: aprovadaAntes
+                  ? { reservationId: criada.id, ...(o.canal ? {} : { canal }) }
+                  : {
+                      status: "APROVADO",
+                      aprovadoEm: agora,
+                      aprovadoPelaEquipePorId: usuarioId,
+                      valorAprovado: opcao.total,
+                      opcaoAprovadaId: opcao.id,
+                      opcaoAprovadaNome: opcao.nome,
+                      ...espelhoDaOpcao(opcao),
+                      composicaoDoKit: lerComposicaoCongelada(opcao.composicaoDoKit)
+                        ? (opcao.composicaoDoKit as object)
+                        : Prisma.DbNull,
+                      reservationId: criada.id,
+                      ...(o.canal ? {} : { canal }),
+                    },
+              });
+              if (count === 0) {
+                throw new ConflictException(
+                  "Esta proposta mudou enquanto a tela estava aberta. Recarregue para ver a versão atual.",
+                );
+              }
+              // O funil conta o dinheiro que entrou por fora, como no
+              // registro de pagamento da reserva.
+              await tx.analyticsEvent.create({
+                data: {
+                  type: "PAGAMENTO_REALIZADO",
+                  metadata: {
+                    orderId: criada.orderId,
+                    tipo: "DEPOSIT",
+                    valor: String(dados.valor),
+                    registradoPor: usuarioId,
+                    manual: true,
+                    origem: "APROVACAO_MANUAL_DA_PROPOSTA",
+                  },
+                },
+              });
+            },
+          },
+        },
+      );
+      reservaId = (reserva as { id: string }).id;
+    } catch (e) {
+      // Dois envios iguais ao mesmo tempo: o segundo esbarra na chave única
+      // (ou na proposta já convertida pelo primeiro). Se a chave já gravou,
+      // a resposta é a do primeiro.
+      const doPrimeiro = await this.resultadoDaChave(dados.chave);
+      if (doPrimeiro) return doPrimeiro;
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new ConflictException("Esta proposta acabou de ser aprovada. Recarregue a página.");
+      }
+      // Falta de peça detectada antes da trava (conferência da venda manual)
+      // logo depois de outra aprovação converter esta proposta: diz a verdade.
+      const agoraEsta = await prisma.orcamento.findUnique({ where: { id: o.id }, select: { reservationId: true } });
+      if (agoraEsta?.reservationId && e instanceof ConflictException) {
+        throw new ConflictException({
+          message: "Esta proposta acabou de virar reserva. Recarregue a página.",
+          codigo: "JA_CONVERTIDA",
+          reservaId: agoraEsta.reservationId,
+        });
+      }
+      throw e;
+    }
+
+    return {
+      reservaId,
+      aprovadaAgora: !aprovadaAntes,
+      valor: dados.valor,
+      total: num(opcao.total),
+      saldo: conferido.saldo,
+      abaixoDoSinalPadrao: conferido.abaixoDoPadrao,
+      repetida: false,
+    };
+  }
+
+  /** O que uma aprovação manual já gravou com esta chave, se gravou. */
+  private async resultadoDaChave(chave: string) {
+    const pagamento = await prisma.payment.findUnique({
+      where: { chaveDeIdempotencia: chave },
+      select: {
+        amount: true,
+        order: { select: { total: true, reservation: { select: { id: true } } } },
+      },
+    });
+    if (!pagamento?.order.reservation) return null;
+    const total = num(pagamento.order.total);
+    const valor = num(pagamento.amount);
+    return {
+      reservaId: pagamento.order.reservation.id,
+      aprovadaAgora: false,
+      valor,
+      total,
+      saldo: fromCentsInt(toCentsInt(total) - toCentsInt(valor)),
+      abaixoDoSinalPadrao: false,
+      repetida: true,
+    };
   }
 
   /**
@@ -835,10 +1098,12 @@ export class OrcamentosService {
     }
     // Já coberto é já coberto: sem esta guarda, confirmar duas vezes criaria
     // um segundo DEPOSIT que o saldo do pedido ainda comporta — dinheiro que
-    // ninguém recebeu entrando no caixa.
-    if (sinal.pago) {
+    // ninguém recebeu entrando no caixa. Vale para QUALQUER recebimento já
+    // registrado (inclusive o Pix da aprovação manual, de qualquer valor):
+    // lançar o sinal padrão por cima dele seria contar duas vezes.
+    if (sinal.pago || toCentsInt(sinal.recebido) > 0) {
       throw new ConflictException(
-        `O sinal desta proposta já está confirmado (${sinal.recebido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} recebidos). Lance qualquer valor a mais pela tela de Reservas.`,
+        `Esta proposta já tem ${sinal.recebido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} recebidos. Lance qualquer valor a mais pela tela de Reservas.`,
       );
     }
 
@@ -1290,6 +1555,10 @@ export class OrcamentosService {
       // A evidência do aceite viaja junto com o detalhe: é ela que a tela
       // mostra para quem precisa saber quem aprovou, quando e por quanto.
       aprovadoPorNome: o.aprovadoPorNome,
+      // Aprovação pelo painel (Pix recebido por fora): quem da equipe aprovou.
+      aprovadoPelaEquipe: o.aprovadoPelaEquipePorId
+        ? { nome: o.aprovadoPelaEquipePor?.name ?? "equipe" }
+        : null,
       valorAprovado: o.valorAprovado === null ? null : num(o.valorAprovado),
       local: o.local,
       convidados: o.convidados,

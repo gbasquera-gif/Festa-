@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EVENT_TYPES, PAYMENT_METHODS, PAYMENT_STATUSES } from "../enums";
+import { EVENT_TYPES, PAYMENT_METHODS } from "../enums";
 import { MANUAL_SALE_CHANNELS, SALE_CHANNELS } from "../sale-channels";
 import { dataDaFestaSchema } from "../data-da-festa";
 
@@ -80,7 +80,9 @@ export const manualReservationSchema = z.object({
     ajusteComercial: z.coerce.number().min(-1_000_000).max(1_000_000).default(0),
     sinal: z.coerce.number().min(0).default(0),
     formaPagamento: z.enum(PAYMENT_METHODS).default("PIX"),
-    statusPagamento: z.enum(PAYMENT_STATUSES).default("PENDING"),
+    // Os status que a venda manual sempre aceitou. ANULADO é de correção,
+    // não de venda nova.
+    statusPagamento: z.enum(["PENDING", "PAID", "FAILED", "REFUNDED"]).default("PENDING"),
   }),
 
   /** Obrigatório: é a única chance de saber por onde esta venda entrou. */
@@ -234,6 +236,29 @@ export const registrarPagamentoSchema = z.object({
     .optional(),
 });
 export type RegistrarPagamentoInput = z.infer<typeof registrarPagamentoSchema>;
+
+/**
+ * Correção administrativa de um pagamento lançado à mão.
+ *
+ * Corrigir valor e/ou data, ou anular o lançamento (registrado em duplicidade,
+ * na reserva errada). A justificativa é obrigatória: é ela que, junto com o
+ * antes e o depois, fica no histórico da alteração.
+ */
+export const corrigirPagamentoSchema = z
+  .object({
+    acao: z.enum(["CORRIGIR", "ANULAR"]),
+    novoValor: z.coerce.number().positive("O valor precisa ser maior que zero.").max(1_000_000).optional(),
+    novaData: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD.")
+      .optional(),
+    justificativa: z.string().trim().min(10, "Explique a correção em ao menos 10 caracteres.").max(500),
+  })
+  .refine((c) => c.acao === "ANULAR" || c.novoValor !== undefined || c.novaData !== undefined, {
+    message: "Informe o valor ou a data corrigidos.",
+    path: ["novoValor"],
+  });
+export type CorrigirPagamentoInput = z.infer<typeof corrigirPagamentoSchema>;
 
 /**
  * Edição completa de uma reserva já existente.

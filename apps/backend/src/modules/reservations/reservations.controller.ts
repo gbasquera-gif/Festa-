@@ -6,6 +6,7 @@ import {
   createReservationSchema,
   editarReservaSchema,
   registrarPagamentoSchema,
+  corrigirPagamentoSchema,
   manualReservationSchema,
   registrarReembolsoSchema,
   tratarPagamentoTardioSchema,
@@ -17,6 +18,7 @@ import type {
   CreateReservationInput,
   EditarReservaInput,
   RegistrarPagamentoInput,
+  CorrigirPagamentoInput,
   ManualReservationInput,
   RegistrarReembolsoInput,
   TratarPagamentoTardioInput,
@@ -143,6 +145,24 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(registrarPagamentoSchema)) body: RegistrarPagamentoInput,
   ) {
     return this.reservationsService.registrarPagamento(id, body, user.userId);
+  }
+
+  /**
+   * Corrige um pagamento lançado à mão (valor, data) ou o anula.
+   *
+   * Só ADMIN: é a exceção à regra de que dinheiro registrado não se
+   * reescreve. Exige justificativa, e o antes e o depois ficam no histórico.
+   */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @Post("reservations/:id/pagamentos/:pagamentoId/correcao")
+  corrigirPagamento(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Param("pagamentoId") pagamentoId: string,
+    @Body(new ZodValidationPipe(corrigirPagamentoSchema)) body: CorrigirPagamentoInput,
+  ) {
+    return this.reservationsService.corrigirPagamento(id, pagamentoId, body, user.userId);
   }
 
   /**
