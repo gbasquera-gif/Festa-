@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../generated/client/index.js";
+import { decidirAdministrador } from "./administrador";
 
 const prisma = new PrismaClient();
 
@@ -25,36 +26,81 @@ const DEMO_DATA_ENABLED = process.env.SEED_DEMO_DATA === "true";
 const EM_PRODUCAO = process.env.NODE_ENV === "production";
 
 /**
- * Cria (ou atualiza) o administrador a partir de variáveis de ambiente.
+ * O administrador de SEED_ADMIN_EMAIL: criado na instalação, preservado
+ * depois, recuperado só a pedido explícito. A regra está em `administrador.ts`.
  *
- * A senha é reaplicada a cada boot de propósito: trocar SEED_ADMIN_PASSWORD e
- * reimplantar é o jeito de rotacionar o acesso caso ele vaze.
+ * Trocar o acesso de quem vazou a senha é pelo painel (que derruba as
+ * sessões) ou por um pedido de recuperação — não mais reimplantando com
+ * outra SEED_ADMIN_PASSWORD, que agora não muda uma conta existente.
  */
 async function seedAdmin() {
-  const email = process.env.SEED_ADMIN_EMAIL;
-  const password = process.env.SEED_ADMIN_PASSWORD;
+  const email = process.env.SEED_ADMIN_EMAIL?.trim() || undefined;
+  const senha = process.env.SEED_ADMIN_PASSWORD || undefined;
+  const pedido = process.env.SEED_ADMIN_RECUPERACAO?.trim() || undefined;
 
-  if (!email || !password) {
-    console.warn(
-      "SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD não definidos — nenhum administrador foi criado. " +
-        "Sem isso não há como entrar no painel.",
-    );
-    return;
+  const conta = email
+    ? await prisma.user.findUnique({ where: { email }, select: { id: true, role: true, deletedAt: true } })
+    : null;
+  const haOutroAdminAtivo =
+    (await prisma.user.count({ where: { role: "ADMIN", deletedAt: null, ...(conta ? { id: { not: conta.id } } : {}) } })) > 0;
+  const pedidoJaAplicado =
+    conta && pedido
+      ? (await prisma.recuperacaoDeAcesso.count({ where: { usuarioId: conta.id, pedido } })) > 0
+      : false;
+
+  const decisao = decidirAdministrador({ email, senha, pedido, conta, haOutroAdminAtivo, pedidoJaAplicado });
+
+  switch (decisao.acao) {
+    case "NADA":
+      console.warn(`Administrador: ${decisao.motivo}`);
+      return;
+    case "PRESERVAR":
+      console.log(`Administrador ${email}: ${decisao.motivo}`);
+      return;
+    case "RECUSAR":
+      console.warn(`Administrador ${email ?? ""}: pedido recusado — ${decisao.motivo} Nada foi alterado.`);
+      return;
+    case "CRIAR": {
+      const passwordHash = await bcrypt.hash(senha!, 10);
+      await prisma.$transaction(async (tx) => {
+        const criada = await tx.user.create({
+          data: { email: email!, name: process.env.SEED_ADMIN_NAME ?? "Administrador", passwordHash, role: "ADMIN" },
+        });
+        await tx.recuperacaoDeAcesso.create({
+          data: { usuarioId: criada.id, email: email!, pedido: decisao.pedido, alteracoes: { criada: true } },
+        });
+      });
+      console.log(`Administrador criado para ${email} (pedido "${decisao.pedido}").`);
+      return;
+    }
+    case "RECUPERAR": {
+      const passwordHash = await bcrypt.hash(senha!, 10);
+      await prisma.$transaction(async (tx) => {
+        // A linha de auditoria entra junto: se dois boots correrem ao mesmo
+        // tempo, a chave única (conta, pedido) derruba o segundo inteiro.
+        await tx.recuperacaoDeAcesso.create({
+          data: {
+            usuarioId: conta!.id,
+            email: email!,
+            pedido: decisao.pedido,
+            alteracoes: { senha: true, papel: decisao.promover ? { de: conta!.role, para: "ADMIN" } : null },
+          },
+        });
+        // `passwordChangedAt` é o que derruba as sessões abertas: a validação
+        // do token recusa o que foi emitido antes dele.
+        await tx.user.update({
+          where: { id: conta!.id },
+          data: { passwordHash, passwordChangedAt: new Date(), ...(decisao.promover ? { role: "ADMIN" } : {}) },
+        });
+      });
+      console.warn(
+        `Administrador ${email}: acesso RECUPERADO pelo pedido "${decisao.pedido}" — senha redefinida, ` +
+          `sessões abertas encerradas${decisao.promover ? `, papel ${conta!.role} → ADMIN` : ""}. ` +
+          "Remova SEED_ADMIN_RECUPERACAO das variáveis.",
+      );
+      return;
+    }
   }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  await prisma.user.upsert({
-    where: { email },
-    update: { passwordHash, role: "ADMIN", deletedAt: null },
-    create: {
-      email,
-      name: process.env.SEED_ADMIN_NAME ?? "Administrador",
-      passwordHash,
-      role: "ADMIN",
-    },
-  });
-
-  console.log(`Administrador garantido para ${email}.`);
 }
 
 /** Catálogo e contas de exemplo — só para desenvolvimento e demonstração. */

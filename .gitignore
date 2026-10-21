@@ -149,3 +149,9 @@ apps/site/ios/.build/
 
 # A carga gerada contém nome de cliente e valores. O repositório é público.
 carga-historica*.sql
+
+# Backups do banco: nunca no repositório (dados de clientes)
+*.dump
+*.7z
+*.7z.sha256
+festae-backup/

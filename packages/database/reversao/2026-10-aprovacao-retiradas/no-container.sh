@@ -1,8 +1,12 @@
 #!/bin/sh
 # Roda DENTRO de um container da imagem oficial do Postgres, chamado por
-# backup-windows.ps1. Nenhum endereço de banco passa pela linha de comando:
-# a produção chega só pela variável PGURL, e o restauro usa só o socket local
-# do container isolado (sem rede).
+# backup-windows.ps1.
+#
+# O endereço da produção chega pela ENTRADA PADRÃO (nunca por argumento nem
+# por variável do container, que `docker inspect` mostraria). A senha sai do
+# endereço e vai para PGPASSWORD, só dentro deste processo: os comandos
+# recebem o endereço sem senha. O restauro usa só o socket local do container
+# isolado, que não tem rede.
 #
 #   versao                     versão do servidor de produção (só leitura)
 #   backup <dump> <foto>       foto + pg_dump da produção no MESMO instantâneo
@@ -12,25 +16,66 @@ set -eu
 SCRIPTS=${SCRIPTS:-/scripts}
 SAIDA=${SAIDA:-/saida}
 
+# Decodifica %XX do endereço (senhas com caractere especial vêm assim).
+decodificar() {
+  resto=$1
+  saida=""
+  while [ -n "$resto" ]; do
+    case "$resto" in
+      %[0-9A-Fa-f][0-9A-Fa-f]*)
+        hexa=${resto#%}
+        hexa=${hexa%"${hexa#??}"}
+        saida="$saida$(printf "\\$(printf '%03o' "0x$hexa")")"
+        resto=${resto#%??}
+        ;;
+      *)
+        saida="$saida${resto%"${resto#?}"}"
+        resto=${resto#?}
+        ;;
+    esac
+  done
+  printf '%s' "$saida"
+}
+
+ler_conexao() {
+  URL=""
+  IFS= read -r URL || true
+  URL=$(printf '%s' "$URL" | tr -d '\r')
+  case "$URL" in
+    postgres://*|postgresql://*) ;;
+    *) echo "Endereço do banco não recebido ou inválido."; exit 1 ;;
+  esac
+  SENHA=$(printf '%s' "$URL" | sed -n 's#^[a-z]*://[^:@/]*:\([^@]*\)@.*#\1#p')
+  if [ -n "$SENHA" ]; then
+    PGPASSWORD=$(decodificar "$SENHA")
+    export PGPASSWORD
+    CONEXAO=$(printf '%s' "$URL" | sed 's#^\([a-z]*://[^:@/]*\):[^@]*@#\1@#')
+  else
+    CONEXAO=$URL
+  fi
+  unset URL SENHA
+}
+
 case "${1:-}" in
   versao)
-    : "${PGURL:?PGURL não definida}"
-    psql "$PGURL" -X -v ON_ERROR_STOP=1 -qtA \
+    ler_conexao
+    psql "$CONEXAO" -X -v ON_ERROR_STOP=1 -qtA \
       -c "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY" \
       -c "SHOW server_version_num"
     ;;
 
   backup)
-    : "${PGURL:?PGURL não definida}"
     DUMP=${2:?informe o nome do dump}
     FOTO=${3:?informe o nome da foto}
-    # Uma transação SÓ DE LEITURA segura um instantâneo do banco. A foto é
-    # tirada dentro dela, e o pg_dump lê o mesmo instantâneo (--snapshot):
-    # o que a foto descreve é exatamente o que o dump contém, mesmo que o
-    # sistema esteja em uso durante o backup.
+    ler_conexao
+    # Uma transação SÓ DE LEITURA (REPEATABLE READ) segura um instantâneo do
+    # banco e o exporta (pg_export_snapshot). A foto é tirada dentro dela, e o
+    # pg_dump entra no MESMO instantâneo (--snapshot) enquanto ela continua
+    # aberta: o que a foto descreve é exatamente o que o dump contém, mesmo
+    # com o sistema em uso durante o backup.
     TMP=$(mktemp -d)
     mkfifo "$TMP/entrada"
-    psql "$PGURL" -X -v ON_ERROR_STOP=1 -qtA -F ' | ' < "$TMP/entrada" > "$TMP/saida" 2>&1 &
+    psql "$CONEXAO" -X -v ON_ERROR_STOP=1 -qtA -F ' | ' < "$TMP/entrada" > "$TMP/saida" 2>&1 &
     SESSAO=$!
     exec 3> "$TMP/entrada"
     echo "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;" >&3
@@ -56,7 +101,7 @@ case "${1:-}" in
       echo "\\echo FOTO-PRONTA"
     } >&3
     esperar_linha 'FOTO-PRONTA'
-    pg_dump "$PGURL" --snapshot="$INSTANTANEO" -Fc -f "$SAIDA/$DUMP"
+    pg_dump "$CONEXAO" --snapshot="$INSTANTANEO" -Fc -f "$SAIDA/$DUMP"
     echo "COMMIT;" >&3
     exec 3>&-
     wait "$SESSAO"
@@ -75,7 +120,7 @@ case "${1:-}" in
     ;;
 
   restaurar)
-    if [ -n "${PGURL:-}" ]; then
+    if [ -n "${PGURL:-}${PGHOST:-}${PGPASSWORD:-}" ]; then
       echo "Recusado: o restauro roda só no container isolado, sem endereço de banco externo."
       exit 1
     fi

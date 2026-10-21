@@ -1546,3 +1546,30 @@ model SaldoDeCaixa {
   @@index([referenciaEm])
   @@map("saldos_de_caixa")
 }
+
+// ---------- Acesso administrativo ----------
+
+/// O que o seed fez com a conta de administrador de SEED_ADMIN_EMAIL.
+///
+/// O seed roda a cada boot do container. Ele só cria o administrador numa
+/// instalação sem nenhum ADMIN, e só mexe numa conta existente a pedido
+/// explícito (SEED_ADMIN_RECUPERACAO). Cada pedido vira uma linha aqui, e a
+/// chave única (conta, pedido) é o que impede a mesma recuperação de se
+/// repetir nos reinícios seguintes.
+///
+/// Sem relação com `users` de propósito: é registro de auditoria, e precisa
+/// sobreviver à exclusão da conta.
+model RecuperacaoDeAcesso {
+  id         String   @id @default(cuid())
+  usuarioId  String
+  /// O e-mail da conta no momento, para a auditoria não depender de `users`.
+  email      String
+  /// O identificador do pedido (valor de SEED_ADMIN_RECUPERACAO), ou "criacao-inicial".
+  pedido     String
+  /// O que mudou: { criada } ou { senha, papel: { de, para } | null }.
+  alteracoes Json
+  aplicadaEm DateTime @default(now())
+
+  @@unique([usuarioId, pedido])
+  @@map("recuperacoes_de_acesso")
+}

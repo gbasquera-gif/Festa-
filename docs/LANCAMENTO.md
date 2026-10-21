@@ -52,9 +52,16 @@ produção** — o seed nunca apaga nada. Fechar o buraco depende destes passos:
 
 </details>
 
-> **Recuperação de acesso:** com um único administrador, perder essa conta
-> deixaria o painel sem ninguém. A saída é trocar `SEED_ADMIN_PASSWORD` no
-> Railway e reimplantar — o seed reaplica a senha no próximo boot.
+> **Recuperação de acesso:** o seed só cria o administrador numa instalação
+> sem nenhum ADMIN; depois disso, senha, papel e situação da conta são do
+> painel, e um reinício não muda nada. Se o acesso for perdido, defina no
+> Railway `SEED_ADMIN_RECUPERACAO` com um identificador do pedido (ex.:
+> `2026-10-22-senha-perdida`) e `SEED_ADMIN_PASSWORD` com a senha nova, e
+> reimplante. O seed aplica o pedido uma única vez: troca a senha, devolve o
+> papel ADMIN, encerra as sessões abertas e registra tudo em
+> `recuperacoes_de_acesso`. Depois, remova `SEED_ADMIN_RECUPERACAO` (se
+> esquecer, os reinícios seguintes não repetem o pedido). Conta excluída não
+> é reativada.
 
 ---
 
