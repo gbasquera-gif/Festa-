@@ -2,9 +2,9 @@
 # Backup manual Festae: leitura da origem, restauro descartavel, AES-256.
 set -Eeuo pipefail
 umask 077
-: "\${FESTAE_DATABASE_PUBLIC_URL:?Configure o segredo FESTAE_DATABASE_PUBLIC_URL}"
-: "\${FESTAE_BACKUP_PASSPHRASE:?Configure o segredo FESTAE_BACKUP_PASSPHRASE}"
-: "\${SOURCE_DIR:?SOURCE_DIR nao informado}"
+: "${FESTAE_DATABASE_PUBLIC_URL:?Configure o segredo FESTAE_DATABASE_PUBLIC_URL}"
+: "${FESTAE_BACKUP_PASSPHRASE:?Configure o segredo FESTAE_BACKUP_PASSPHRASE}"
+: "${SOURCE_DIR:?SOURCE_DIR nao informado}"
 if (($(printf '%s' "$FESTAE_BACKUP_PASSPHRASE" | wc -c) < 32)); then
   echo 'ERRO: senha do backup requer 32+ caracteres aleatorios.' >&2; exit 1
 fi
@@ -28,7 +28,7 @@ done
 WORK_DIR=$(mktemp -d)
 OUT_DIR="$GITHUB_WORKSPACE/backup-cifrado"
 mkdir -p "$OUT_DIR"
-RESTORE_CONTAINER="festae-restore-\${GITHUB_RUN_ID:-manual}-\${GITHUB_RUN_ATTEMPT:-1}"
+RESTORE_CONTAINER="festae-restore-${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}"
 PG_IMAGE='postgres:18-alpine'
 cleanup() {
   docker rm -f -v "$RESTORE_CONTAINER" >/dev/null 2>&1 || true
