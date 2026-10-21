@@ -87,6 +87,10 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
     return { nome: anterior.nome, args: anterior.args };
   }
 
+  // Antes de "devolução" e de "lucro": "devolução de aporte" e "distribuição de lucros" são retiradas.
+  if (/retirad\w* (dos|de|do|da) soci|socios? retira|pro.?labore|distribuicao de lucro|devolucao de aporte/.test(t)) {
+    return { nome: "consultarRetiradasDosSocios", args: periodo ? { periodo } : {} };
+  }
   if (/aguardando devolu|\bdevolucao\b/.test(t)) return { nome: "consultarPendencias", args: { tipo: "AGUARDANDO_DEVOLUCAO" } };
   if (/saldo (pendente|em aberto|a receber)|com saldo|devendo|inadimpl/.test(t)) {
     return { nome: "consultarPendencias", args: { tipo: "SALDO_EM_ABERTO" } };
@@ -117,7 +121,7 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
 }
 
 const NAO_SUPORTADA =
-  "Ainda não sei responder essa pergunta. Posso consultar: faturamento, contratado, caixa, a receber, resultado operacional, despesas e acervo investido; festas por data e situação de pagamento; cancelamentos; reservas aguardando devolução ou com saldo; propostas enviadas, aprovadas, conversão e negociação; produtos cadastrados, sem uso e disponibilidade.";
+  "Ainda não sei responder essa pergunta. Posso consultar: faturamento, contratado, caixa, a receber, resultado operacional, despesas e acervo investido; retiradas dos sócios; festas por data e situação de pagamento; cancelamentos; reservas aguardando devolução ou com saldo; propostas enviadas, aprovadas, conversão e negociação; produtos cadastrados, sem uso e disponibilidade.";
 
 export class ProvedorSimulado implements ProvedorDeIA {
   readonly modo = "SIMULADO" as const;
@@ -204,6 +208,11 @@ function redigirResultado(nome: string, d: Dados, t: string): string {
   switch (nome) {
     case "consultarFinanceiro":
       return redigirFinanceiro(d, t);
+    case "consultarRetiradasDosSocios": {
+      const n = d.noPeriodo;
+      const socios = (d.porSocio as { socio: string; noPeriodo: string }[]).map((s) => `${s.socio} ${s.noPeriodo}`).join("; ");
+      return `Retiradas dos sócios em ${d.periodo.rotulo}: ${n.total} — distribuição de lucros ${n.distribuicaoDeLucros}, pró-labore ${n.proLabore}, devolução de aporte ${n.devolucaoDeAporte}.${socios ? ` Por sócio: ${socios}.` : ""} Retirada não é despesa e não muda o Resultado Operacional.${obs(d)}`;
+    }
     case "consultarCarteiraFutura":
       return `Carteira futura (${d.janela.de} a ${d.janela.ate}): ${plural(d.festas, "festa", "festas")}, ${d.contratado} contratados, ${d.jaRecebido} já recebidos e ${d.aReceber} a receber. É valor contratado, não faturamento realizado.`;
     case "consultarFestas": {

@@ -1,6 +1,7 @@
 import { Logger, Module } from "@nestjs/common";
 import { FinanceiroModule } from "../financeiro/financeiro.module";
 import { FinanceiroService } from "../financeiro/financeiro.service";
+import { RetiradasService } from "../financeiro/retiradas.service";
 import { ComercialModule } from "../comercial/comercial.module";
 import { ComercialService } from "../comercial/comercial.service";
 import { OrcamentosModule } from "../orcamentos/orcamentos.module";
@@ -48,6 +49,7 @@ export function criarProvedor(cfg: ConfiguracaoDoAssistente): ProvedorDeIA | nul
       inject: [
         CONFIGURACAO_DO_ASSISTENTE,
         FinanceiroService,
+        RetiradasService,
         ComercialService,
         PanoramaDeOrcamentosService,
         OrcamentosService,
@@ -58,6 +60,7 @@ export function criarProvedor(cfg: ConfiguracaoDoAssistente): ProvedorDeIA | nul
       useFactory: (
         cfg: ConfiguracaoDoAssistente,
         financeiro: FinanceiroService,
+        retiradas: RetiradasService,
         comercial: ComercialService,
         panoramaDeOrcamentos: PanoramaDeOrcamentosService,
         orcamentos: OrcamentosService,
@@ -68,6 +71,7 @@ export function criarProvedor(cfg: ConfiguracaoDoAssistente): ProvedorDeIA | nul
         const logger = new Logger("AssistenteIA");
         const servicos: ServicosDoAssistente = {
           financeiro,
+          retiradas,
           comercial,
           panoramaDeOrcamentos,
           orcamentos,

@@ -11,8 +11,10 @@ import {
   toCentsInt,
   totalAReceber,
   type SituacaoDePagamento,
+  type TotalPorCategoria,
 } from "@festae/shared";
 import type { FinanceiroService } from "../financeiro/financeiro.service";
+import type { RetiradasService } from "../financeiro/retiradas.service";
 import type { ComercialService } from "../comercial/comercial.service";
 import type { PanoramaDeOrcamentosService } from "../orcamentos/panorama.service";
 import type { OrcamentosService } from "../orcamentos/orcamentos.service";
@@ -43,6 +45,7 @@ import { interpretarPeriodo, normalizar, rotuloDoDia, situacaoDoPeriodo, type Pe
 /** Os serviços de que as ferramentas dependem — só leitura. Uma interface, para os testes trocarem. */
 export type ServicosDoAssistente = {
   financeiro: Pick<FinanceiroService, "panorama" | "despesasPorNatureza">;
+  retiradas: Pick<RetiradasService, "listar">;
   comercial: Pick<ComercialService, "visaoGeral">;
   panoramaDeOrcamentos: Pick<PanoramaDeOrcamentosService, "panorama">;
   orcamentos: Pick<OrcamentosService, "seguradoPorAprovadas">;
@@ -357,6 +360,120 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
       },
       fontes: [{ rotulo: `Financeiro · ${descricao.rotulo}`, caminho: `/financeiro?ano=${ano}&mes=${mes.slice(5)}` }],
       ...(divisao ? { complemento: complementoDoMesEmAndamento(descricao.rotulo, panorama.operacional.faturamento, divisao) } : {}),
+    };
+  },
+};
+
+const CRITERIOS_DAS_RETIRADAS = [
+  "Retirada dos sócios é dinheiro que saiu do caixa para um sócio: não é despesa, não entra em consumo nem custeio e não muda o Resultado Operacional.",
+  "Pró-labore fica em linha própria, fora do Resultado Operacional (que por definição não inclui pró-labore). Devolução de aporte devolve capital do sócio: não é lucro nem despesa.",
+  "Pela data da retirada. Retiradas estornadas não contam. Não há retirada com data futura: o ano corrente vai até hoje.",
+];
+
+/**
+ * Os sócios como vão para a IA: o mínimo que distingue um do outro.
+ *
+ * Primeiro nome; se dois têm o mesmo, a inicial do segundo nome ("Ana S."); se
+ * ainda empatar, o segundo nome inteiro; e, no limite, um número na ordem da
+ * aba. Nunca o nome completo de quem já se distingue — e nunca duas pessoas
+ * com o mesmo rótulo, que faria a resposta somar uma com a outra.
+ */
+const FORMAS_DO_NOME: readonly ((p: string[]) => string)[] = [
+  (p) => p[0] ?? "",
+  (p) => (p[1] ? `${p[0]} ${p[1][0]}.` : (p[0] ?? "")),
+  (p) => p.slice(0, 2).join(" "),
+];
+
+function nomesDosSocios<T extends { socio: string }>(lista: readonly T[]): (T & { curto: string })[] {
+  const palavras = lista.map((x) => x.socio.trim().split(/\s+/));
+  return lista.map((x, i) => {
+    for (const forma of FORMAS_DO_NOME) {
+      const curto = forma(palavras[i]);
+      if (palavras.filter((p) => forma(p) === curto).length === 1) return { ...x, curto };
+    }
+    const base = FORMAS_DO_NOME[2](palavras[i]);
+    const ordem = palavras.slice(0, i + 1).filter((p) => FORMAS_DO_NOME[2](p) === base).length;
+    return { ...x, curto: `${base} (${ordem})` };
+  });
+}
+
+function totaisDaRetirada(t: TotalPorCategoria) {
+  return {
+    total: brl(t.total),
+    distribuicaoDeLucros: brl(t.DISTRIBUICAO_DE_LUCROS),
+    proLabore: brl(t.PRO_LABORE),
+    devolucaoDeAporte: brl(t.DEVOLUCAO_DE_APORTE),
+  };
+}
+
+const consultarRetiradasDosSocios: Ferramenta<z.ZodObject<{ periodo: z.ZodOptional<typeof periodoParam> }>> = {
+  nome: "consultarRetiradasDosSocios",
+  descricao:
+    "Retiradas dos sócios (distribuição de lucros, pró-labore, devolução de aporte) de um MÊS-CALENDÁRIO ou ANO, ou de todo o histórico quando não houver período: total, por categoria e por sócio (primeiro nome), iguais aos da aba Retiradas dos sócios do Financeiro. Use para \"quanto os sócios retiraram\", \"pró-labore do mês\", \"distribuição de lucros do ano\". Retirada não é despesa: para despesas e Resultado Operacional use consultarFinanceiro.",
+  natureza: "LEITURA",
+  papeis: ["ADMIN"],
+  parametros: z.object({ periodo: periodoParam.optional() }),
+  async executar({ periodo: expressao }, { agora, servicos }) {
+    if (!expressao) {
+      const r = await servicos.retiradas.listar({ incluirEstornadas: "nao" }, agora);
+      return {
+        dados: {
+          periodo: { rotulo: "todo o histórico" },
+          noPeriodo: totaisDaRetirada(r.indicadores.historico),
+          porSocio: nomesDosSocios(r.porSocio).map((x) => ({ socio: x.curto, noPeriodo: brl(x.historico) })),
+          criterios: CRITERIOS_DAS_RETIRADAS,
+        },
+        fontes: [{ rotulo: "Retiradas dos sócios", caminho: `/financeiro?aba=retiradas&ano=${r.recorte.ano}&mes=todos` }],
+      };
+    }
+
+    const r = periodoOuErro(expressao, agora, ALTERNATIVAS_MES_OU_ANO);
+    if ("erro" in r) return r.erro;
+    const p = r.periodo;
+    if (p.tipo === "INTERVALO") {
+      return limitacao("As retiradas são somadas por mês ou por ano; não por semana nem por intervalo de dias.", [], ALTERNATIVAS_MES_OU_ANO);
+    }
+
+    if (p.tipo === "ANO") {
+      const ano = p.de.slice(0, 4);
+      const lista = await servicos.retiradas.listar({ ano, mes: "todos", incluirEstornadas: "nao" }, agora);
+      return {
+        dados: {
+          periodo: descreverPeriodo(p, agora),
+          noPeriodo: totaisDaRetirada(lista.indicadores.ano),
+          retiradasNoPeriodo: lista.itens.length,
+          historico: totaisDaRetirada(lista.indicadores.historico),
+          porSocio: nomesDosSocios(lista.porSocio)
+            .filter((x) => x.ano > 0)
+            .map((x) => ({ socio: x.curto, noPeriodo: brl(x.ano), historico: brl(x.historico) })),
+          criterios: CRITERIOS_DAS_RETIRADAS,
+        },
+        fontes: [{ rotulo: `Retiradas dos sócios · ${ano}`, caminho: `/financeiro?aba=retiradas&ano=${ano}&mes=todos` }],
+      };
+    }
+
+    const mes = p.meses[0];
+    const ano = mes.slice(0, 4);
+    const lista = await servicos.retiradas.listar({ ano, mes: mes.slice(5), incluirEstornadas: "nao" }, agora);
+    const periodoDoMes = interpretarPeriodo(mes, agora);
+    const descricao = descreverPeriodo(periodoDoMes.ok ? periodoDoMes.periodo : p, agora);
+    return {
+      dados: {
+        periodo: {
+          ...descricao,
+          ...(p.tipo === "DIA" ? { observacao: `As retiradas são somadas por mês: usei o mês inteiro de ${descricao.rotulo}.` } : {}),
+          ...(p.observacao ? { observacao: p.observacao } : {}),
+        },
+        noPeriodo: totaisDaRetirada(lista.indicadores.mes ?? lista.indicadores.ano),
+        retiradasNoPeriodo: lista.itens.length,
+        anoInteiro: { ano, ...totaisDaRetirada(lista.indicadores.ano) },
+        historico: totaisDaRetirada(lista.indicadores.historico),
+        porSocio: nomesDosSocios(lista.porSocio)
+          .filter((x) => x.mes > 0)
+          .map((x) => ({ socio: x.curto, noPeriodo: brl(x.mes), noAno: brl(x.ano) })),
+        criterios: CRITERIOS_DAS_RETIRADAS,
+      },
+      fontes: [{ rotulo: `Retiradas dos sócios · ${descricao.rotulo}`, caminho: `/financeiro?aba=retiradas&ano=${ano}&mes=${mes.slice(5)}` }],
     };
   },
 };
@@ -746,6 +863,7 @@ const solicitarOperacao: Ferramenta<z.ZodObject<{ operacao: z.ZodString }>> = {
 
 export const CATALOGO: readonly Ferramenta[] = [
   consultarFinanceiro,
+  consultarRetiradasDosSocios,
   consultarCarteiraFutura,
   consultarFestas,
   consultarCancelamentos,
@@ -768,6 +886,7 @@ export function areasForaDoPapel(papel: PapelAutorizado): string[] {
     ? []
     : [
         "Financeiro (faturamento, contratado, caixa, recebimentos, a receber, despesas, Resultado Operacional, acervo investido, crédito total das clientes)",
+        "retiradas dos sócios",
         "carteira futura da Visão Geral Comercial",
         "desempenho e uso do acervo",
       ];
