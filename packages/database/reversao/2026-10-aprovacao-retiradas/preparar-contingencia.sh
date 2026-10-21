@@ -7,6 +7,11 @@
 # nenhum registro é convertido, nenhuma classificação muda, nenhuma migration
 # é desfeita. As funcionalidades novas ficam fora do ar enquanto durar.
 #
+# Única mudança no código antigo: `contingencia-permissoes.patch`, as mesmas
+# restrições da versão publicada (registrar recebimento, confirmar sinal e
+# registrar devolução feita são só do ADMIN). Sem ele, o OPS voltaria a
+# registrar pagamento durante a contingência.
+#
 # O commit criado tem o publicado como pai, então sobe por avanço normal do
 # branch de produção (sem forçar). Para voltar: `git revert <commit>`.
 #
@@ -23,6 +28,7 @@ git rm -r -q -f --cached packages/database/prisma
 git read-tree --prefix=packages/database/prisma/ "$PUBLICADO:packages/database/prisma"
 git rm -r -q -f --cached --ignore-unmatch packages/database/reversao
 git read-tree --prefix=packages/database/reversao/ "$PUBLICADO:packages/database/reversao"
+git show "$PUBLICADO:packages/database/reversao/2026-10-aprovacao-retiradas/contingencia-permissoes.patch" | git apply --cached
 ARVORE=$(git write-tree)
 unset GIT_INDEX_FILE
 rm -f "$INDICE"
@@ -31,6 +37,9 @@ COMMIT=$(git commit-tree "$ARVORE" -p "$PUBLICADO" -m "Contingência: código de
 
 Nenhum dado é alterado: o código anterior passa a ler o schema atual
 (inclusive pagamentos ANULADO e despesas PRO_LABORE) sem conversões.
+As permissões financeiras da versão publicada continuam valendo:
+registrar recebimento, confirmar sinal e registrar devolução feita
+são só do ADMIN.
 Para voltar à versão publicada: git revert deste commit.")
 git branch -f "$RAMO" "$COMMIT"
 echo "$RAMO $COMMIT"

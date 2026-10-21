@@ -1,7 +1,8 @@
 #!/bin/bash
 # Testa a restauração de um pg_dump num Postgres ISOLADO (local), sem tocar
-# produção. Cria um banco novo, restaura, imprime a "foto" de verificar-banco.sql
-# para comparar com a de produção, e diz como apagar o banco de teste.
+# produção. Cria um banco novo, restaura, imprime a "foto" (verificar-banco.sql
+# e assinaturas.sql) para comparar com a de produção, e diz como apagar o
+# banco de teste. No Windows, use backup-windows.ps1, que faz tudo isso.
 #
 # Uso: testar-restauro.sh <arquivo.dump> <url-do-postgres-local-sem-banco>
 #   ex.: testar-restauro.sh festae-20261022-0900.dump postgresql://postgres:senha@localhost:5433
@@ -17,5 +18,5 @@ BANCO="festae_restauro_$(date +%Y%m%d%H%M%S)"
 psql "$SERVIDOR/postgres" -v ON_ERROR_STOP=1 -qc "CREATE DATABASE $BANCO"
 pg_restore --no-owner --no-acl --exit-on-error -d "$SERVIDOR/$BANCO" "$DUMP"
 echo "== Restaurado em $BANCO. Compare com a mesma consulta rodada em produção:"
-psql "$SERVIDOR/$BANCO" -qtA -F ' | ' -f "$AQUI/verificar-banco.sql"
+psql "$SERVIDOR/$BANCO" -X -qtA -F ' | ' -f "$AQUI/verificar-banco.sql" -f "$AQUI/assinaturas.sql"
 echo "== Para apagar o banco de teste: psql \"$SERVIDOR/postgres\" -c \"DROP DATABASE $BANCO\""
