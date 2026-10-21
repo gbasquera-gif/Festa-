@@ -1,4 +1,4 @@
-// Homologação da INTERPRETAÇÃO do Assistente IA: 32 perguntas (Financeiro,
+// Homologação da INTERPRETAÇÃO do Assistente IA: 29 perguntas (Financeiro,
 // Reservas, Orçamentos, Acervo, limites), com datas relativas e sequências.
 //
 // Para cada pergunta confere, contra os serviços ORIGINAIS do painel (as
@@ -79,8 +79,6 @@ const reservas = () =>
   });
 const gastos = (mes) => lembrar(`g${mes}`, async () => (await req("GET", `/financeiro/gastos?mes=${mes}`)).json);
 const propostas = (mes) => lembrar(`o${mes}`, async () => (await req("GET", `/orcamentos/panorama?ano=${mes.slice(0, 4)}&mes=${mes}`)).json);
-const retiradas = (ano, mes = "todos") =>
-  lembrar(`ret${ano}${mes}`, async () => (await req("GET", `/financeiro/retiradas?ano=${ano}&mes=${mes}&incluirEstornadas=nao`)).json);
 const produtos = () => lembrar("prod", async () => (await req("GET", "/products")).json);
 const performance = () => lembrar("perf", async () => (await req("GET", "/acervo/performance?periodo=90")).json);
 const vigentesNoDia = async (dia) =>
@@ -114,9 +112,6 @@ const PERGUNTAS = [
   { id: "F8", modulo: "Financeiro", pergunta: `Quanto gastamos com consumo e com custeio em ${nomeDoMes(MES_ATUAL)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_ATUAL), esperado: async () => R(brl(await pagos(MES_ATUAL, "CONSUMO")), brl(await pagos(MES_ATUAL, "CUSTEIO"))) },
   { id: "F9", modulo: "Financeiro", pergunta: "Quanto investimos em acervo este ano?", ferramenta: ["consultarFinanceiro"], periodo: { de: `${ano}-01-01`, ate: `${ano}-12-31` }, esperado: async () => R(brl((await panorama(MES_ATUAL)).ytd.acervo)) },
   { id: "F10", modulo: "Financeiro", pergunta: `Quanto faturamos entre 3 e 17 de ${nomeDoMes(MES_ATUAL)}?`, semReais: true, naoPode: [/\d{1,2}\/\d{1,2}\s*(?:a|até|-)\s*\d{1,2}\/\d{1,2}/i], esperado: async () => ({ textos: [/m[eê]s|por m[eê]s|n[aã]o/i] }) },
-  { id: "F11", modulo: "Financeiro", pergunta: "Quanto os sócios retiraram este ano?", ferramenta: ["consultarRetiradasDosSocios"], periodo: { de: `${ano}-01-01`, ate: `${ano}-12-31` }, esperado: async () => R(brl((await retiradas(ano)).indicadores.ano.total)) },
-  { id: "F12", modulo: "Financeiro", pergunta: `Quanto distribuímos de lucros em ${nomeDoMes(MES_PASSADO)}?`, ferramenta: ["consultarRetiradasDosSocios"], periodo: doMes(MES_PASSADO), esperado: async () => R(brl((await retiradas(MES_PASSADO.slice(0, 4), MES_PASSADO.slice(5))).indicadores.mes.DISTRIBUICAO_DE_LUCROS)) },
-  { id: "F13", modulo: "Financeiro", pergunta: `Quanto foi de pró-labore em ${nomeDoMes(MES_PASSADO)}?`, ferramenta: ["consultarFinanceiro"], periodo: doMes(MES_PASSADO), naoPode: [/distribui[cç][aã]o de lucros? (de|foi|em) R\$/i], esperado: async () => R(brl(await pagos(MES_PASSADO, "PRO_LABORE"))) },
   // Reservas
   { id: "R1", modulo: "Reservas", pergunta: `Quantas festas temos em ${nomeDoMes(PROXIMO_MES)}?`, ferramenta: ["consultarFestas"], periodo: doMes(PROXIMO_MES), esperado: async () => N((await contratos(PROXIMO_MES)).length) },
   { id: "R2", modulo: "Reservas", segue: "R1", pergunta: "E quantas delas já estão pagas?", ferramenta: ["consultarFestas"], periodo: doMes(PROXIMO_MES), esperado: async () => N((await contratos(PROXIMO_MES)).filter((c) => c.situacao === "QUITADO").length) },

@@ -285,21 +285,18 @@ export function AcoesDaReserva({
           Editar reserva completa
         </Button>
 
-        {/* Registrar recebimento é confirmação financeira manual: só ADMIN.
-            O comprovante depende de dinheiro que entrou, e a reserva só
-            confirma quando o sinal é registrado. */}
-        {user?.role === "ADMIN" && (
-          <Button
-            variant="outline"
-            className="justify-start"
-            disabled={jaCancelada}
-            onClick={abrirRegistro}
-            data-registrar-pagamento
-          >
-            <BadgeDollarSign className="mr-2 size-4" />
-            Registrar pagamento recebido
-          </Button>
-        )}
+        {/* Sem pagamento nenhum, é isto que a operação precisa fazer antes de
+            qualquer outra coisa: o comprovante depende de dinheiro que
+            entrou, e a reserva só confirma quando o sinal é registrado. */}
+        <Button
+          variant="outline"
+          className="justify-start"
+          disabled={jaCancelada}
+          onClick={abrirRegistro}
+        >
+          <BadgeDollarSign className="mr-2 size-4" />
+          Registrar pagamento recebido
+        </Button>
 
         <Button variant="outline" className="justify-start" onClick={() => setCorrigindo(true)}>
           <Pencil className="mr-2 size-4" />

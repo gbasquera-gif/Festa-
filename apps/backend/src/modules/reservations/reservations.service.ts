@@ -24,7 +24,6 @@ import {
 } from "@festae/shared";
 import type {
   CancelarReservaInput,
-  CorrigirPagamentoInput,
   CreateReservationInput,
   RegistrarReembolsoInput,
   ReservationStatus,
@@ -42,7 +41,6 @@ import { PaymentsService } from "../payments/payments.service";
 import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-commitment";
 import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
-import { decidirCorrecao } from "./correcao-de-pagamento";
 
 /**
  * O que a tela de reservas precisa saber do crédito Festaê e do cancelamento.
@@ -295,23 +293,14 @@ export class ReservationsService {
             // o kit acima fica para pedido anterior ao congelamento.
             kitItems: { include: { product: true } },
             items: { include: { product: true } },
-            payments: { orderBy: { createdAt: "desc" }, include: { registradoPor: { select: { name: true } } } },
+            payments: { orderBy: { createdAt: "desc" } },
           },
         },
         ...INCLUSAO_DO_CREDITO,
       },
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
-    // O histórico das correções de pagamento: o antes, o depois e o porquê.
-    const alteracoesDePagamentos = await prisma.alteracaoFinanceira.findMany({
-      where: { entidade: "PAGAMENTO", entidadeId: { in: reserva.order.payments.map((p) => p.id) } },
-      orderBy: { criadoEm: "desc" },
-      include: { usuario: { select: { name: true } } },
-    });
-    return {
-      ...comCredito(reserva, await saldosDeCredito(reserva.order.event.userId)),
-      alteracoesDePagamentos,
-    };
+    return comCredito(reserva, await saldosDeCredito(reserva.order.event.userId));
   }
 
   /**
@@ -456,8 +445,6 @@ export class ReservationsService {
           method: dados.forma as never,
           status: "PAID",
           paidAt: recebidoEm,
-          origem: "REGISTRO_MANUAL",
-          registradoPorId: usuarioId,
         },
       });
 
@@ -518,98 +505,6 @@ export class ReservationsService {
       pixPendentesEncerrados: apurado.encerradas,
       pedidoQuitado: apurado.quita,
     };
-  }
-
-  /**
-   * Corrige um pagamento lançado à mão: valor, data, ou anulação.
-   *
-   * A exceção à regra "dinheiro que entrou não se reescreve" — e por isso
-   * cercada: só ADMIN, só lançamento manual, nunca em reserva cancelada, sob
-   * a trava do pedido, e sempre com o antes, o depois, quem e por quê em
-   * `AlteracaoFinanceira`. Anular não apaga: o pagamento vira ANULADO e sai
-   * de todas as contas (que só leem PAID), continuando visível com o motivo.
-   *
-   * A regra de decisão está em `correcao-de-pagamento.ts`, testada sozinha.
-   */
-  async corrigirPagamento(reservaId: string, pagamentoId: string, input: CorrigirPagamentoInput, usuarioId: string) {
-    const reserva = await prisma.reservation.findUnique({
-      where: { id: reservaId },
-      select: {
-        status: true,
-        cancelledAt: true,
-        order: { select: { id: true, total: true } },
-        tratamentoDoCancelamento: { select: { id: true } },
-      },
-    });
-    if (!reserva) throw new NotFoundException("Reserva não encontrada.");
-    const orderId = reserva.order.id;
-
-    const resultado = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
-      const pagamentos = await tx.payment.findMany({
-        where: { orderId },
-        select: {
-          id: true,
-          status: true,
-          amount: true,
-          paidAt: true,
-          externalReference: true,
-          aposCancelamento: { select: { id: true } },
-        },
-      });
-      const pagamento = pagamentos.find((p) => p.id === pagamentoId);
-      if (!pagamento) throw new NotFoundException("Pagamento não encontrado nesta reserva.");
-
-      const decisao = decidirCorrecao(
-        {
-          pagamento: {
-            status: pagamento.status,
-            externalReference: pagamento.externalReference,
-            aposCancelamento: pagamento.aposCancelamento !== null,
-            valor: Number(pagamento.amount),
-            recebidoEm: pagamento.paidAt,
-          },
-          reservaCancelada:
-            reserva.status === "CANCELLED" ||
-            reserva.status === "REJECTED" ||
-            reserva.cancelledAt !== null ||
-            reserva.tratamentoDoCancelamento !== null,
-          outrosRecebidosEmCentavos: pagamentos
-            .filter((p) => p.id !== pagamentoId && p.status === "PAID")
-            .reduce((t, p) => t + toCentsInt(Number(p.amount)), 0),
-          creditoEmCentavos: await creditoAplicadoEmCentavos(tx, reservaId),
-          totalEmCentavos: toCentsInt(Number(reserva.order.total)),
-          agora: new Date(),
-        },
-        input,
-      );
-      if (!decisao.ok) throw new ConflictException(decisao.erro);
-
-      // `status: "PAID"` no filtro: duas correções simultâneas não anulam o
-      // que a outra acabou de mudar — a trava acima já serializa, isto é a
-      // garantia estrutural.
-      const { count } = await tx.payment.updateMany({
-        where: { id: pagamentoId, status: "PAID" },
-        data: decisao.dados,
-      });
-      if (count === 0) throw new ConflictException("Este pagamento mudou enquanto a tela estava aberta. Recarregue.");
-
-      await tx.alteracaoFinanceira.create({
-        data: {
-          entidade: "PAGAMENTO",
-          entidadeId: pagamentoId,
-          acao: decisao.acao,
-          antes: decisao.antes as never,
-          depois: decisao.depois as never,
-          justificativa: input.justificativa,
-          usuarioId,
-        },
-      });
-      return decisao;
-    });
-
-    this.logger.log(`Pagamento ${pagamentoId} da reserva ${reservaId}: ${resultado.acao} por ${usuarioId}.`);
-    return { corrigido: true, acao: resultado.acao, antes: resultado.antes, depois: resultado.depois };
   }
 
   /**

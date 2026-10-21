@@ -1,7 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, prisma } from "@festae/database";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { prisma } from "@festae/database";
 import { lerCarteiraCrua } from "./carteira";
-import { fimDoMesOuHoje, montarRelatorioExecutivo } from "./relatorio";
+import { montarRelatorioExecutivo } from "./relatorio";
 import { gerarRelatorioPdf, nomeDoArquivo } from "./relatorio-pdf";
 import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
@@ -33,20 +33,6 @@ import {
   variacao,
   linhaDeRitmo,
   totalRecebido,
-  fluxoDeCaixaDoAno,
-  fluxoDeCaixaDoMes,
-  saldoDisponivel,
-  controleDaDistribuicaoDoAno,
-  controleDaDistribuicaoDoMes,
-  pareceProLabore,
-  proLaboreDoMes,
-  diaEmChapeco,
-  normalizarDataDaFesta,
-  type InformarSaldoDeCaixaInput,
-  retiradasDoAno,
-  retiradasDoMes,
-  type CategoriaDaRetirada,
-  type RetiradaApurada,
   type ContratoApurado,
   type CriarGastoInput,
   type EditarGastoInput,
@@ -186,8 +172,6 @@ export class FinanceiroService {
       custeio: despesaDoMes(da("CUSTEIO"), mes),
       total: despesaDoMes(gastos, mes),
       acervo: acervoDoMes(gastos, mes),
-      /** Despesa com os sócios, fora do `total` do Resultado Operacional. */
-      proLabore: proLaboreDoMes(gastos, mes),
     };
   }
 
@@ -204,23 +188,6 @@ export class FinanceiroService {
       valor: paraNumero(linha.valor),
       natureza: linha.natureza as NaturezaDoGasto,
       pagoEm: linha.pagoEm,
-    }));
-  }
-
-  /**
-   * As retiradas dos sócios, como a apuração as lê. Estornadas vêm marcadas
-   * e as funções de @festae/shared as deixam fora dos totais.
-   */
-  private async retiradas(): Promise<RetiradaApurada[]> {
-    const linhas = await prisma.retiradaDeSocio.findMany({
-      select: { socioId: true, categoria: true, valor: true, retiradaEm: true, estornadaEm: true },
-    });
-    return linhas.map((r) => ({
-      socioId: r.socioId,
-      categoria: r.categoria as CategoriaDaRetirada,
-      valor: paraNumero(r.valor),
-      retiradaEm: r.retiradaEm,
-      estornada: r.estornadaEm !== null,
     }));
   }
 
@@ -265,12 +232,11 @@ export class FinanceiroService {
    * ano e aos doze pontos do gráfico.
    */
   async panorama(ano: number, mes: string) {
-    const [contratos, gastos, meta, creditoEmAberto, retiradas] = await Promise.all([
+    const [contratos, gastos, meta, creditoEmAberto] = await Promise.all([
       this.contratos(),
       this.gastos(),
       prisma.metaMensal.findUnique({ where: { competencia: mes } }),
       this.creditoEmAberto(),
-      this.retiradas(),
     ]);
 
     const operacional = resultadoOperacionalDoMes(contratos, gastos, mes);
@@ -309,29 +275,6 @@ export class FinanceiroService {
       creditoEmAberto,
 
       ytd: acumuladoNoAno(contratos, gastos, ano, mes),
-
-      /**
-       * Retiradas dos sócios e o fluxo de caixa que as mostra. Campos novos,
-       * ao lado dos existentes: nenhum número acima depende deles. Retirada
-       * não é despesa e não entra no Resultado Operacional; aparece aqui como
-       * saída de caixa, classificada.
-       */
-      retiradas: {
-        mes: retiradasDoMes(retiradas, mes),
-        ano: retiradasDoAno(retiradas, ano, mes),
-      },
-      fluxoDeCaixa: {
-        mes: fluxoDeCaixaDoMes(contratos, gastos, retiradas, mes),
-        ano: fluxoDeCaixaDoAno(contratos, gastos, retiradas, ano, mes),
-      },
-      /**
-       * Controle da distribuição de lucros: Resultado Operacional (a mesma
-       * conta de cima), menos o pró-labore, diante do que foi distribuído.
-       */
-      distribuicao: {
-        mes: controleDaDistribuicaoDoMes(contratos, gastos, retiradas, mes),
-        ano: controleDaDistribuicaoDoAno(contratos, gastos, retiradas, ano, mes),
-      },
 
       aReceber: totalAReceber(contratos),
       recebidoSemData: indicadores.recebidoSemData,
@@ -384,125 +327,21 @@ export class FinanceiroService {
    */
   async relatorioExecutivo(ano: number, mes: string) {
     const agora = new Date();
-    const [contratos, gastos, reservas, creditoEmAberto, retiradas, ref] = await Promise.all([
+    const [contratos, gastos, reservas, creditoEmAberto] = await Promise.all([
       this.contratos(),
       this.gastos(),
       this.carteiraCrua(),
       this.creditoEmAberto(),
-      this.retiradas(),
-      this.saldoDeReferencia(fimDoMesOuHoje(mes, agora)),
     ]);
     return montarRelatorioExecutivo({
       contratos,
       gastos,
-      retiradas,
       carteira: reservas.map((reserva) => montarLinha(reserva, agora)),
       ano,
       mes,
       agora,
       creditoEmAberto,
-      saldoDeReferencia: ref ? { dia: ref.referenciaEm.toISOString().slice(0, 10), valor: paraNumero(ref.valor) } : null,
     });
-  }
-
-  /* ---------------------------------------------------------------- *
-   * Saldo disponível
-   * ---------------------------------------------------------------- */
-
-  /**
-   * O saldo informado que vale para um dia: o de data mais recente até ele;
-   * no mesmo dia, o último registrado (é assim que se corrige um saldo).
-   */
-  private async saldoDeReferencia(dia: string) {
-    return prisma.saldoDeCaixa.findFirst({
-      where: { referenciaEm: { lte: normalizarDataDaFesta(dia) } },
-      orderBy: [{ referenciaEm: "desc" }, { registradoEm: "desc" }],
-      include: { registradoPor: { select: { name: true } } },
-    });
-  }
-
-  /**
-   * O saldo disponível num dia (hoje, se nada vier ou se vier data futura).
-   *
-   * Saldo inicial informado + entradas − reembolsos − despesas − acervo −
-   * retiradas, do dia dele até a data pedida. Sem saldo informado até o dia, devolve `saldo: null` e diz
-   * desde quando há saldo — a tela pede para informar, em vez de inventar.
-   */
-  async saldoDeCaixa(ate?: string, agora = new Date()) {
-    const hoje = diaEmChapeco(agora);
-    const dia = ate && ate < hoje ? ate : hoje;
-    const ref = await this.saldoDeReferencia(dia);
-    if (!ref) {
-      const primeiro = await prisma.saldoDeCaixa.findFirst({ orderBy: { referenciaEm: "asc" }, select: { referenciaEm: true } });
-      return {
-        ate: dia,
-        referencia: null,
-        saldo: null,
-        fluxo: null,
-        primeiroSaldoInformadoEm: primeiro ? primeiro.referenciaEm.toISOString().slice(0, 10) : null,
-      };
-    }
-    const [contratos, gastos, retiradas] = await Promise.all([this.contratos(), this.gastos(), this.retiradas()]);
-    const referencia = { dia: ref.referenciaEm.toISOString().slice(0, 10), valor: paraNumero(ref.valor) };
-    const calculado = saldoDisponivel(contratos, gastos, retiradas, referencia, dia)!;
-    const { referencia: _r, ate: _a, saldo, ...fluxo } = calculado;
-    return {
-      ate: dia,
-      referencia: {
-        id: ref.id,
-        ...referencia,
-        observacao: ref.observacao,
-        registradoPor: ref.registradoPor?.name ?? null,
-        registradoEm: ref.registradoEm.toISOString(),
-      },
-      saldo,
-      fluxo,
-      primeiroSaldoInformadoEm: null,
-    };
-  }
-
-  /** Registra o saldo inicial da conta num dia. A mesma `chave` não grava duas vezes. */
-  async informarSaldoDeCaixa(dados: InformarSaldoDeCaixaInput, usuarioId: string, agora = new Date()) {
-    if (dados.dia > diaEmChapeco(agora)) {
-      throw new BadRequestException("O saldo informado não pode ser de uma data futura. Use o saldo do extrato de hoje ou de antes.");
-    }
-    const ja = await prisma.saldoDeCaixa.findUnique({ where: { chaveDeIdempotencia: dados.chave } });
-    if (ja) return { id: ja.id, repetido: true };
-    try {
-      const criado = await prisma.saldoDeCaixa.create({
-        data: {
-          referenciaEm: normalizarDataDaFesta(dados.dia),
-          valor: dados.valor,
-          observacao: dados.observacao?.trim() || null,
-          registradoPorId: usuarioId,
-          chaveDeIdempotencia: dados.chave,
-        },
-      });
-      return { id: criado.id, repetido: false };
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-        const doPrimeiro = await prisma.saldoDeCaixa.findUnique({ where: { chaveDeIdempotencia: dados.chave } });
-        if (doPrimeiro) return { id: doPrimeiro.id, repetido: true };
-      }
-      throw e;
-    }
-  }
-
-  /** Os saldos informados, do mais recente para o mais antigo. Nada se apaga. */
-  async saldosDeCaixaInformados() {
-    const linhas = await prisma.saldoDeCaixa.findMany({
-      orderBy: [{ referenciaEm: "desc" }, { registradoEm: "desc" }],
-      take: 50,
-      include: { registradoPor: { select: { name: true } } },
-    });
-    return linhas.map((l) => ({
-      id: l.id,
-      dia: l.referenciaEm.toISOString().slice(0, 10),
-      valor: paraNumero(l.valor),
-      observacao: l.observacao,
-      registradoPor: l.registradoPor?.name ?? null,
-      registradoEm: l.registradoEm.toISOString(),
-    }));
   }
 
   /** O relatório em PDF, gerado agora e devolvido — nada é guardado. */
@@ -613,36 +452,13 @@ export class FinanceiroService {
     });
   }
 
-  /**
-   * Pró-labore tem natureza própria e só ela. Consumo, custeio ou acervo que
-   * diz "pró-labore" é lançamento no lugar errado: como custeio, entraria no
-   * Resultado Operacional, que por definição não inclui pró-labore.
-   */
-  private conferirNaturezaDoProLabore(natureza: NaturezaDoGasto, descricao: string, categoria?: string | null) {
-    if (natureza !== "PRO_LABORE" && pareceProLabore(descricao, categoria)) {
-      throw new BadRequestException(
-        "Pró-labore tem natureza própria: escolha a natureza “Pró-labore”. Como consumo ou custeio ele entraria no Resultado Operacional, que não inclui pró-labore.",
-      );
-    }
-  }
-
   criarGasto(dados: CriarGastoInput) {
-    this.conferirNaturezaDoProLabore(dados.natureza, dados.descricao, dados.categoria);
     return prisma.gasto.create({ data: dados });
   }
 
   async editarGasto(id: string, dados: EditarGastoInput) {
     const existe = await prisma.gasto.findUnique({ where: { id } });
     if (!existe) throw new NotFoundException("Lançamento não encontrado.");
-    // Só quando a edição mexe na classificação: corrigir o valor de um
-    // lançamento antigo não obriga a reclassificá-lo agora.
-    if (dados.natureza !== undefined || dados.descricao !== undefined || dados.categoria !== undefined) {
-      this.conferirNaturezaDoProLabore(
-        (dados.natureza ?? existe.natureza) as NaturezaDoGasto,
-        dados.descricao ?? existe.descricao,
-        dados.categoria !== undefined ? dados.categoria : existe.categoria,
-      );
-    }
     return prisma.gasto.update({ where: { id }, data: dados });
   }
 

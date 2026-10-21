@@ -6,7 +6,6 @@ import {
   createReservationSchema,
   editarReservaSchema,
   registrarPagamentoSchema,
-  corrigirPagamentoSchema,
   manualReservationSchema,
   registrarReembolsoSchema,
   tratarPagamentoTardioSchema,
@@ -18,7 +17,6 @@ import type {
   CreateReservationInput,
   EditarReservaInput,
   RegistrarPagamentoInput,
-  CorrigirPagamentoInput,
   ManualReservationInput,
   RegistrarReembolsoInput,
   TratarPagamentoTardioInput,
@@ -34,10 +32,10 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser, type AuthUser } from "../../common/decorators/current-user.decorator";
 
 /**
- * Dinheiro registrado à mão — recebimento ou devolução já feita — é só do
- * ADMIN. OPS continua operando a reserva e vendo os pagamentos; o que entra e
- * sai pela loja (checkout e aviso do Mercado Pago) segue automático, sem
- * passar por aqui.
+ * Contingência: as mesmas restrições da versão publicada. Dinheiro registrado
+ * à mão — recebimento ou devolução já feita — é só do ADMIN. OPS continua
+ * operando a reserva e vendo os pagamentos; o que entra e sai pela loja
+ * (checkout e aviso do Mercado Pago) segue automático, sem passar por aqui.
  */
 function soAdminRegistraDinheiro(user: AuthUser, registraDinheiro: boolean, mensagem: string) {
   if (registraDinheiro && user.role !== "ADMIN") throw new ForbiddenException(mensagem);
@@ -161,24 +159,6 @@ export class ReservationsController {
     @Body(new ZodValidationPipe(registrarPagamentoSchema)) body: RegistrarPagamentoInput,
   ) {
     return this.reservationsService.registrarPagamento(id, body, user.userId);
-  }
-
-  /**
-   * Corrige um pagamento lançado à mão (valor, data) ou o anula.
-   *
-   * Só ADMIN: é a exceção à regra de que dinheiro registrado não se
-   * reescreve. Exige justificativa, e o antes e o depois ficam no histórico.
-   */
-  @UseGuards(RolesGuard)
-  @Roles("ADMIN")
-  @Post("reservations/:id/pagamentos/:pagamentoId/correcao")
-  corrigirPagamento(
-    @CurrentUser() user: AuthUser,
-    @Param("id") id: string,
-    @Param("pagamentoId") pagamentoId: string,
-    @Body(new ZodValidationPipe(corrigirPagamentoSchema)) body: CorrigirPagamentoInput,
-  ) {
-    return this.reservationsService.corrigirPagamento(id, pagamentoId, body, user.userId);
   }
 
   /**

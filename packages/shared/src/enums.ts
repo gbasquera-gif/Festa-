@@ -73,29 +73,8 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   OUTRO: "Outro",
 };
 
-export const PAYMENT_STATUSES = ["PENDING", "PAID", "FAILED", "REFUNDED", "ANULADO"] as const;
+export const PAYMENT_STATUSES = ["PENDING", "PAID", "FAILED", "REFUNDED"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
-
-/** O status de um pagamento como se lê na tela. */
-export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
-  PENDING: "a receber",
-  PAID: "recebido",
-  FAILED: "encerrado sem pagamento",
-  REFUNDED: "estornado",
-  ANULADO: "anulado por correção",
-};
-
-/**
- * Como o pagamento chegou ao sistema (`Payment.origem`). Nulo nos antigos e
- * nos do checkout do Mercado Pago.
- */
-export const ORIGENS_DO_PAGAMENTO = ["REGISTRO_MANUAL", "APROVACAO_MANUAL_DA_PROPOSTA"] as const;
-export type OrigemDoPagamento = (typeof ORIGENS_DO_PAGAMENTO)[number];
-
-export const ORIGEM_DO_PAGAMENTO_LABEL: Record<OrigemDoPagamento, string> = {
-  REGISTRO_MANUAL: "registrado pela equipe",
-  APROVACAO_MANUAL_DA_PROPOSTA: "Pix externo · registrado na aprovação manual",
-};
 
 export const PAYMENT_TYPES = ["DEPOSIT", "BALANCE"] as const;
 export type PaymentType = (typeof PAYMENT_TYPES)[number];

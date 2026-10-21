@@ -300,69 +300,6 @@ export const converterOrcamentoSchema = z.object({
 export type ConverterOrcamentoInput = z.infer<typeof converterOrcamentoSchema>;
 
 /**
- * Como o dinheiro da aprovação manual chegou. Só Pix externo por enquanto;
- * a lista existe para crescer (transferência, dinheiro) sem mudar a tela.
- */
-export const FORMAS_DA_APROVACAO_MANUAL = ["PIX_EXTERNO"] as const;
-export type FormaDaAprovacaoManual = (typeof FORMAS_DA_APROVACAO_MANUAL)[number];
-export const FORMA_DA_APROVACAO_MANUAL_LABEL: Record<FormaDaAprovacaoManual, string> = {
-  PIX_EXTERNO: "Pix externo",
-};
-
-/**
- * A aprovação pelo painel, com o Pix que a cliente já mandou.
- *
- * O valor é o que caiu, qualquer um acima de zero: o sinal combinado no
- * WhatsApp pode ser menor que o percentual padrão. O total da proposta não
- * muda por causa dele — o resto fica como saldo.
- *
- * `chave` vem da tela, gerada ao abrir o diálogo: é o que faz o mesmo envio,
- * repetido por clique duplo ou rede instável, não lançar duas vezes.
- * `confirmacao` é a pessoa dizendo, por escrito, que conferiu o Pix na conta.
- */
-export const aprovarManualmenteSchema = z.object({
-  opcaoId: z.string().min(1).optional(),
-  valor: z.coerce
-    .number({ message: "Diga quanto caiu na conta." })
-    .positive("O valor do Pix precisa ser maior que zero.")
-    .max(1_000_000),
-  recebidoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD."),
-  forma: z.enum(FORMAS_DA_APROVACAO_MANUAL).default("PIX_EXTERNO"),
-  observacao: z.string().trim().max(500).optional(),
-  canal: z.enum(SALE_CHANNELS).optional(),
-  confirmacao: z.literal(true, { message: "Confirme que conferiu o Pix na conta da Festaê." }),
-  chave: z.string().uuid("Chave de envio inválida. Feche e abra o diálogo de novo."),
-});
-export type AprovarManualmenteInput = z.infer<typeof aprovarManualmenteSchema>;
-
-/**
- * Quanto do Pix cabe, e o que sobra.
- *
- * Uma regra para a tela e para o servidor: maior que zero, até o que ainda
- * não foi pago (total menos o já recebido). Em centavos, porque um centavo a
- * mais é sobrepagamento igual.
- */
-export function conferirPixDaAprovacao(
-  valor: number,
-  total: number,
-  jaRecebido = 0,
-  percentualDoSinal?: number | null,
-): { ok: true; saldo: number; abaixoDoPadrao: boolean } | { ok: false; erro: string } {
-  const v = toCentsInt(valor);
-  const disponivel = toCentsInt(total) - toCentsInt(jaRecebido);
-  if (!(v > 0)) return { ok: false, erro: "O valor do Pix precisa ser maior que zero." };
-  if (disponivel <= 0) return { ok: false, erro: "Esta proposta já está totalmente paga." };
-  if (v > disponivel) {
-    return {
-      ok: false,
-      erro: `O Pix passa do que falta pagar: o máximo é ${fromCentsInt(disponivel).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`,
-    };
-  }
-  const padrao = toCentsInt(calcularSinal(total, percentualDoSinal).valor);
-  return { ok: true, saldo: fromCentsInt(disponivel - v), abaixoDoPadrao: v < padrao };
-}
-
-/**
  * O aceite da cliente.
  *
  * Pede o nome de quem está aprovando — é a evidência mínima de manifestação,
