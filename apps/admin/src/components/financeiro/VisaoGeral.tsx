@@ -70,8 +70,8 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
         </p>
         {data.distribuicao && data.distribuicao.mes.proLabore > 0 && (
           <p className="mt-2 text-xs text-white/75" data-pro-labore-a-parte>
-            Pró-labore do mês, à parte: {brl(data.distribuicao.mes.proLabore)} · resultado após pró-labore:{" "}
-            {brl(data.distribuicao.mes.resultadoAposProLabore)}.
+            Pró-labore do mês, à parte: {brl(data.distribuicao.mes.proLabore)} · resultado gerencial após pró-labore:{" "}
+            {brl(data.distribuicao.mes.resultadoAposProLabore)} (não é lucro contábil).
           </p>
         )}
       </div>

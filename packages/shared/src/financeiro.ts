@@ -58,7 +58,7 @@ export const NATUREZA_LABEL: Record<NaturezaDoGasto, string> = {
  * Operacional mede a operação antes da remuneração dos sócios (e antes de
  * impostos e depreciação). O pró-labore é despesa — mora em Despesas, com
  * natureza própria — e aparece à parte: no fluxo de caixa, no saldo e no
- * "resultado após pró-labore", que é a base para distribuir lucro.
+ * "resultado gerencial após pró-labore" (controle, não lucro contábil).
  */
 export const NATUREZAS_DE_DESPESA: readonly NaturezaDoGasto[] = ["CONSUMO", "CUSTEIO"];
 

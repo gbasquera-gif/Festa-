@@ -158,15 +158,18 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
           nota={data ? `${doMes ? `${ano}: ${brl(data.indicadores.ano.DISTRIBUICAO_DE_LUCROS)} · ` : ""}histórico: ${brl(data.indicadores.historico.DISTRIBUICAO_DE_LUCROS)}` : undefined}
         />
         <Indicador
-          rotulo={`Resultado após pró-labore · ${ano}`}
+          rotulo={`Resultado gerencial após pró-labore · ${ano}`}
           valor={controle ? brl(controle.resultadoAposProLabore) : "—"}
           tom={controle && controle.distribuidoAcima > 0 ? "alerta" : "normal"}
           nota={
-            controle
-              ? controle.distribuidoAcima > 0
-                ? `distribuído ${brl(controle.distribuido)} — ${brl(controle.distribuidoAcima)} acima do resultado do ano`
-                : `Resultado Operacional ${brl(controle.resultadoOperacional)} − pró-labore ${brl(controle.proLabore)} · distribuído ${brl(controle.distribuido)}`
-              : undefined
+            controle ? (
+              <span data-nota-gerencial>
+                {controle.distribuidoAcima > 0
+                  ? `Distribuído ${brl(controle.distribuido)} — ${brl(controle.distribuidoAcima)} acima deste resultado. `
+                  : `Resultado Operacional ${brl(controle.resultadoOperacional)} − pró-labore ${brl(controle.proLabore)} · distribuído ${brl(controle.distribuido)}. `}
+                Indicador gerencial: não é lucro contábil nem valor disponível para distribuir — confirme com a contabilidade e o saldo.
+              </span>
+            ) : undefined
           }
         />
         <Indicador

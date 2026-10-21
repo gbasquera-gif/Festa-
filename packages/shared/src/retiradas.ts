@@ -249,16 +249,17 @@ export function fluxoDeCaixaDoAno(
  * ------------------------------------------------------------------ */
 
 /**
- * Quanto foi distribuído diante do resultado que havia para distribuir.
+ * Quanto foi distribuído diante de um resultado GERENCIAL do período.
  *
  *   Resultado Operacional (a fórmula de sempre, sem mudança)
  *   − pró-labore do período
- *   = resultado após pró-labore
+ *   = resultado gerencial após pró-labore
  *
- * É a referência para a distribuição de lucros: distribuir mais do que isso
- * é tirar da empresa dinheiro que o período não gerou. Não é lucro líquido —
- * não considera impostos nem depreciação, como o próprio Resultado
- * Operacional. Devolução de aporte não entra na comparação: é capital
+ * É um sinal de controle, não o lucro contábil: não considera impostos,
+ * depreciação nem ajustes da contabilidade, e não diz se há dinheiro em caixa.
+ * Quanto se pode distribuir é decisão sobre o lucro apurado pela contabilidade
+ * e o saldo disponível; o painel só avisa quando o distribuído passa deste
+ * resultado gerencial. Devolução de aporte não entra na comparação: é capital
  * devolvido, não lucro.
  */
 export type ControleDaDistribuicao = {
