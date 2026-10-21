@@ -190,14 +190,28 @@ export function fonteDeDespesas(p: PeriodoDeAnalise): FonteDaResposta {
     : { rotulo: "Despesas", caminho: "/financeiro?aba=despesas" };
 }
 
-/** Como o período foi considerado: o realizado para em hoje. */
+/**
+ * Como o período foi considerado. O pago para em hoje; o a pagar vai até o
+ * fim do período pelo vencimento. Em TODOS, as duas pontas são ditas.
+ */
 function periodoConsiderado(p: PeriodoDeAnalise, situacao: SituacaoDaDespesa, hoje: string) {
-  const corta = situacao !== "A_PAGAR" && situacao !== "VENCIDO" && p.ate > hoje && p.de <= hoje;
+  const emAndamento = p.ate > hoje && p.de <= hoje;
+  const corta = situacao === "PAGO" && emAndamento;
+  const nota =
+    situacao === "PAGO" && emAndamento
+      ? "Pagos só até hoje: lançamento com data de pagamento futura não entra."
+      : situacao === "TODOS" && emAndamento
+        ? `Pagos até hoje (${dataCurta(hoje)}); a pagar pelo vencimento até ${dataCurta(p.ate)}.`
+        : (situacao === "A_PAGAR" || situacao === "VENCIDO") && p.ate > hoje
+          ? `A pagar pelo vencimento, até ${dataCurta(p.ate)}${situacao === "VENCIDO" ? " (vencido: antes de hoje)" : ""}.`
+          : null;
   return {
     rotulo: corta ? `${p.rotulo}, até ${dataCurta(hoje)}` : p.rotulo,
     de: p.de,
     ate: p.ate,
-    ...(corta ? { consideradoAte: dataCurta(hoje), notaDoCorte: "Pagos só até hoje: lançamento com data de pagamento futura não entra." } : {}),
+    ...(corta ? { consideradoAte: dataCurta(hoje) } : {}),
+    ...(emAndamento ? { emAndamento: true } : {}),
+    ...(nota ? { notaDoCorte: nota } : {}),
     ...(p.de > hoje ? { futuro: "Período futuro: nada pago ainda." } : {}),
     ...(p.observacao ? { observacao: p.observacao } : {}),
   };
@@ -404,7 +418,7 @@ async function executarConsulta(args: Parametros, { agora, servicos }: { agora: 
       const decimos = v.temBase ? Math.round((Math.abs(diferenca) * 1000) / Math.abs(outro.agregado.totalCentavos)) : null;
       const percentual =
         decimos === null ? null : `${diferenca > 0 ? "+" : diferenca < 0 ? "−" : ""}${Math.floor(decimos / 10)},${decimos % 10}%`;
-      const parciais = [periodo, periodoComparado].filter((x) => "consideradoAte" in x).map((x) => x.rotulo);
+      const parciais = [periodo, periodoComparado].filter((x) => "emAndamento" in x).map((x) => x.rotulo);
       comparacao = {
         periodo: periodoComparado,
         ...totais(outro),
@@ -433,6 +447,7 @@ async function executarConsulta(args: Parametros, { agora, servicos }: { agora: 
     `${maiuscula(periodo.rotulo)}: ${lancamentos(a.agregado.quantidade)}${deNatureza}${quem}, total ${brl(a.agregado.totalCentavos)} (${SITUACAO_CURTA[situacao]}).` +
     separacao +
     situacoes +
+    (situacao !== "PAGO" && periodo.notaDoCorte ? ` ${periodo.notaDoCorte}` : "") +
     fraseDaComparacao;
 
   return {
