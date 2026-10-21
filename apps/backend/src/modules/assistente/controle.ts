@@ -224,6 +224,8 @@ export type EventoDeUso = {
   caracteresFalados?: number;
   latenciaMs: number;
   falha?: string;
+  /** SUBSTITUIDA: a resposta do modelo citou valor que a ferramenta não devolveu e foi trocada pelo resumo do servidor. */
+  conferencia?: "SUBSTITUIDA";
 };
 
 /**
@@ -288,6 +290,7 @@ export class MetricasDoAssistente {
         custoEstimadoUsd: Number(custo.toFixed(6)),
         latenciaMs: e.latenciaMs,
         falha: e.falha,
+        conferencia: e.conferencia,
       }),
     );
     return custo;

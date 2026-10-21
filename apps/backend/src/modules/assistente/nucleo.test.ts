@@ -52,6 +52,8 @@ function servicos(): ServicosDoAssistente {
         meta: null,
       })) as never,
       despesasPorNatureza: vi.fn(async (mes: string) => ({ mes, consumo: 120, custeio: 80, total: 200, acervo: 50, proLabore: 1500 })),
+      despesasParaAnalise: vi.fn(async () => []),
+      nomesNasDespesas: vi.fn(async () => ({ fornecedores: [], categorias: [] })),
     },
     retiradas: {
       listar: vi.fn(async (filtro: { ano?: string; mes?: string }) => {
@@ -110,6 +112,7 @@ describe("catálogo", () => {
     expect(ops).not.toContain("consultarCarteiraFutura");
     expect(ops).not.toContain("consultarUsoDoAcervo");
     expect(ops).not.toContain("consultarRetiradasDosSocios");
+    expect(ops).not.toContain("consultarDespesas");
     expect(ops).toEqual(
       expect.arrayContaining(["consultarFestas", "consultarPendencias", "consultarPropostas", "consultarDisponibilidadeDeProduto", "solicitarOperacao"]),
     );
@@ -523,6 +526,23 @@ describe("provedor simulado (demonstração)", () => {
     expect(await decide("Quantas reservas estão prontas para retirada?")).not.toMatchObject({ nome: "consultarRetiradasDosSocios" });
     expect(await decide("Cadastre um produto novo")).toMatchObject({ nome: "solicitarOperacao" });
     expect(await decide("Quantas festas temos?")).toMatchObject({ texto: expect.stringContaining("Para qual período") });
+  });
+
+  it("despesas com recorte vão para consultarDespesas; sem recorte, continuam no Financeiro", async () => {
+    expect(await decide("Quanto gastamos com Meta Ads em outubro?")).toEqual({ nome: "consultarDespesas", args: { fornecedor: "meta ads", periodo: "outubro" } });
+    expect(await decide("Qual foi o total de gastos de consumo no mês de outubro com Meta ADS até agora?")).toEqual({
+      nome: "consultarDespesas",
+      args: { fornecedor: "meta ads", natureza: ["CONSUMO"], periodo: "outubro ate agora" },
+    });
+    expect(await decide("Quais foram os 2 maiores fornecedores de custeio este mês?")).toEqual({
+      nome: "consultarDespesas",
+      args: { natureza: ["CUSTEIO"], agruparPor: "FORNECEDOR", limite: 2, periodo: "este mes" },
+    });
+    expect(await decide("Gastamos mais com Meta Ads em setembro ou outubro?")).toMatchObject({ nome: "consultarDespesas", args: { periodo: "outubro", compararCom: "setembro" } });
+    expect(await decide("Quanto gastamos de consumo de 01/01/2021 a 31/12/2021?")).toMatchObject({ nome: "consultarDespesas", args: { periodo: "de 01/01/2021 a 31/12/2021" } });
+    // Natureza depois de "com" não é fornecedor; quanto cliente gastou não é despesa.
+    expect(await decide("Quanto gastamos com consumo e com custeio em outubro?")).toEqual({ nome: "consultarFinanceiro", args: { periodo: "outubro" } });
+    expect(await decide("Qual cliente mais gastou com a Festaê este ano?")).toMatchObject({ texto: expect.stringContaining("Ainda não sei") });
   });
 
   it("redige a resposta de retiradas com os números da ferramenta", async () => {

@@ -70,6 +70,82 @@ function produtoDaPergunta(t: string): string | null {
   return nome.length >= 2 ? nome : null;
 }
 
+// ---------------------------------------------------------------- despesas com recorte
+
+const NATUREZAS_NO_TEXTO: [RegExp, string][] = [
+  [/\bconsumo\b/, "CONSUMO"],
+  [/\bcusteio\b/, "CUSTEIO"],
+  [/\b(acervo|investimento)\b/, "ACERVO"],
+  [/pro.?labore/, "PRO_LABORE"],
+];
+const FIM_DO_NOME = "(?= em | no | na | nos | nas | neste| nesse| este| esse| ate | de [a-z]+ de | desde |$)";
+
+function periodoAnalitico(t: string): string | null {
+  const intervalo = t.match(/\b(?:de |entre )?\d{1,2}\/\d{1,2}(?:\/\d{2,4})? (?:a|ate|e) \d{1,2}\/\d{1,2}(?:\/\d{2,4})?/);
+  if (intervalo) return intervalo[0];
+  const m = t.match(/\b(?:ultimos|ultimas) \S+ (?:meses(?: completos| fechados)?|dias)\b|\b(?:este|neste|esse|nesse) trimestre\b|\btrimestre passado\b|\b(?:primeiro|segundo|terceiro|quarto) trimestre(?: de \d{4})?/);
+  if (m) return m[0];
+  const base = encontrarPeriodoNoTexto(t);
+  if (/\bate (agora|hoje)\b/.test(t)) return base ? `${base} ate agora` : "ate hoje";
+  return base;
+}
+
+function filtrosDeDespesa(t: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const fornecedor = t.match(new RegExp(`\\bfornecedor(?:es)? (?:com |chamado )?([a-z0-9][a-z0-9 ]*?)${FIM_DO_NOME}`)) ?? t.match(new RegExp(`\\bcom (?:o |a )?([a-z0-9][a-z0-9 ]*?)${FIM_DO_NOME}`));
+  const ranking = /maiores fornecedores|fornecedores (de|que|com mais)|por fornecedor|ranking/.test(t);
+  if (fornecedor && !ranking && !/^(o |a )?(mes|ano|trimestre|consumo|custeio|acervo|investimento|pro.?labore)\b/.test(fornecedor[1])) {
+    args.fornecedor = fornecedor[1].trim();
+  }
+  const categoria = t.match(new RegExp(`\\bcategoria ([a-z0-9][a-z0-9 ]*?)${FIM_DO_NOME}`));
+  if (categoria) args.categoria = categoria[1].trim();
+  const naturezas = NATUREZAS_NO_TEXTO.filter(([re]) => re.test(t)).map(([, n]) => n);
+  if (naturezas.length) args.natureza = naturezas;
+  if (/\ba pagar\b/.test(t)) args.situacao = "A_PAGAR";
+  else if (/vencid/.test(t)) args.situacao = "VENCIDO";
+  else if (/registr|lancamos|lancad/.test(t)) args.situacao = "TODOS";
+  const top = t.match(/\b(\d+|cinco|tres|dez) maiores\b/);
+  if (/maiores fornecedores|por fornecedor|ranking/.test(t)) args.agruparPor = "FORNECEDOR";
+  else if (/por categoria/.test(t)) args.agruparPor = "CATEGORIA";
+  else if (/por mes|mes a mes/.test(t)) args.agruparPor = "MES";
+  if (top) args.limite = ({ cinco: 5, tres: 3, dez: 10 } as Record<string, number>)[top[1]] ?? Number(top[1]);
+  if (/\b(quais|liste|lista)\b.*\b(lancamentos|despesas|gastos)\b/.test(t)) args.listarLancamentos = true;
+  return args;
+}
+
+/** Pergunta de despesa que pede recorte: vai para consultarDespesas, não para o total do Financeiro. */
+function despesaComRecorte(t: string): Consulta | null {
+  if (!/gast|despes|pagamos|a pagar|vencid|fornecedor|lancamentos de|custeio|consumo/.test(t)) return null;
+  if (!/fornecedor|categoria|\bcom (?!(?:o |a )?(?:consumo|custeio|acervo|investimento|pro.?labore)\b)[a-z0-9]|a pagar|vencid|registr|lancamos|media|medio|maior|menor|compar|\bou\b|variac|aument|diminu|ultimos|ultimas|trimestre|ate agora|ate hoje|em relacao|\d{1,2}\/\d{1,2}(?:\/\d{2,4})? (?:a|ate|e) \d{1,2}\//.test(t)) return null;
+  const args: Record<string, unknown> = { ...filtrosDeDespesa(t) };
+  const meses = [...t.matchAll(/\b(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/g)].map((m) => m[1]);
+  if (/\bou\b/.test(t) && meses.length >= 2) {
+    args.periodo = meses[1];
+    args.compararCom = meses[0];
+  } else {
+    args.periodo = periodoAnalitico(t) ?? "este mes";
+    if (/mesmo periodo do ano (anterior|passado)/.test(t)) args.compararCom = "mesmo periodo do ano anterior";
+    else if (/(em relacao|comparad\w*|frente) (ao|com o) mes anterior|mes anterior/.test(t) && !/^mes anterior$/.test(String(args.periodo))) args.compararCom = "mes anterior";
+  }
+  return { nome: "consultarDespesas", args };
+}
+
+/** "E no mês passado?", "e quanto disso já foi pago?", "e em custeio?": a última consulta, trocando só o que mudou. */
+function continuacaoDeDespesas(t: string, anterior: Consulta): Consulta {
+  const args: Record<string, unknown> = { ...anterior.args };
+  const periodo = periodoAnalitico(t);
+  if (periodo) {
+    args.periodo = periodo;
+    delete args.compararCom;
+  }
+  if (/(ja|foi|foram|esta|estao) pag|disso.*pag/.test(t)) args.situacao = "TODOS";
+  else if (/\ba pagar\b/.test(t)) args.situacao = "A_PAGAR";
+  else if (/vencid/.test(t)) args.situacao = "VENCIDO";
+  const naturezas = NATUREZAS_NO_TEXTO.filter(([re]) => re.test(t)).map(([, n]) => n);
+  if (naturezas.length) args.natureza = naturezas;
+  return { nome: "consultarDespesas", args };
+}
+
 /** Decide a ferramenta para uma pergunta. Nula quando a pergunta não é suportada. */
 function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esclarecer: string } | null {
   const t = normalizar(texto);
@@ -77,6 +153,7 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
 
   const periodo = encontrarPeriodoNoTexto(texto);
   const anterior = ultimaConsulta(mensagens);
+  if (anterior?.nome === "consultarDespesas" && /^e /.test(t)) return continuacaoDeDespesas(t, anterior);
   const continuacao = !periodo && (/\b(delas|dessas|deles|desses|destas|nelas|nesse periodo)\b/.test(t) || /^e /.test(t));
   if (continuacao && anterior) {
     const situacao = situacaoPedida(t);
@@ -111,6 +188,10 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
   if (/carteira futura|daqui (pra|para) frente/.test(t)) return { nome: "consultarCarteiraFutura", args: {} };
   if (/sem utiliza|sem uso|parad/.test(t)) return { nome: "consultarUsoDoAcervo", args: {} };
   if (/(produtos|itens) cadastrad|quantos produtos/.test(t)) return { nome: "contarProdutos", args: {} };
+  // Quanto cada cliente gastou não é despesa da Festaê, e ranking de clientes não é consultável.
+  if (/\bclientes?\b/.test(t) && /gast|comprou|pagou/.test(t)) return null;
+  const recorte = despesaComRecorte(t);
+  if (recorte) return recorte;
   if (/fatur|contratad|recebemos|recebid|pagamentos|caixa|a receber|resultado|lucro|margem|gast|despes|custeio|consumo|investi|acervo|credito/.test(t)) {
     return { nome: "consultarFinanceiro", args: { periodo: periodo ?? "este mes" } };
   }
@@ -123,7 +204,7 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
 }
 
 const NAO_SUPORTADA =
-  "Ainda não sei responder essa pergunta. Posso consultar: faturamento, contratado, caixa, a receber, resultado operacional, despesas e acervo investido; retiradas dos sócios; festas por data e situação de pagamento; cancelamentos; reservas aguardando devolução ou com saldo; propostas enviadas, aprovadas, conversão e negociação; produtos cadastrados, sem uso e disponibilidade.";
+  "Ainda não sei responder essa pergunta. Posso consultar: faturamento, contratado, caixa, a receber, resultado operacional, despesas e acervo investido; despesas por fornecedor, categoria e situação, com médias, rankings e comparações; retiradas dos sócios; festas por data e situação de pagamento; cancelamentos; reservas aguardando devolução ou com saldo; propostas enviadas, aprovadas, conversão e negociação; produtos cadastrados, sem uso e disponibilidade.";
 
 export class ProvedorSimulado implements ProvedorDeIA {
   readonly modo = "SIMULADO" as const;
@@ -210,6 +291,17 @@ function redigirResultado(nome: string, d: Dados, t: string): string {
   switch (nome) {
     case "consultarFinanceiro":
       return redigirFinanceiro(d, t);
+    case "consultarDespesas": {
+      // O resumo é montado pelo servidor; aqui só se acrescenta o detalhe pedido.
+      const r = d.resultado;
+      const extras: string[] = [];
+      if (r && /\bmaior\b/.test(t) && r.maior) extras.push(`Maior: ${r.maior.valor} em ${r.maior.dia} (${r.maior.descricao}).`);
+      if (r && /\bmenor\b/.test(t) && r.menor) extras.push(`Menor: ${r.menor.valor} em ${r.menor.dia} (${r.menor.descricao}).`);
+      if (r && /media|medio/.test(t)) extras.push(r.mediaMensal ? `Média mensal: ${r.mediaMensal.valor} (${r.mediaMensal.meses} meses).` : r.mediaPorLancamento ? `Média por lançamento: ${r.mediaPorLancamento}.` : "");
+      if (r?.grupos?.length) extras.push(r.grupos.map((g: Dados, i: number) => `${i + 1}. ${g.nome}: ${g.total} (${g.lancamentos})`).join("; ") + ".");
+      if (d.tambemNaDescricao) extras.push(`Há também ${d.tambemNaDescricao.lancamentos} lançamento(s) sem fornecedor que citam o nome na descrição (${d.tambemNaDescricao.total}), fora do total.`);
+      return [d.resumo, ...extras.filter(Boolean)].join(" ") + obs(d);
+    }
     case "consultarRetiradasDosSocios": {
       const n = d.noPeriodo;
       const socios = (d.porSocio as { socio: string; noPeriodo: string }[]).map((s) => `${s.socio} ${s.noPeriodo}`).join("; ");

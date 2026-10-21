@@ -253,6 +253,7 @@ export {
   despesaDoMes,
   despesaEntre,
   mesDaDespesa,
+  diaDaDespesa,
   acervoDoMes,
   acervoEntre,
   proLaboreDoMes,
@@ -514,3 +515,28 @@ export type {
   RegistrarReembolsoInput,
   TratarPagamentoTardioInput,
 } from "./schemas/credito";
+
+export { agregar, agrupar, dividirCentavos, normalizarParaBusca } from "./analise";
+export type { Agregado, ComValor, Grupo } from "./analise";
+
+export {
+  AGRUPAMENTOS_DA_DESPESA,
+  SITUACOES_DA_DESPESA,
+  analisarDespesas,
+  analisarLancamento,
+  ateRealizado,
+  diaDoVencimento,
+  grafiaMaisUsada,
+  mesesNoIntervalo,
+  selecionarDespesas,
+} from "./analise-de-despesas";
+export type {
+  AgrupamentoDaDespesa,
+  AnaliseDeDespesas,
+  DespesaAnalisada,
+  DespesaParaAnalise,
+  RecorteDeDespesas,
+  SelecaoDeDespesas,
+  SituacaoDaDespesa,
+  Subtotal,
+} from "./analise-de-despesas";

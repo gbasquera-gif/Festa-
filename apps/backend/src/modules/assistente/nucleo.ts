@@ -60,6 +60,7 @@ const MENSAGEM_DE_FALHA: Record<FalhaDoProvedor["tipo"], string> = {
 
 export const EXEMPLOS_ADMIN = [
   "Qual o faturamento de outubro?",
+  "Quais foram os maiores fornecedores este mês?",
   "Quanto temos contratado para novembro?",
   "Quanto temos a receber?",
   "Quantas festas temos em novembro?",
@@ -156,6 +157,8 @@ export class NucleoDoAssistente {
       let texto: string | null = null;
       let chamouOperacao = false;
       const complementos: ComplementoDaResposta[] = [];
+      /** Resultados de consultarDespesas: a resposta só pode citar valores que vieram deles. */
+      const conferiveis: Record<string, unknown>[] = [];
       const controle = new AbortController();
       const prazo = setTimeout(() => controle.abort(), this.cfg.limites.tempoPorPerguntaMs);
 
@@ -183,6 +186,7 @@ export class NucleoDoAssistente {
             }
             const resultado = await this.executar(chamada.nome, chamada.argumentos, identidade, agora);
             ferramentasUsadas.push(chamada.nome);
+            if (chamada.nome === "consultarDespesas") conferiveis.push(resultado.dados);
             if (resultado.complemento) complementos.push(resultado.complemento);
             if (resultado.tipo === "RECUSA") recusou = true;
             if (resultado.tipo === "LIMITACAO" && tipo === "RESPOSTA") tipo = "LIMITACAO";
@@ -223,6 +227,14 @@ export class NucleoDoAssistente {
       else if (texto.includes(MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL)) tipo = "LIMITACAO";
       if (ferramentasUsadas.length === 0 && tipo === "RESPOSTA") tipo = "LIMITACAO";
       if (tipo === "RESPOSTA") texto = completar(texto, complementos);
+      // Rede de segurança das análises: todo valor (R$ ou %) da resposta tem
+      // de ter vindo da ferramenta. Conta feita pelo modelo, ou número de
+      // outra origem, troca a resposta pelo resumo montado no servidor.
+      let conferencia: "SUBSTITUIDA" | undefined;
+      if (conferiveis.length && tipo !== "RECUSA" && !valoresConferem(texto, conferiveis)) {
+        texto = conferiveis.map((d) => String(d.resumo ?? d.limitacao ?? "")).filter(Boolean).join("\n\n") || texto;
+        conferencia = "SUBSTITUIDA";
+      }
 
       this.conversas.registrar(conversa, { pergunta: mensagem, resposta: texto, consultas });
       const custo = this.metricas.registrar({
@@ -235,6 +247,7 @@ export class NucleoDoAssistente {
         passos,
         tokens: uso,
         latenciaMs: Date.now() - inicio,
+        conferencia,
       });
       await this.somarGasto(custo);
       return {
@@ -443,6 +456,23 @@ function completar(texto: string, complementos: readonly ComplementoDaResposta[]
   return saida;
 }
 
+/** Um valor em reais ou percentual como chave de comparação: "R$ 1.234,5" e "R$1234,50" são o mesmo. */
+function chaveDoValor(bruto: string): string {
+  const percentual = bruto.includes("%");
+  const numero = bruto.replace(/R\$|%|\s|[+\-−]/g, "");
+  const [inteiro, decimal = ""] = numero.split(",");
+  const limpo = inteiro.replace(/\./g, "").replace(/^0+(?=\d)/, "");
+  return percentual ? `${limpo},${decimal.replace(/0+$/, "")}%` : `${limpo},${decimal.padEnd(2, "0").slice(0, 2)}`;
+}
+
+const VALORES_NO_TEXTO = /[+\-−]?\s?R\$\s?\d[\d.]*(?:,\d+)?|[+\-−]?\d+(?:,\d+)?\s?%/g;
+
+/** Todo R$ e todo % do texto aparecem nos resultados das ferramentas (sinal à parte). */
+export function valoresConferem(texto: string, resultados: readonly Record<string, unknown>[]): boolean {
+  const disponiveis = new Set((JSON.stringify(resultados).match(VALORES_NO_TEXTO) ?? []).map(chaveDoValor));
+  return (texto.match(VALORES_NO_TEXTO) ?? []).every((v) => disponiveis.has(chaveDoValor(v)));
+}
+
 function argsSeguros(argumentos: string): Record<string, unknown> {
   try {
     const v = JSON.parse(argumentos);
@@ -456,6 +486,13 @@ function periodoDoResultado(r: ResultadoDaFerramenta): ConsultaFeita["periodo"] 
   const p = (r.dados as { periodo?: { rotulo?: string; de?: string; ate?: string } }).periodo;
   return p?.rotulo && p.de && p.ate ? { rotulo: p.rotulo, de: p.de, ate: p.ate } : undefined;
 }
+
+/** Só para quem tem consultarDespesas (ADMIN). */
+const REGRAS_DAS_DESPESAS = [
+  "11. Despesa com recorte — fornecedor, categoria, situação (pago, a pagar, vencido), média, maior/menor, ranking, comparação, ou períodos como \"últimos 3 meses\", \"este trimestre\", \"até agora\": use consultarDespesas com os filtros que a pessoa disse. Nunca responda uma pergunta com fornecedor ou categoria com um total geral.",
+  "12. consultarDespesas: natureza só se a pessoa disser; situação: gastamos/pagamos = PAGO, a pagar = A_PAGAR, vencido = VENCIDO, registramos/lançamos = TODOS. \"precisaConfirmar\": mostre as opções e pergunte, sem somar. \"semCorrespondencia\": diga que não há lançamentos e ofereça só o que vier nele. Diga o período considerado, os filtros, o critério e a quantidade de lançamentos. Não faça contas: use só os valores e percentuais que vierem.",
+  "13. Continuação de consultarDespesas (\"e no mês passado?\", \"e quanto disso já foi pago?\" = situação TODOS, \"e em custeio?\"): repita a última chamada trocando só o que a pessoa mudou.",
+];
 
 /** As instruções do modelo. Curtas: cada token aqui é pago em toda pergunta. */
 export function instrucoes(papel: IdentidadeAutenticada["papel"], agora: Date): string {
@@ -477,5 +514,6 @@ export function instrucoes(papel: IdentidadeAutenticada["papel"], agora: Date): 
     "8. Português do Brasil, objetivo, até 5 frases curtas. Use os valores exatamente como vieram (R$ já formatado). Sem tabelas; listas curtas com • só para poucas festas. Não cite links: a tela mostra as fontes.",
     "9. Se a pergunta for ambígua, diga o critério que usou ou pergunte. Se não houver ferramenta para a pergunta, diga claramente que ainda não é possível consultar isso. Se a ferramenta devolver \"limitacao\", explique-a em uma frase e ofereça só o que vier em \"alternativasDisponiveis\"; nunca sugira outro formato de período ou de consulta.",
     "10. Não repita dados pessoais além do primeiro nome que a ferramenta trouxer.",
+    ...(papel === "ADMIN" ? REGRAS_DAS_DESPESAS : []),
   ].join("\n");
 }

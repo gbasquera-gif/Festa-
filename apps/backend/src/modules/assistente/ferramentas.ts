@@ -28,6 +28,7 @@ import {
   type PapelAutorizado,
 } from "./contrato";
 import { interpretarPeriodo, normalizar, rotuloDoDia, situacaoDoPeriodo, type Periodo } from "./periodo";
+import { consultarDespesas } from "./ferramentas-despesas";
 
 /**
  * O catálogo de ferramentas do Assistente IA.
@@ -44,7 +45,7 @@ import { interpretarPeriodo, normalizar, rotuloDoDia, situacaoDoPeriodo, type Pe
 
 /** Os serviços de que as ferramentas dependem — só leitura. Uma interface, para os testes trocarem. */
 export type ServicosDoAssistente = {
-  financeiro: Pick<FinanceiroService, "panorama" | "despesasPorNatureza">;
+  financeiro: Pick<FinanceiroService, "panorama" | "despesasPorNatureza" | "despesasParaAnalise" | "nomesNasDespesas">;
   retiradas: Pick<RetiradasService, "listar">;
   comercial: Pick<ComercialService, "visaoGeral">;
   panoramaDeOrcamentos: Pick<PanoramaDeOrcamentosService, "panorama">;
@@ -274,7 +275,7 @@ function complementoDoMesEmAndamento(
 const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam }>> = {
   nome: "consultarFinanceiro",
   descricao:
-    "Indicadores financeiros de um MÊS-CALENDÁRIO ou ANO, iguais aos do Financeiro: faturamento por competência (realizado ou contratado), retenção por cancelamento, despesas (consumo, custeio), Resultado Operacional e margem, caixa (entradas PAID, reembolsos realizados), investimento em acervo, festas e ticket médio do mês, e a posição de hoje (a receber, crédito Festaê em aberto das clientes). Use para faturamento, contratado de um mês (inclusive \"contratado para o mês que vem\" ou \"para novembro\": o mês inteiro), recebimentos, a receber, resultado, despesas, acervo investido e crédito das clientes.",
+    "Indicadores financeiros de um MÊS-CALENDÁRIO ou ANO, iguais aos do Financeiro: faturamento por competência (realizado ou contratado), retenção por cancelamento, despesas (consumo, custeio), Resultado Operacional e margem, caixa (entradas PAID, reembolsos realizados), investimento em acervo, festas e ticket médio do mês, e a posição de hoje (a receber, crédito Festaê em aberto das clientes). Use para faturamento, contratado de um mês (inclusive \"contratado para o mês que vem\" ou \"para novembro\": o mês inteiro), recebimentos, a receber, resultado, despesas, acervo investido e crédito das clientes. NÃO filtra despesas por fornecedor, categoria ou situação, nem compara períodos: para isso use consultarDespesas.",
   natureza: "LEITURA",
   papeis: ["ADMIN"],
   parametros: z.object({ periodo: periodoParam }),
@@ -864,6 +865,7 @@ const solicitarOperacao: Ferramenta<z.ZodObject<{ operacao: z.ZodString }>> = {
 
 export const CATALOGO: readonly Ferramenta[] = [
   consultarFinanceiro,
+  consultarDespesas,
   consultarRetiradasDosSocios,
   consultarCarteiraFutura,
   consultarFestas,
