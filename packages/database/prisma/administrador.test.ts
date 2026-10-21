@@ -6,7 +6,7 @@ const base: EntradaDoAdmin = {
   email: "admin@exemplo.test",
   senha: "senha-da-variavel",
   conta: null,
-  haOutroAdminAtivo: false,
+  instalacaoJaFeita: false,
   pedidoJaAplicado: false,
 };
 const admin = { role: "ADMIN", deletedAt: null };
@@ -21,8 +21,8 @@ describe("decidirAdministrador", () => {
     assert.deepEqual(decidirAdministrador(base), { acao: "CRIAR", pedido: PEDIDO_DA_INSTALACAO });
   });
 
-  it("conta inexistente, mas já há outro ADMIN: não cria sozinho", () => {
-    assert.equal(decidirAdministrador({ ...base, haOutroAdminAtivo: true }).acao, "PRESERVAR");
+  it("conta inexistente, mas já há (ou houve) ADMIN, mesmo desativado: não cria sozinho", () => {
+    assert.equal(decidirAdministrador({ ...base, instalacaoJaFeita: true }).acao, "PRESERVAR");
   });
 
   it("conta existente: preserva senha, papel e situação em todo boot", () => {
@@ -55,7 +55,7 @@ describe("decidirAdministrador", () => {
   });
 
   it("recuperação de e-mail que não existe cria, mesmo havendo outro ADMIN (é pedido explícito)", () => {
-    assert.deepEqual(decidirAdministrador({ ...base, haOutroAdminAtivo: true, pedido: "novo-admin" }), { acao: "CRIAR", pedido: "novo-admin" });
+    assert.deepEqual(decidirAdministrador({ ...base, instalacaoJaFeita: true, pedido: "novo-admin" }), { acao: "CRIAR", pedido: "novo-admin" });
   });
 
   it("pedido inválido ou sem as outras variáveis é recusado", () => {
