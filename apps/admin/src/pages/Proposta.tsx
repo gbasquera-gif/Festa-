@@ -74,8 +74,6 @@ type PropostaPublica = {
   validoAte: string;
   aprovadoEm: string | null;
   aprovadoPorNome: string | null;
-  /** Confirmada pela equipe com o Pix já recebido (sem aceite pelo link). */
-  aprovadaPelaEquipe?: boolean;
   /** O sinal da opção de referência — depois do aceite, a escolhida. */
   sinal: {
     percentual: number;
@@ -388,11 +386,9 @@ export default function Proposta({ token }: { token: string }) {
             <>
               <h2>{p.sinal.pago ? "Sua data está reservada 💛" : "Que alegria ter você com a gente 💛"}</h2>
               <p className="proposta-texto">
-                {p.aprovadaPelaEquipe
-                  ? `Recebemos o seu sinal e confirmamos a proposta em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}. Sua data está reservada e já começamos a preparar tudo.`
-                  : p.sinal.pago
-                    ? `Sinal confirmado pela Festaê. Sua data está reservada e já começamos a preparar tudo. Aprovada por ${p.aprovadoPorNome} em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}.`
-                    : `Proposta aprovada por ${p.aprovadoPorNome} em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}. Agora falta só um passo para reservar sua data.`}
+                {p.sinal.pago
+                  ? `Sinal confirmado pela Festaê. Sua data está reservada e já começamos a preparar tudo. Aprovada por ${p.aprovadoPorNome} em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}.`
+                  : `Proposta aprovada por ${p.aprovadoPorNome} em ${new Date(p.aprovadoEm).toLocaleDateString("pt-BR")}. Agora falta só um passo para reservar sua data.`}
               </p>
               {varias && aprovada && (
                 <p className="proposta-texto">

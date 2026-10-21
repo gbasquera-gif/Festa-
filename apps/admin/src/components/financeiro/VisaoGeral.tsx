@@ -1,13 +1,12 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { api, baixarArquivo } from "@/lib/api";
 import { Barra, Indicador, NumeroEscuro, Rotulo } from "./pecas";
-import { brl, nomeDoMes, numero, pct } from "./formato";
+import { brl, nomeDoMes, pct } from "./formato";
 import { DetalheDoIndicador, type TipoDeDetalhe } from "./DetalheDoIndicador";
 import type { Panorama } from "./panorama";
-import { SaldoDisponivel } from "./SaldoDisponivel";
 
 /**
  * A leitura executiva do mês.
@@ -68,12 +67,6 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           investimento, não despesa do mês. Não considera impostos, pró-labore nem depreciação —
           por isso não se chama lucro líquido.
         </p>
-        {data.distribuicao && data.distribuicao.mes.proLabore > 0 && (
-          <p className="mt-2 text-xs text-white/75" data-pro-labore-a-parte>
-            Pró-labore do mês, à parte: {brl(data.distribuicao.mes.proLabore)} · resultado gerencial após pró-labore:{" "}
-            {brl(data.distribuicao.mes.resultadoAposProLabore)} (não é lucro contábil).
-          </p>
-        )}
       </div>
 
       {/* Meta: só existe quando foi definida. */}
@@ -138,7 +131,7 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           <Indicador rotulo="Reembolsos" valor={brl(data.caixa.reembolsos)}
             nota="devolvidos a clientes no mês" tom={data.caixa.reembolsos > 0 ? "alerta" : "normal"} />
           <Indicador rotulo="Caixa do mês" valor={brl(data.caixa.liquido)}
-            nota="entradas − reembolsos · recebimentos, não o saldo da conta" />
+            nota="entradas − reembolsos" />
         </div>
         {(data.caixa.reembolsosARealizar ?? 0) > 0 && (
           <p className="mt-2 text-xs font-medium" style={{ color: "var(--fin-coral-dark)" }} data-reembolsos-a-realizar>
@@ -153,9 +146,6 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           </p>
         )}
       </div>
-
-      <FluxoDeCaixaDoMes data={data} mes={mes} />
-      <SaldoDisponivel mes={mes} />
 
       {/* Comparação com o mês anterior. */}
       <div className="fin-cartao">
@@ -238,88 +228,5 @@ function BotaoDoRelatorio({ ano, mes }: { ano: number; mes: string }) {
       <FileDown className="size-4" aria-hidden />
       {gerando ? "Gerando relatório…" : "Relatório executivo (PDF)"}
     </button>
-  );
-}
-
-/**
- * O fluxo de caixa: o dinheiro que entrou e saiu, por natureza.
- *
- * Bloco novo, abaixo do caixa e sem mexer nele nem no Resultado Operacional.
- * É aqui que as retiradas dos sócios aparecem — como saída, separadas por
- * categoria —, ao lado de despesas e acervo, para a pergunta "para onde foi o
- * dinheiro?" ter resposta numa tela só.
- */
-function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
-  if (!data.fluxoDeCaixa) return null;
-  const { mes: m, ano: a } = data.fluxoDeCaixa;
-  // Agrupado pela natureza da saída. Pró-labore (remuneração) e distribuição
-  // de lucros (destino do lucro) ficam em grupos diferentes de propósito.
-  const linhas: { grupo: string; rotulo: string; mes: number; ano: number; sinal: "+" | "−"; destaque?: boolean }[] = [
-    { grupo: "Entradas", rotulo: "Pagamentos recebidos", mes: m.entradas, ano: a.entradas, sinal: "+" },
-    { grupo: "Saídas da operação", rotulo: "Reembolsos a clientes", mes: m.reembolsos, ano: a.reembolsos, sinal: "−" },
-    { grupo: "Saídas da operação", rotulo: "Despesas (consumo e custeio)", mes: m.despesasOperacionais, ano: a.despesasOperacionais, sinal: "−" },
-    { grupo: "Investimento", rotulo: "Acervo", mes: m.acervo, ano: a.acervo, sinal: "−" },
-    { grupo: "Remuneração dos sócios", rotulo: "Pró-labore (despesa, fora do Resultado Operacional)", mes: m.proLabore, ano: a.proLabore, sinal: "−" },
-    { grupo: "Com os sócios · capital e lucro", rotulo: "Distribuição de lucros", mes: m.retiradas.DISTRIBUICAO_DE_LUCROS, ano: a.retiradas.DISTRIBUICAO_DE_LUCROS, sinal: "−", destaque: true },
-    { grupo: "Com os sócios · capital e lucro", rotulo: "Devolução de aporte", mes: m.retiradas.DEVOLUCAO_DE_APORTE, ano: a.retiradas.DEVOLUCAO_DE_APORTE, sinal: "−" },
-  ];
-  const valor = (v: number, sinal: "+" | "−") => (v === 0 ? "—" : `${sinal} ${numero(v)}`);
-  return (
-    <div className="fin-cartao overflow-x-auto p-0" data-fluxo-de-caixa>
-      <div className="px-4 pt-4">
-        <Rotulo>Fluxo de caixa · {nomeDoMes(mes)}</Rotulo>
-      </div>
-      <table className="fin-tabela">
-        <thead>
-          <tr>
-            <th>Pela data em que o dinheiro entrou ou saiu</th>
-            <th className="num">No mês</th>
-            <th className="num">No ano, até o mês</th>
-          </tr>
-        </thead>
-        <tbody>
-          {linhas.map((l, i) => (
-            <FragmentoDoGrupo key={l.rotulo} grupo={i === 0 || linhas[i - 1].grupo !== l.grupo ? l.grupo : null}>
-              <tr data-linha-do-fluxo={l.rotulo}>
-                <td className="pl-6" style={l.destaque ? { color: "var(--fin-navy-ink)", fontWeight: 600 } : undefined}>{l.rotulo}</td>
-                <td className="num">{valor(l.mes, l.sinal)}</td>
-                <td className="num">{valor(l.ano, l.sinal)}</td>
-              </tr>
-            </FragmentoDoGrupo>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td>Movimento líquido do caixa</td>
-            <td className="num" style={{ color: m.movimentoLiquido < 0 ? "var(--fin-coral-dark)" : undefined }} data-movimento-liquido>
-              {brl(m.movimentoLiquido)}
-            </td>
-            <td className="num" style={{ color: a.movimentoLiquido < 0 ? "var(--fin-coral-dark)" : undefined }}>
-              {brl(a.movimentoLiquido)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-      <p className="px-4 pb-4 pt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
-        Distribuição de lucros e devolução de aporte reduzem o caixa, mas não são despesa: não mudam faturamento, despesas
-        nem o Resultado Operacional acima. Pró-labore é despesa com os sócios, lançada em Despesas — não é distribuição de
-        lucros — e fica fora do Resultado Operacional por definição. O saldo da conta está no bloco abaixo.
-      </p>
-    </div>
-  );
-}
-
-function FragmentoDoGrupo({ grupo, children }: { grupo: string | null; children: ReactNode }) {
-  return (
-    <>
-      {grupo && (
-        <tr data-grupo-do-fluxo>
-          <th colSpan={3} className="fin-rotulo pt-3 text-left">
-            {grupo}
-          </th>
-        </tr>
-      )}
-      {children}
-    </>
   );
 }

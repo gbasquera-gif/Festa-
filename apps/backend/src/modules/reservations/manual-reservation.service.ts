@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { prisma, type Prisma } from "@festae/database";
+import { prisma } from "@festae/database";
 import {
   diaDaFesta,
   formasDoTelefone,
@@ -24,37 +24,6 @@ import {
   registrarConflitosDeAcervo,
   type ContextoDoConflito,
 } from "../availability/registro-de-conflitos";
-
-type Tx = Prisma.TransactionClient;
-
-/**
- * Um recebimento que nasce junto com a venda, na mesma transação.
- *
- * Só a aprovação manual da proposta usa: o Pix já caiu, e a reserva e o
- * pagamento existem juntos ou não existem. A data é a do recebimento, não a
- * do lançamento; origem, autor, observação e chave ficam no pagamento.
- */
-export type PagamentoInicial = {
-  valor: number;
-  recebidoEm: Date;
-  metodo: "PIX" | "CARTAO" | "BOLETO" | "OUTRO";
-  origem: "REGISTRO_MANUAL" | "APROVACAO_MANUAL_DA_PROPOSTA";
-  registradoPorId: string;
-  observacao?: string;
-  chaveDeIdempotencia?: string;
-};
-
-/**
- * O que roda dentro da transação da venda, antes e depois de gravar.
- *
- * É como a conversão de proposta fica atômica sem uma segunda lógica de
- * venda: a trava e a reconferência de material vêm antes; a proposta passa a
- * apontar para a reserva depois. Se qualquer passo recusa, nada fica gravado.
- */
-export type NaMesmaTransacao = {
-  antes?: (tx: Tx) => Promise<void>;
-  depois?: (tx: Tx, reserva: { id: string; orderId: string }) => Promise<void>;
-};
 
 /** Estados que seguram data e material. Recusada e cancelada devolvem tudo. */
 const RESERVAS_ATIVAS = [
@@ -120,13 +89,6 @@ export class ManualReservationService {
      * rota de venda manual não o expõe.
      */
     kitCombinado?: { itens: { productId: string; nome: string; quantity: number }[] },
-    /**
-     * Só a aprovação manual da proposta passa estes. `clienteNaTransacao`
-     * acha ou cria o cadastro da cliente dentro da transação, depois da
-     * conferência de material: se a aprovação falhar, não sobra ficha órfã.
-     * A venda manual não passa e segue como sempre foi.
-     */
-    extra: { pagamentoInicial?: PagamentoInicial; naMesmaTransacao?: NaMesmaTransacao; clienteNaTransacao?: boolean } = {},
   ) {
     // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
     // segunda regra de fuso à espera de divergir da primeira.
@@ -191,33 +153,20 @@ export class ManualReservationService {
     const total = totalDaVendaManual(input.financeiro);
     const precos = await this.precosDosItens(input.produtos.itens.map((i) => i.productId));
 
-    const resolverCliente = async (db: Prisma.TransactionClient) => {
-      const achado = await this.acharOuCriarCliente(input.cliente, db);
-      // O crédito que a tela ofereceu é o da ficha que ela mostrou. Se a venda
-      // acabou ligada a outra ficha (outro e-mail digitado depois, por exemplo),
-      // recusar é melhor do que tirar crédito de quem não estava na tela.
-      if (input.credito && input.credito.clienteId !== achado.id) {
-        throw new ConflictException({
-          message:
-            "O crédito mostrado é de outro cadastro. Confira o telefone e o e-mail da cliente e aplique o crédito de novo.",
-          codigo: "CREDITO_DE_OUTRA_FICHA",
-        });
-      }
-      return achado;
-    };
-    const clienteDeFora = extra.clienteNaTransacao ? null : await resolverCliente(prisma);
+    const cliente = await this.acharOuCriarCliente(input.cliente);
 
-    // O recebimento inicial não passa do total da venda: é sobrepagamento.
-    if (extra.pagamentoInicial && toCentsInt(extra.pagamentoInicial.valor) > toCentsInt(total)) {
-      throw new ConflictException(
-        `O valor recebido (${formatarReais(extra.pagamentoInicial.valor)}) passa do total da venda (${formatarReais(total)}).`,
-      );
+    // O crédito que a tela ofereceu é o da ficha que ela mostrou. Se a venda
+    // acabou ligada a outra ficha (outro e-mail digitado depois, por exemplo),
+    // recusar é melhor do que tirar crédito de quem não estava na tela.
+    if (input.credito && input.credito.clienteId !== cliente.id) {
+      throw new ConflictException({
+        message:
+          "O crédito mostrado é de outro cadastro. Confira o telefone e o e-mail da cliente e aplique o crédito de novo.",
+        codigo: "CREDITO_DE_OUTRA_FICHA",
+      });
     }
 
     const reserva = await prisma.$transaction(async (tx) => {
-      await extra.naMesmaTransacao?.antes?.(tx);
-      const cliente = clienteDeFora ?? (await resolverCliente(tx));
-
       const evento = await tx.event.create({
         data: {
           userId: cliente.id,
@@ -279,26 +228,6 @@ export class ManualReservationService {
             method: input.financeiro.formaPagamento,
             status: input.financeiro.statusPagamento,
             paidAt: input.financeiro.statusPagamento === "PAID" ? new Date() : null,
-            origem: "REGISTRO_MANUAL",
-            registradoPorId: criadoPorId,
-          },
-        });
-      }
-
-      if (extra.pagamentoInicial) {
-        const p = extra.pagamentoInicial;
-        await tx.payment.create({
-          data: {
-            orderId: ordem.id,
-            type: "DEPOSIT",
-            amount: p.valor,
-            method: p.metodo,
-            status: "PAID",
-            paidAt: p.recebidoEm,
-            origem: p.origem,
-            registradoPorId: p.registradoPorId,
-            observacao: p.observacao || undefined,
-            chaveDeIdempotencia: p.chaveDeIdempotencia,
           },
         });
       }
@@ -329,8 +258,6 @@ export class ManualReservationService {
           observacao: "Aplicado na venda",
         });
       }
-
-      await extra.naMesmaTransacao?.depois?.(tx, { id: criada.id, orderId: ordem.id });
 
       return criada;
     }, { timeout: 15_000 });
@@ -591,23 +518,23 @@ export class ManualReservationService {
    * pessoa um dia criar conta no app com o mesmo e-mail, cai neste mesmo
    * registro e leva o histórico junto.
    */
-  private async acharOuCriarCliente(dados: ManualReservationInput["cliente"], db: Prisma.TransactionClient = prisma) {
+  private async acharOuCriarCliente(dados: ManualReservationInput["cliente"]) {
     const email = dados.email?.trim() || null;
     const telefone = normalizarTelefone(dados.telefone);
 
-    const existente = await this.clienteExistente(dados, db);
+    const existente = await this.clienteExistente(dados);
 
     if (existente) {
       // Telefone novo de cliente conhecido é atualização, não conflito. A
       // comparação é pelos dígitos: o mesmo número com outra máscara não é
       // telefone novo, e reescrevê-lo só mudaria a formatação.
       if (normalizarTelefone(existente.phone) !== telefone) {
-        await db.user.update({ where: { id: existente.id }, data: { phone: telefone } });
+        await prisma.user.update({ where: { id: existente.id }, data: { phone: telefone } });
       }
       return existente;
     }
 
-    return db.user.create({
+    return prisma.user.create({
       data: {
         name: dados.nome.trim(),
         email,
@@ -624,11 +551,11 @@ export class ManualReservationService {
    * para a tela de venda poder perguntar "essa cliente tem crédito?" pela
    * mesma regra que, ao salvar, vai decidir de quem é a venda.
    */
-  async clienteExistente(dados: { telefone: string; email?: string | null }, db: Prisma.TransactionClient = prisma) {
+  async clienteExistente(dados: { telefone: string; email?: string | null }) {
     const email = dados.email?.trim() || null;
     const existente = email
-      ? await db.user.findUnique({ where: { email } })
-      : await this.clientePorTelefone(dados.telefone, db);
+      ? await prisma.user.findUnique({ where: { email } })
+      : await this.clientePorTelefone(dados.telefone);
     return existente && !existente.deletedAt ? existente : null;
   }
 
@@ -640,17 +567,17 @@ export class ManualReservationService {
    * mesmo número — duplicata de antes desta regra —, vale o mais antigo, e
    * nenhum é fundido: juntar fichas é decisão de gente, não de busca.
    */
-  private async clientePorTelefone(telefone: string, db: Prisma.TransactionClient = prisma) {
+  private async clientePorTelefone(telefone: string) {
     const formas = formasDoTelefone(telefone);
     if (formas.length === 0) return null;
 
-    const [achado] = await db.$queryRaw<{ id: string }[]>`
+    const [achado] = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id FROM users
        WHERE "deletedAt" IS NULL
          AND regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g') = ANY(${formas})
        ORDER BY "createdAt" ASC
        LIMIT 1`;
-    return achado ? db.user.findUnique({ where: { id: achado.id } }) : null;
+    return achado ? prisma.user.findUnique({ where: { id: achado.id } }) : null;
   }
 
   /** Preço de tabela de cada item, congelado no pedido. */

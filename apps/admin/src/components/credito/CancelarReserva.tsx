@@ -19,7 +19,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 
 type Voucher = { id: string; numero: number; valor: number };
 
@@ -167,8 +166,6 @@ function DistribuicaoDoValor({
   aoMudar: () => void;
 }) {
   const { campos } = d;
-  // A devolução já feita é dinheiro saindo, registrado à mão: só ADMIN.
-  const ehAdmin = useAuth().user?.role === "ADMIN";
   const campo = (rotulo: string, nota: string, valor: string, mudar: (v: string) => void, id: string) => (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{rotulo}</Label>
@@ -230,10 +227,10 @@ function DistribuicaoDoValor({
           <div role="radiogroup" aria-label="Situação do reembolso" className="grid gap-2 sm:grid-cols-2">
             {(
               [
-                [false, "Reembolso a realizar", ehAdmin ? "a Festaê ainda vai devolver" : "o ADMIN registra quando devolver"],
+                [false, "Reembolso a realizar", "a Festaê ainda vai devolver"],
                 [true, "Já devolvido", "registrar a devolução já feita"],
               ] as const
-            ).filter(([valor]) => ehAdmin || !valor).map(([valor, titulo, nota]) => (
+            ).map(([valor, titulo, nota]) => (
               <button
                 key={titulo}
                 type="button"

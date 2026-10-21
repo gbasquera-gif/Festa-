@@ -425,7 +425,6 @@
 .fin-etiqueta.acervo { color: var(--fin-gold-dark); background: var(--fin-gold-pale); border-color: transparent; }
 .fin-etiqueta.consumo { color: var(--fin-coral-dark); }
 .fin-etiqueta.custeio { color: var(--fin-muted); }
-.fin-etiqueta.prolabore { color: var(--fin-navy-ink); border-color: var(--fin-navy-ink); }
 
 /* Etiqueta de situação de pagamento.
  *

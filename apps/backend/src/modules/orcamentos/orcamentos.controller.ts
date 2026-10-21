@@ -1,11 +1,9 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
-  aprovarManualmenteSchema,
   converterOrcamentoSchema,
   orcamentoSchema,
   recusarOrcamentoSchema,
-  type AprovarManualmenteInput,
   type CategoriaDaPerda,
   type ConverterOrcamentoInput,
   type OrcamentoInput,
@@ -146,23 +144,6 @@ export class OrcamentosController {
     const canal = converterOrcamentoSchema.safeParse({ canal: body?.canal ?? undefined });
     if (!canal.success) throw new BadRequestException("Canal inválido.");
     return this.orcamentos.confirmarSinal(id, user.userId, { ...(body ?? {}), canal: canal.data.canal });
-  }
-
-  @ApiOperation({
-    summary: "Aprova pelo painel com o Pix recebido por fora",
-    description:
-      "Aprova (se ainda não aprovada), converte em reserva com checagem de disponibilidade e registra o Pix " +
-      "recebido — de qualquer valor até o total —, tudo numa transação. A mesma chave devolve o resultado " +
-      "gravado em vez de lançar de novo. Proposta já convertida recusa com 409. Só ADMIN: é confirmação financeira manual.",
-  })
-  @Roles("ADMIN")
-  @Post(":id/aprovar-manualmente")
-  aprovarManualmente(
-    @Param("id") id: string,
-    @Body(new ZodValidationPipe(aprovarManualmenteSchema)) body: AprovarManualmenteInput,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.orcamentos.aprovarManualmente(id, body, user.userId);
   }
 
   @ApiOperation({

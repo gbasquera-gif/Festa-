@@ -22,17 +22,10 @@ import {
   type DadosDaReserva,
 } from "@/components/FormularioDeReserva";
 import { ApiError, api } from "@/lib/api";
-import {
-  PagamentosDaReserva,
-  type AlteracaoDePagamento,
-  type PagamentoDaReserva,
-} from "@/components/PagamentosDaReserva";
 
 interface ReservaCompleta {
   id: string;
   status: string;
-  /** O histórico das correções de pagamento (antes, depois, quem, por quê). */
-  alteracoesDePagamentos?: AlteracaoDePagamento[];
   /** Crédito Festaê aplicado, já somado pelo servidor. */
   creditoAplicado?: number;
   eventDate: string;
@@ -48,7 +41,7 @@ interface ReservaCompleta {
     notes: string | null;
     kitId: string | null;
     items: { productId: string; quantity: number; product: { name: string } }[];
-    payments: PagamentoDaReserva[];
+    payments: { id: string; amount: string | number; status: string; method: string }[];
     event: {
       type: string;
       date: string;
@@ -289,16 +282,21 @@ export default function EditarReserva() {
                 <strong>{brl(saldo)}</strong>
               </p>
             </div>
-            <PagamentosDaReserva
-              reservaId={reserva.id}
-              pagamentos={reserva.order.payments}
-              alteracoes={reserva.alteracoesDePagamentos ?? []}
-              cancelada={reserva.status === "CANCELLED" || reserva.status === "REJECTED"}
-            />
+            {reserva.order.payments.length > 0 ? (
+              <ul className="space-y-1 text-muted-foreground">
+                {reserva.order.payments.map((p) => (
+                  <li key={p.id}>
+                    {brl(Number(p.amount))} · {p.method} ·{" "}
+                    {p.status === "PAID" ? "recebido" : "a receber"}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground">Nenhum pagamento registrado.</p>
+            )}
             <p className="text-xs text-muted-foreground">
-              O formulário não edita pagamentos: recebimento é dinheiro que entrou. Mude os valores
-              acima e o saldo se ajusta sozinho. Lançamento manual com valor ou data errados se
-              corrige em “Corrigir” (administração), com justificativa e histórico.
+              Pagamentos não se editam por aqui: sinal recebido é dinheiro que entrou, com
+              referência no Mercado Pago. Mude os valores acima e o saldo se ajusta sozinho.
             </p>
           </CardContent>
         </Card>
