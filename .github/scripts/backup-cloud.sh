@@ -39,7 +39,7 @@ trap cleanup EXIT
 trap 'echo "Backup interrompido; nenhum dado em claro sera publicado." >&2' ERR
 
 echo '1/5 Verificando servidor (somente leitura)...'
-SERVER_VER=$(printf '%s\n' "$FESTAE_DATABASE_PUBLIC_URL" | docker run --rm -i \
+SERVER_VER=$(printf '%s\n' "$FESTAE_DATABASE_PUBLIC_URL" | docker run --rm -i --user "$(id -u):$(id -g)" \
   -v "$SOURCE_DIR:/scripts:ro" "$PG_IMAGE" sh /scripts/no-container.sh versao | tail -n 1 | tr -d '\r[:space:]')
 [[ "$SERVER_VER" =~ ^[0-9]+$ ]] || { echo 'Versao nao identificada.' >&2; exit 1; }
 if ((SERVER_VER / 10000 != 18)); then
@@ -47,7 +47,7 @@ if ((SERVER_VER / 10000 != 18)); then
 fi
 
 echo '2/5 Fazendo dump com assinaturas do mesmo snapshot...'
-printf '%s\n' "$FESTAE_DATABASE_PUBLIC_URL" | docker run --rm -i \
+printf '%s\n' "$FESTAE_DATABASE_PUBLIC_URL" | docker run --rm -i --user "$(id -u):$(id -g)" \
   -v "$SOURCE_DIR:/scripts:ro" -v "$WORK_DIR:/saida" \
   "$PG_IMAGE" sh /scripts/no-container.sh backup festae.dump foto-producao.txt
 test -s "$WORK_DIR/festae.dump" && test -s "$WORK_DIR/foto-producao.txt"
@@ -59,7 +59,7 @@ docker run -d --name "$RESTORE_CONTAINER" --network none \
   -v "$SOURCE_DIR:/scripts:ro" -v "$WORK_DIR:/saida" \
   "$PG_IMAGE" >/dev/null
 docker exec "$RESTORE_CONTAINER" sh /scripts/no-container.sh esperar
-docker exec "$RESTORE_CONTAINER" sh /scripts/no-container.sh restaurar festae.dump foto-restauro.txt
+docker exec --user "$(id -u):$(id -g)" "$RESTORE_CONTAINER" sh /scripts/no-container.sh restaurar festae.dump foto-restauro.txt
 
 echo '4/5 Comparando as assinaturas...'
 if ! cmp -s "$WORK_DIR/foto-producao.txt" "$WORK_DIR/foto-restauro.txt"; then
