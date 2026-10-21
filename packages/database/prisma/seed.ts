@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../generated/client/index.js";
-import { decidirAdministrador } from "./administrador";
+import { decidirAdministrador, PEDIDO_DA_INSTALACAO } from "./administrador";
 
 const prisma = new PrismaClient();
 
@@ -41,14 +41,16 @@ async function seedAdmin() {
   const conta = email
     ? await prisma.user.findUnique({ where: { email }, select: { id: true, role: true, deletedAt: true } })
     : null;
-  const haOutroAdminAtivo =
-    (await prisma.user.count({ where: { role: "ADMIN", deletedAt: null, ...(conta ? { id: { not: conta.id } } : {}) } })) > 0;
+  // Conta ADMIN desativada também conta: o seed não "reinstala" por cima dela.
+  const instalacaoJaFeita =
+    (await prisma.user.count({ where: { role: "ADMIN", ...(conta ? { id: { not: conta.id } } : {}) } })) > 0 ||
+    (await prisma.recuperacaoDeAcesso.count({ where: { pedido: PEDIDO_DA_INSTALACAO } })) > 0;
   const pedidoJaAplicado =
     conta && pedido
       ? (await prisma.recuperacaoDeAcesso.count({ where: { usuarioId: conta.id, pedido } })) > 0
       : false;
 
-  const decisao = decidirAdministrador({ email, senha, pedido, conta, haOutroAdminAtivo, pedidoJaAplicado });
+  const decisao = decidirAdministrador({ email, senha, pedido, conta, instalacaoJaFeita, pedidoJaAplicado });
 
   switch (decisao.acao) {
     case "NADA":

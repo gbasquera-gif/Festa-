@@ -9,7 +9,8 @@
  *
  * A regra agora:
  *
- * - **Instalação** (nenhum ADMIN ativo e a conta não existe): cria.
+ * - **Instalação** (a conta não existe, nenhuma conta ADMIN existe — nem
+ *   desativada — e nenhuma criação inicial foi registrada): cria.
  * - **Conta existente**: não toca em nada. Senha, papel e situação são do
  *   painel.
  * - **Recuperação**: só a pedido explícito, com SEED_ADMIN_RECUPERACAO =
@@ -31,8 +32,11 @@ export type EntradaDoAdmin = {
   /** Valor de SEED_ADMIN_RECUPERACAO. */
   pedido?: string;
   conta: ContaDoAdmin;
-  /** Existe outro ADMIN ativo além desta conta. */
-  haOutroAdminAtivo: boolean;
+  /**
+   * Já houve instalação: existe outra conta ADMIN (ativa ou desativada) ou a
+   * criação inicial já foi registrada. Então o seed não cria administrador sozinho.
+   */
+  instalacaoJaFeita: boolean;
   /** Este pedido de recuperação já foi aplicado a esta conta. */
   pedidoJaAplicado: boolean;
 };
@@ -78,10 +82,10 @@ export function decidirAdministrador(e: EntradaDoAdmin): DecisaoDoAdmin {
   }
 
   if (!e.conta) {
-    if (e.haOutroAdminAtivo) {
+    if (e.instalacaoJaFeita) {
       return {
         acao: "PRESERVAR",
-        motivo: "já existe administrador ativo e esta conta não existe: o seed não cria outra. Use o painel, ou SEED_ADMIN_RECUPERACAO para criar por pedido explícito.",
+        motivo: "já existe (ou existiu) administrador e esta conta não existe: o seed não cria outra. Use o painel, ou SEED_ADMIN_RECUPERACAO para criar por pedido explícito.",
       };
     }
     return { acao: "CRIAR", pedido: PEDIDO_DA_INSTALACAO };
