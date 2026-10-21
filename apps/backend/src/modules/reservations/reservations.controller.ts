@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
   alterarDataSchema,
@@ -32,6 +32,16 @@ import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser, type AuthUser } from "../../common/decorators/current-user.decorator";
+
+/**
+ * Dinheiro registrado à mão — recebimento ou devolução já feita — é só do
+ * ADMIN. OPS continua operando a reserva e vendo os pagamentos; o que entra e
+ * sai pela loja (checkout e aviso do Mercado Pago) segue automático, sem
+ * passar por aqui.
+ */
+function soAdminRegistraDinheiro(user: AuthUser, registraDinheiro: boolean, mensagem: string) {
+  if (registraDinheiro && user.role !== "ADMIN") throw new ForbiddenException(mensagem);
+}
 
 @ApiTags("reservations")
 @ApiBearerAuth()
@@ -83,6 +93,12 @@ export class ReservationsController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(manualReservationSchema)) body: ManualReservationInput,
   ) {
+    // OPS cria a venda; o sinal nasce a receber e o ADMIN registra o recebimento.
+    soAdminRegistraDinheiro(
+      user,
+      body.financeiro.sinal > 0 && body.financeiro.statusPagamento !== "PENDING",
+      "Registrar recebimento é do ADMIN. Crie a venda com o sinal a receber; o ADMIN registra o pagamento depois.",
+    );
     return this.manualReservations.criar(body, user.userId);
   }
 
@@ -133,11 +149,11 @@ export class ReservationsController {
    * a reserva quando é o sinal, e encerra o Pix pendente que a cliente não
    * vai mais pagar.
    *
-   * OPS registra junto com ADMIN: quem recebe o dinheiro na retirada é quem
-   * está no balcão.
+   * Só ADMIN: é confirmação financeira manual. OPS vê os pagamentos da
+   * reserva, mas não registra recebimento.
    */
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "OPS")
+  @Roles("ADMIN")
   @Post("reservations/:id/pagamentos")
   registrarPagamento(
     @CurrentUser() user: AuthUser,
@@ -180,6 +196,12 @@ export class ReservationsController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(cancelarReservaSchema)) body: CancelarReservaInput,
   ) {
+    // OPS cancela e define o destino; a devolução já feita é o ADMIN quem registra.
+    soAdminRegistraDinheiro(
+      user,
+      body.reembolso > 0 && body.reembolsadoEm !== undefined,
+      "A devolução já feita é registrada pelo ADMIN. Cancele com o reembolso a realizar.",
+    );
     return this.reservationsService.cancelar(id, body, user.userId);
   }
 
@@ -196,16 +218,21 @@ export class ReservationsController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(tratarPagamentoTardioSchema)) body: TratarPagamentoTardioInput,
   ) {
+    soAdminRegistraDinheiro(
+      user,
+      body.reembolso > 0 && body.reembolsadoEm !== undefined,
+      "A devolução já feita é registrada pelo ADMIN. Registre o tratamento com o reembolso a realizar.",
+    );
     return this.reservationsService.tratarPagamentoTardio(id, body, user.userId);
   }
 
   /**
    * Registra uma devolução que a Festaê JÁ fez, por Pix ou outro meio, fora
    * do sistema. Não transfere dinheiro. É o que tira o valor do caixa, no dia
-   * informado. OPS registra junto com ADMIN, como registra pagamento.
+   * informado. Só ADMIN, como registrar pagamento.
    */
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "OPS")
+  @Roles("ADMIN")
   @Post("reservations/:id/reembolso-realizado")
   registrarReembolso(
     @CurrentUser() user: AuthUser,

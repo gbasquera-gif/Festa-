@@ -1,4 +1,4 @@
-import type { FluxoDeCaixa, TotalPorCategoria } from "@festae/shared";
+import type { ControleDaDistribuicao, FluxoDeCaixa, TotalPorCategoria } from "@festae/shared";
 
 /** O que o endpoint /financeiro/panorama devolve. */
 export type Panorama = {
@@ -21,6 +21,8 @@ export type Panorama = {
   retiradas: { mes: TotalPorCategoria; ano: TotalPorCategoria };
   /** Entradas menos reembolsos, despesas, acervo e retiradas, pela data do dinheiro. */
   fluxoDeCaixa: { mes: FluxoDeCaixa; ano: FluxoDeCaixa };
+  /** Resultado Operacional − pró-labore, diante do distribuído: do mês e do ano até o mês. */
+  distribuicao?: { mes: ControleDaDistribuicao; ano: ControleDaDistribuicao };
   aReceber: number;
   recebidoSemData: number;
   acervoAcumulado: number;

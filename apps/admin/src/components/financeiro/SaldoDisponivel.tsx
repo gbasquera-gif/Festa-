@@ -26,6 +26,7 @@ export type SaldoDeCaixa = {
     entradas: number;
     reembolsos: number;
     despesasOperacionais: number;
+    proLabore: number;
     acervo: number;
     retiradas: TotalPorCategoria;
     saidas: number;
@@ -71,10 +72,10 @@ export function SaldoDisponivel({ mes }: { mes: string }) {
     <div className="fin-cartao p-0" data-saldo-disponivel>
       <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4">
         <div>
-          <Rotulo>Saldo disponível · {ate === hoje ? "hoje" : `fim de ${nomeDoMes(mes)}`}</Rotulo>
+          <Rotulo>Saldo disponível calculado · {ate === hoje ? "hoje" : `fim de ${nomeDoMes(mes)}`}</Rotulo>
           <p className="mt-1 max-w-xl text-xs" style={{ color: "var(--fin-muted)" }}>
-            O dinheiro que deveria estar na conta: o saldo inicial informado, mais o que entrou e menos o que saiu
-            desde então — despesas, reembolsos, acervo e retiradas dos sócios.
+            O dinheiro que deveria estar na conta: o saldo inicial informado (abertura do dia), mais o que entrou e menos o
+            que saiu a partir dele — despesas, pró-labore, reembolsos, acervo e retiradas dos sócios.
           </p>
         </div>
         <Button variant="outline" className="min-h-11" onClick={() => setInformando(true)} data-informar-saldo>
@@ -102,7 +103,7 @@ export function SaldoDisponivel({ mes }: { mes: string }) {
               <Linha rotulo="− Reembolsos a clientes" valor={-data.fluxo.reembolsos} />
               <Linha rotulo="− Despesas (consumo e custeio)" valor={-data.fluxo.despesasOperacionais} />
               <Linha rotulo="− Acervo (investimento)" valor={-data.fluxo.acervo} />
-              <Linha rotulo="− Pró-labore (remuneração dos sócios)" valor={-data.fluxo.retiradas.PRO_LABORE} />
+              <Linha rotulo="− Pró-labore (despesa com os sócios)" valor={-data.fluxo.proLabore} />
               <Linha rotulo="− Distribuição de lucros" valor={-data.fluxo.retiradas.DISTRIBUICAO_DE_LUCROS} destaque />
               <Linha rotulo="− Devolução de aporte" valor={-data.fluxo.retiradas.DEVOLUCAO_DE_APORTE} />
             </tbody>
@@ -115,11 +116,19 @@ export function SaldoDisponivel({ mes }: { mes: string }) {
               </tr>
             </tfoot>
           </table>
-          <p className="px-4 pb-4 pt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
-            Saldo informado por {data.referencia.registradoPor ?? "—"}
-            {data.referencia.observacao ? ` (“${data.referencia.observacao}”)` : ""}. Confira com o extrato: se divergir,
-            algum pagamento ou despesa ficou sem lançar — ou informe o saldo de novo; o mais recente vale.
-          </p>
+          <div className="mx-4 mb-4 mt-2 grid gap-1 rounded-md border px-3 py-2 text-xs" style={{ color: "var(--fin-navy-ink)" }} data-aviso-conciliacao>
+            <strong>Depende da conciliação.</strong>
+            <span style={{ color: "var(--fin-muted)" }}>
+              É um saldo calculado, não lido do banco: só fica certo se tudo o que entrou e saiu estiver lançado no painel —
+              pagamentos com data, despesas com data de pagamento, reembolsos realizados e retiradas. Tarifas, rendimentos e
+              qualquer movimento feito fora do painel não entram. Confira com o extrato; se divergir, lance o que falta ou
+              informe um novo saldo inicial (o mais recente vale, e o que veio antes dele não é somado de novo).
+            </span>
+            <span style={{ color: "var(--fin-muted)" }}>
+              Saldo inicial informado por {data.referencia.registradoPor ?? "—"}
+              {data.referencia.observacao ? ` (“${data.referencia.observacao}”)` : ""}.
+            </span>
+          </div>
         </div>
       )}
 

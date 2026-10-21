@@ -311,7 +311,7 @@ describe("permissões", () => {
 describe("retiradas dos sócios no relatório", () => {
   const retiradas = [
     { socioId: "A", categoria: "DISTRIBUICAO_DE_LUCROS" as const, valor: 1000, retiradaEm: new Date("2026-09-05T12:00:00Z"), estornada: false },
-    { socioId: "B", categoria: "PRO_LABORE" as const, valor: 500, retiradaEm: new Date("2026-09-15T12:00:00Z"), estornada: false },
+    { socioId: "B", categoria: "DEVOLUCAO_DE_APORTE" as const, valor: 500, retiradaEm: new Date("2026-09-15T12:00:00Z"), estornada: false },
     { socioId: "A", categoria: "DISTRIBUICAO_DE_LUCROS" as const, valor: 777, retiradaEm: new Date("2026-09-20T12:00:00Z"), estornada: true },
   ];
   const com = () =>
@@ -327,7 +327,7 @@ describe("retiradas dos sócios no relatório", () => {
 
   it("entram no fluxo de caixa como saída classificada (estornada fora)", () => {
     const f = com().fluxoDeCaixa;
-    expect(f.retiradas).toEqual({ DISTRIBUICAO_DE_LUCROS: 1000, PRO_LABORE: 500, DEVOLUCAO_DE_APORTE: 0, total: 1500 });
+    expect(f.retiradas).toEqual({ DISTRIBUICAO_DE_LUCROS: 1000, DEVOLUCAO_DE_APORTE: 500, total: 1500 });
     expect(f.movimentoLiquido).toBe(relatorio().fluxoDeCaixa.movimentoLiquido - 1500);
   });
 

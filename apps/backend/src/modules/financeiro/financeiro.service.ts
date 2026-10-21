@@ -36,6 +36,10 @@ import {
   fluxoDeCaixaDoAno,
   fluxoDeCaixaDoMes,
   saldoDisponivel,
+  controleDaDistribuicaoDoAno,
+  controleDaDistribuicaoDoMes,
+  pareceProLabore,
+  proLaboreDoMes,
   diaEmChapeco,
   normalizarDataDaFesta,
   type InformarSaldoDeCaixaInput,
@@ -182,6 +186,8 @@ export class FinanceiroService {
       custeio: despesaDoMes(da("CUSTEIO"), mes),
       total: despesaDoMes(gastos, mes),
       acervo: acervoDoMes(gastos, mes),
+      /** Despesa com os sócios, fora do `total` do Resultado Operacional. */
+      proLabore: proLaboreDoMes(gastos, mes),
     };
   }
 
@@ -317,6 +323,14 @@ export class FinanceiroService {
       fluxoDeCaixa: {
         mes: fluxoDeCaixaDoMes(contratos, gastos, retiradas, mes),
         ano: fluxoDeCaixaDoAno(contratos, gastos, retiradas, ano, mes),
+      },
+      /**
+       * Controle da distribuição de lucros: Resultado Operacional (a mesma
+       * conta de cima), menos o pró-labore, diante do que foi distribuído.
+       */
+      distribuicao: {
+        mes: controleDaDistribuicaoDoMes(contratos, gastos, retiradas, mes),
+        ano: controleDaDistribuicaoDoAno(contratos, gastos, retiradas, ano, mes),
       },
 
       aReceber: totalAReceber(contratos),
@@ -599,13 +613,36 @@ export class FinanceiroService {
     });
   }
 
+  /**
+   * Pró-labore tem natureza própria e só ela. Consumo, custeio ou acervo que
+   * diz "pró-labore" é lançamento no lugar errado: como custeio, entraria no
+   * Resultado Operacional, que por definição não inclui pró-labore.
+   */
+  private conferirNaturezaDoProLabore(natureza: NaturezaDoGasto, descricao: string, categoria?: string | null) {
+    if (natureza !== "PRO_LABORE" && pareceProLabore(descricao, categoria)) {
+      throw new BadRequestException(
+        "Pró-labore tem natureza própria: escolha a natureza “Pró-labore”. Como consumo ou custeio ele entraria no Resultado Operacional, que não inclui pró-labore.",
+      );
+    }
+  }
+
   criarGasto(dados: CriarGastoInput) {
+    this.conferirNaturezaDoProLabore(dados.natureza, dados.descricao, dados.categoria);
     return prisma.gasto.create({ data: dados });
   }
 
   async editarGasto(id: string, dados: EditarGastoInput) {
     const existe = await prisma.gasto.findUnique({ where: { id } });
     if (!existe) throw new NotFoundException("Lançamento não encontrado.");
+    // Só quando a edição mexe na classificação: corrigir o valor de um
+    // lançamento antigo não obriga a reclassificá-lo agora.
+    if (dados.natureza !== undefined || dados.descricao !== undefined || dados.categoria !== undefined) {
+      this.conferirNaturezaDoProLabore(
+        (dados.natureza ?? existe.natureza) as NaturezaDoGasto,
+        dados.descricao ?? existe.descricao,
+        dados.categoria !== undefined ? dados.categoria : existe.categoria,
+      );
+    }
     return prisma.gasto.update({ where: { id }, data: dados });
   }
 

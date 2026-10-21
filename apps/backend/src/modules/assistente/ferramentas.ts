@@ -208,6 +208,7 @@ const CRITERIOS_FINANCEIROS = [
   "Faturamento por competência: festas vigentes com data no período; canceladas e recusadas não entram.",
   "Retenção por cancelamento é receita separada do faturamento das festas.",
   "Resultado Operacional = faturamento + retenção − despesas de consumo e custeio. Não é lucro líquido: não considera impostos, pró-labore nem depreciação. Acervo é investimento e não entra.",
+  "Pró-labore é despesa com os sócios, lançada em Despesas com natureza própria: fica fora do Resultado Operacional e vem em proLaboreForaDoResultado. Não é distribuição de lucros.",
   "Caixa: pagamentos confirmados (PAID) no período menos reembolsos efetivamente realizados no período. Reembolso a realizar ainda não saiu do caixa. Crédito Festaê não é entrada de caixa nem desconto.",
   "A receber e crédito em aberto das clientes são a posição de hoje, não do período.",
 ];
@@ -339,6 +340,7 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
           ...(divisao ? { divisaoDoMesEmAndamento: divisao } : {}),
           retencaoPorCancelamento: brl(panorama.operacional.retencao),
           despesas: { total: brl(despesas.total), consumo: brl(despesas.consumo), custeio: brl(despesas.custeio) },
+          proLaboreForaDoResultado: brl(despesas.proLabore),
           resultadoOperacional: brl(panorama.operacional.resultado),
           margemOperacional: percentual(panorama.operacional.margem),
           festasNoMes: panorama.festasNoMes,
@@ -366,7 +368,7 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
 
 const CRITERIOS_DAS_RETIRADAS = [
   "Retirada dos sócios reduz o saldo disponível, mas não é despesa: não entra em consumo nem custeio e não muda faturamento, despesas nem o Resultado Operacional.",
-  "Distribuição de lucros é destino do lucro; pró-labore é remuneração pelo trabalho, não distribuição de lucros — diga os dois separados, nunca como a mesma coisa. Pró-labore fica fora do Resultado Operacional por definição do painel. Devolução de aporte devolve capital do sócio: não é lucro nem despesa.",
+  "Distribuição de lucros é destino do lucro. Devolução de aporte devolve capital do sócio: não é lucro nem despesa. Pró-labore NÃO é retirada: é despesa (natureza própria em Despesas) e está em consultarFinanceiro.",
   "Pela data da retirada. Retiradas estornadas não contam. Não há retirada com data futura: o ano corrente vai até hoje.",
 ];
 
@@ -401,7 +403,6 @@ function totaisDaRetirada(t: TotalPorCategoria) {
   return {
     total: brl(t.total),
     distribuicaoDeLucros: brl(t.DISTRIBUICAO_DE_LUCROS),
-    proLabore: brl(t.PRO_LABORE),
     devolucaoDeAporte: brl(t.DEVOLUCAO_DE_APORTE),
   };
 }
@@ -409,7 +410,7 @@ function totaisDaRetirada(t: TotalPorCategoria) {
 const consultarRetiradasDosSocios: Ferramenta<z.ZodObject<{ periodo: z.ZodOptional<typeof periodoParam> }>> = {
   nome: "consultarRetiradasDosSocios",
   descricao:
-    "Retiradas dos sócios (distribuição de lucros, pró-labore, devolução de aporte) de um MÊS-CALENDÁRIO ou ANO, ou de todo o histórico quando não houver período: total, por categoria e por sócio (primeiro nome), iguais aos da aba Retiradas dos sócios do Financeiro. Use para \"quanto os sócios retiraram\", \"pró-labore do mês\", \"distribuição de lucros do ano\". Retirada não é despesa: para despesas e Resultado Operacional use consultarFinanceiro.",
+    "Retiradas dos sócios (distribuição de lucros e devolução de aporte) de um MÊS-CALENDÁRIO ou ANO, ou de todo o histórico quando não houver período: total, por categoria e por sócio (primeiro nome), iguais aos da aba Retiradas dos sócios do Financeiro. Use para \"quanto os sócios retiraram\", \"distribuição de lucros do ano\". Pró-labore não é retirada: é despesa — use consultarFinanceiro.",
   natureza: "LEITURA",
   papeis: ["ADMIN"],
   parametros: z.object({ periodo: periodoParam.optional() }),

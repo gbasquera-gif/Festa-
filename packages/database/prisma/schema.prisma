@@ -907,6 +907,12 @@ enum NaturezaDoGasto {
   /// Mantém a empresa de pé sem virar coisa nem festa — anúncio, domínio,
   /// assinatura, imposto, curso, uniforme. Despesa do mês, sempre.
   CUSTEIO
+
+  /// Remuneração pelo trabalho dos sócios. É despesa, e se lança só aqui —
+  /// nunca como retirada. Fica fora do Resultado Operacional, que por
+  /// definição mede a operação antes do pró-labore; aparece no fluxo de
+  /// caixa, no saldo disponível e no "resultado após pró-labore".
+  PRO_LABORE
 }
 
 /// Dinheiro que saiu da Festaê.
@@ -1456,13 +1462,9 @@ model Socio {
 /// Por que o dinheiro foi para o sócio. Cada natureza se lê diferente.
 enum CategoriaDaRetirada {
   /// Parte do resultado entregue ao sócio. Saída de caixa; não é despesa e
-  /// não mexe no Resultado Operacional.
+  /// não mexe no Resultado Operacional. (Pró-labore não é retirada: é
+  /// despesa, com natureza própria em Gasto.)
   DISTRIBUICAO_DE_LUCROS
-
-  /// Remuneração pelo trabalho do sócio. Classificação própria: fica fora
-  /// do Resultado Operacional, que por definição não inclui pró-labore, e
-  /// aparece em linha separada.
-  PRO_LABORE
 
   /// Devolução de dinheiro que o sócio colocou na empresa. Saída de caixa;
   /// não é lucro nem despesa. Nada a ver com a aba "Aportes / Acervo", que

@@ -37,21 +37,28 @@ export const REGIME_LABEL: Record<Regime, string> = {
 };
 
 /** O que o dinheiro que saiu virou. Espelha o enum do banco. */
-export const NATUREZAS_DO_GASTO = ["ACERVO", "CONSUMO", "CUSTEIO"] as const;
+export const NATUREZAS_DO_GASTO = ["ACERVO", "CONSUMO", "CUSTEIO", "PRO_LABORE"] as const;
 export type NaturezaDoGasto = (typeof NATUREZAS_DO_GASTO)[number];
 
 export const NATUREZA_LABEL: Record<NaturezaDoGasto, string> = {
   ACERVO: "Acervo",
   CONSUMO: "Consumo",
   CUSTEIO: "Custeio",
+  PRO_LABORE: "Pró-labore",
 };
 
 /**
- * As naturezas que são despesa do mês.
+ * As naturezas que são despesa do mês no Resultado Operacional.
  *
  * Acervo fica de fora porque não é despesa: é capital que continua existindo
  * depois da festa e pode ser alugado de novo. Contar a compra de um painel
  * como despesa do mês faria todo mês de investimento parecer prejuízo.
+ *
+ * Pró-labore também fica de fora, por definição do indicador: o Resultado
+ * Operacional mede a operação antes da remuneração dos sócios (e antes de
+ * impostos e depreciação). O pró-labore é despesa — mora em Despesas, com
+ * natureza própria — e aparece à parte: no fluxo de caixa, no saldo e no
+ * "resultado após pró-labore", que é a base para distribuir lucro.
  */
 export const NATUREZAS_DE_DESPESA: readonly NaturezaDoGasto[] = ["CONSUMO", "CUSTEIO"];
 
@@ -431,6 +438,24 @@ export function acervoEntre(gastos: readonly GastoApurado[], de: string, ate: st
   return somar(
     gastos
       .filter((g) => g.natureza === "ACERVO" && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
+      .map((g) => g.valor),
+  );
+}
+
+/** Pró-labore pago no mês: despesa com os sócios, fora do Resultado Operacional. */
+export function proLaboreDoMes(gastos: readonly GastoApurado[], mes: string): number {
+  return somar(
+    gastos
+      .filter((g) => g.natureza === "PRO_LABORE" && g.pagoEm !== null && mesDaDespesa(g.pagoEm) === mes)
+      .map((g) => g.valor),
+  );
+}
+
+/** Pró-labore pago em (de, ate]. */
+export function proLaboreEntre(gastos: readonly GastoApurado[], de: string, ate: string): number {
+  return somar(
+    gastos
+      .filter((g) => g.natureza === "PRO_LABORE" && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
       .map((g) => g.valor),
   );
 }

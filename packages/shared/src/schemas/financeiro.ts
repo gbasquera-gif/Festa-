@@ -120,20 +120,14 @@ const camposDaRetirada = z.object({
   descricao: z.string().trim().max(500).optional().nullable(),
 });
 
-/**
- * `chave` vem da tela: o mesmo envio, repetido, não lança duas vezes.
- * `semDuplicidadeConferida`: a gestão conferiu que este pró-labore não é o
- * mesmo pagamento de uma despesa que já parece pró-labore no mesmo mês.
- */
+/** `chave` vem da tela: o mesmo envio, repetido, não lança duas vezes. */
 export const registrarRetiradaSchema = camposDaRetirada.extend({
   chave: z.string().uuid("Chave de envio inválida. Feche e abra o formulário de novo."),
-  semDuplicidadeConferida: z.boolean().optional(),
 });
 
 /** Editar exige dizer por quê: o antes e o depois ficam no histórico. */
 export const editarRetiradaSchema = camposDaRetirada.partial().extend({
   justificativa: z.string().trim().min(10, "Explique a alteração em ao menos 10 caracteres.").max(500),
-  semDuplicidadeConferida: z.boolean().optional(),
 });
 
 /**

@@ -145,9 +145,9 @@ export default function Financeiro() {
       {aba === "despesas" && (
         <Gastos
           mes={mesFiltrado}
-          naturezas={["CONSUMO", "CUSTEIO"]}
+          naturezas={["CONSUMO", "CUSTEIO", "PRO_LABORE"]}
           titulo="Despesas"
-          explicacao="O que some na festa e o que mantém a empresa de pé. Entra no resultado do mês em que foi pago."
+          explicacao="O que some na festa, o que mantém a empresa de pé e o pró-labore dos sócios. Consumo e custeio entram no Resultado Operacional do mês em que foram pagos; pró-labore é despesa com os sócios e fica fora dele, por definição."
         />
       )}
       {aba === "aportes" && (

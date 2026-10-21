@@ -88,7 +88,9 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
   }
 
   // Antes de "devolução" e de "lucro": "devolução de aporte" e "distribuição de lucros" são retiradas.
-  if (/retirad\w* (dos|de|do|da) soci|socios? retira|pro.?labore|distribuicao de lucro|devolucao de aporte/.test(t)) {
+  // Pró-labore é despesa (Financeiro), não retirada.
+  if (/pro.?labore/.test(t)) return { nome: "consultarFinanceiro", args: { periodo: periodo ?? "este mes" } };
+  if (/retirad\w* (dos|de|do|da) soci|socios? retira|distribu\w*( de)? lucro|devolucao de aporte/.test(t)) {
     return { nome: "consultarRetiradasDosSocios", args: periodo ? { periodo } : {} };
   }
   if (/aguardando devolu|\bdevolucao\b/.test(t)) return { nome: "consultarPendencias", args: { tipo: "AGUARDANDO_DEVOLUCAO" } };
@@ -211,7 +213,7 @@ function redigirResultado(nome: string, d: Dados, t: string): string {
     case "consultarRetiradasDosSocios": {
       const n = d.noPeriodo;
       const socios = (d.porSocio as { socio: string; noPeriodo: string }[]).map((s) => `${s.socio} ${s.noPeriodo}`).join("; ");
-      return `Retiradas dos sócios em ${d.periodo.rotulo}: ${n.total} — distribuição de lucros ${n.distribuicaoDeLucros}, pró-labore ${n.proLabore}, devolução de aporte ${n.devolucaoDeAporte}.${socios ? ` Por sócio: ${socios}.` : ""} Retirada não é despesa e não muda o Resultado Operacional.${obs(d)}`;
+      return `Retiradas dos sócios em ${d.periodo.rotulo}: ${n.total} — distribuição de lucros ${n.distribuicaoDeLucros}, devolução de aporte ${n.devolucaoDeAporte}.${socios ? ` Por sócio: ${socios}.` : ""} Retirada não é despesa e não muda o Resultado Operacional.${obs(d)}`;
     }
     case "consultarCarteiraFutura":
       return `Carteira futura (${d.janela.de} a ${d.janela.ate}): ${plural(d.festas, "festa", "festas")}, ${d.contratado} contratados, ${d.jaRecebido} já recebidos e ${d.aReceber} a receber. É valor contratado, não faturamento realizado.`;
@@ -277,6 +279,9 @@ function redigirFinanceiro(d: Dados, t: string): string {
   const aviso =
     p.situacao === "FUTURO" ? " É valor contratado: ainda não é faturamento realizado." : p.situacao === "EM_ANDAMENTO" ? " O mês está em andamento: inclui festas contratadas que ainda vão acontecer." : "";
   if (/a receber/.test(t)) return `Hoje há ${d.posicaoDeHoje.aReceber} a receber de contratos vigentes.`;
+  if (/pro.?labore/.test(t)) {
+    return `Pró-labore de ${p.rotulo}: ${c.proLaboreForaDoResultado}. É despesa com os sócios, lançada em Despesas, e fica fora do Resultado Operacional — não é distribuição de lucros.${obs(d)}`;
+  }
   if (/credito/.test(t)) return `Crédito Festaê em aberto das clientes hoje: ${d.posicaoDeHoje.creditoFestaeEmAbertoDasClientes}. Esse valor já entrou no caixa quando foi pago — não é receita nova nem desconto.`;
   if (/recebemos|recebid|pagamentos|caixa|entrou/.test(t)) {
     const reembolsos = caixa.reembolsosRealizados !== "R$ 0,00" ? `, com ${caixa.reembolsosRealizados} em reembolsos realizados (líquido ${caixa.liquido})` : "";

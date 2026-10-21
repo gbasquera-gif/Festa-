@@ -51,11 +51,11 @@ function servicos(): ServicosDoAssistente {
         festasNoMes: 2,
         meta: null,
       })) as never,
-      despesasPorNatureza: vi.fn(async (mes: string) => ({ mes, consumo: 120, custeio: 80, total: 200, acervo: 50 })),
+      despesasPorNatureza: vi.fn(async (mes: string) => ({ mes, consumo: 120, custeio: 80, total: 200, acervo: 50, proLabore: 1500 })),
     },
     retiradas: {
       listar: vi.fn(async (filtro: { ano?: string; mes?: string }) => {
-        const tot = (d: number, p: number, a: number) => ({ DISTRIBUICAO_DE_LUCROS: d, PRO_LABORE: p, DEVOLUCAO_DE_APORTE: a, total: d + p + a });
+        const tot = (d: number, p: number, a: number) => ({ DISTRIBUICAO_DE_LUCROS: d + p, DEVOLUCAO_DE_APORTE: a, total: d + p + a });
         return {
           recorte: { ano: Number(filtro.ano ?? 2026), mes: filtro.mes && filtro.mes !== "todos" ? `${filtro.ano}-${filtro.mes}` : null },
           indicadores: { mes: filtro.mes && filtro.mes !== "todos" ? tot(300, 1500, 0) : null, ano: tot(1300, 4500, 250), historico: tot(2300, 6000, 250) },
@@ -137,7 +137,7 @@ describe("responder", () => {
     expect(s.retiradas.listar).toHaveBeenCalledWith({ ano: "2026", mes: "10", incluirEstornadas: "nao" }, AGORA);
     expect(r.fontes[0].caminho).toBe("/financeiro?aba=retiradas&ano=2026&mes=10");
     const dados = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(dados.noPeriodo).toEqual({ total: "R$ 1.800,00", distribuicaoDeLucros: "R$ 300,00", proLabore: "R$ 1.500,00", devolucaoDeAporte: "R$ 0,00" });
+    expect(dados.noPeriodo).toEqual({ total: "R$ 1.800,00", distribuicaoDeLucros: "R$ 1.800,00", devolucaoDeAporte: "R$ 0,00" });
     expect(dados.anoInteiro.total).toBe("R$ 6.050,00");
     // Quem não retirou no mês fica de fora; quem retirou vai só com o primeiro nome.
     expect(dados.porSocio).toEqual([
@@ -146,7 +146,7 @@ describe("responder", () => {
     ]);
     expect(JSON.stringify(dados)).not.toContain("Silva");
     expect(dados.criterios.join(" ")).toContain("não muda faturamento, despesas nem o Resultado Operacional");
-    expect(dados.criterios.join(" ")).toContain("pró-labore é remuneração pelo trabalho, não distribuição de lucros");
+    expect(dados.criterios.join(" ")).toContain("Pró-labore NÃO é retirada: é despesa");
   });
 
   it("retiradas dos sócios: ano, histórico sem período e semana recusada com as alternativas reais", async () => {
@@ -175,7 +175,7 @@ describe("responder", () => {
     // Mesmo primeiro nome: o mínimo que separa as pessoas, nunca o nome completo.
     vi.mocked(s.retiradas.listar).mockResolvedValueOnce({
       recorte: { ano: 2026, mes: null },
-      indicadores: { mes: null, ano: { DISTRIBUICAO_DE_LUCROS: 0, PRO_LABORE: 0, DEVOLUCAO_DE_APORTE: 0, total: 0 }, historico: { DISTRIBUICAO_DE_LUCROS: 30, PRO_LABORE: 0, DEVOLUCAO_DE_APORTE: 0, total: 30 } },
+      indicadores: { mes: null, ano: { DISTRIBUICAO_DE_LUCROS: 0, DEVOLUCAO_DE_APORTE: 0, total: 0 }, historico: { DISTRIBUICAO_DE_LUCROS: 30, DEVOLUCAO_DE_APORTE: 0, total: 30 } },
       porSocio: [
         { socioId: "a", socio: "Ana Silva Costa", mes: 0, ano: 0, historico: 20 },
         { socioId: "b", socio: "Ana Pereira", mes: 0, ano: 0, historico: 10 },
@@ -515,7 +515,9 @@ describe("provedor simulado (demonstração)", () => {
       args: { produto: "arco dourado", data: "dia 14/11" },
     });
     expect(await decide("Qual o valor de crédito disponível das clientes?")).toEqual({ nome: "consultarFinanceiro", args: { periodo: "este mes" } });
-    expect(await decide("Quanto de pró-labore saiu em outubro?")).toEqual({ nome: "consultarRetiradasDosSocios", args: { periodo: "outubro" } });
+    // Pró-labore é despesa: vai para o Financeiro, não para as retiradas.
+    expect(await decide("Quanto de pró-labore saiu em outubro?")).toEqual({ nome: "consultarFinanceiro", args: { periodo: "outubro" } });
+    expect(await decide("Quanto distribuímos de lucros em outubro?")).toEqual({ nome: "consultarRetiradasDosSocios", args: { periodo: "outubro" } });
     expect(await decide("Quanto foi de distribuição de lucros?")).toEqual({ nome: "consultarRetiradasDosSocios", args: {} });
     expect(await decide("Teve devolução de aporte este ano?")).toMatchObject({ nome: "consultarRetiradasDosSocios" });
     expect(await decide("Quantas reservas estão prontas para retirada?")).not.toMatchObject({ nome: "consultarRetiradasDosSocios" });
@@ -525,12 +527,20 @@ describe("provedor simulado (demonstração)", () => {
 
   it("redige a resposta de retiradas com os números da ferramenta", async () => {
     const { nucleo } = montar(new ProvedorSimulado());
-    const r = await nucleo.responder(entrada("Quanto de pró-labore saiu em outubro?"));
+    const r = await nucleo.responder(entrada("Quanto distribuímos de lucros em outubro?"));
     expect(r.ferramentas).toEqual(["consultarRetiradasDosSocios"]);
-    expect(r.texto).toContain("R$ 1.800,00");
-    expect(r.texto).toContain("pró-labore R$ 1.500,00");
+    expect(r.texto).toContain("distribuição de lucros R$ 1.800,00");
     expect(r.texto).toContain("Ana R$ 1.500,00");
     expect(r.texto).toContain("não muda o Resultado Operacional");
+  });
+
+  it("pró-labore: responde como despesa, fora do Resultado Operacional, pelo Financeiro", async () => {
+    const { nucleo } = montar(new ProvedorSimulado());
+    const r = await nucleo.responder(entrada("Quanto de pró-labore saiu em outubro?"));
+    expect(r.ferramentas).toEqual(["consultarFinanceiro"]);
+    expect(r.texto).toContain("R$ 1.500,00");
+    expect(r.texto).toContain("fora do Resultado Operacional");
+    expect(r.texto).toContain("não é distribuição de lucros");
   });
 
   it("continuação mantém o período e filtra as pagas", async () => {

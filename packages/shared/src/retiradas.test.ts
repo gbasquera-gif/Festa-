@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  controleDaDistribuicaoDoAno,
+  controleDaDistribuicaoDoMes,
   fluxoDeCaixaDoAno,
   fluxoDeCaixaDoMes,
   fluxoDeCaixaEntre,
@@ -36,11 +38,11 @@ const retirada = (
 const RETIRADAS: RetiradaApurada[] = [
   retirada("A", "DISTRIBUICAO_DE_LUCROS", 1000, "2026-10-05"),
   retirada("B", "DISTRIBUICAO_DE_LUCROS", 1500, "2026-10-15"),
-  retirada("A", "PRO_LABORE", 800.1, "2026-10-31"),
+  retirada("A", "DEVOLUCAO_DE_APORTE", 800.1, "2026-10-31"),
   retirada("B", "DEVOLUCAO_DE_APORTE", 300, "2026-09-01"),
   retirada("A", "DISTRIBUICAO_DE_LUCROS", 999.99, "2026-10-20", true), // estornada
   retirada("A", "DISTRIBUICAO_DE_LUCROS", 400, "2025-12-31"),
-  retirada("B", "PRO_LABORE", 200, "2026-11-01"),
+  retirada("B", "DEVOLUCAO_DE_APORTE", 200, "2026-11-01"),
 ];
 
 describe("retiradas dos sócios", () => {
@@ -52,8 +54,7 @@ describe("retiradas dos sócios", () => {
   it("retiradas do mês, por categoria, sem as estornadas", () => {
     expect(retiradasDoMes(RETIRADAS, "2026-10")).toEqual({
       DISTRIBUICAO_DE_LUCROS: 2500,
-      PRO_LABORE: 800.1,
-      DEVOLUCAO_DE_APORTE: 0,
+      DEVOLUCAO_DE_APORTE: 800.1,
       total: 3300.1,
     });
     expect(retiradasDoMes(RETIRADAS, "2026-09").total).toBe(300);
@@ -69,8 +70,7 @@ describe("retiradas dos sócios", () => {
   it("histórico inteiro, desde o primeiro registro", () => {
     expect(retiradasNoHistorico(RETIRADAS)).toEqual({
       DISTRIBUICAO_DE_LUCROS: 2900,
-      PRO_LABORE: 1000.1,
-      DEVOLUCAO_DE_APORTE: 300,
+      DEVOLUCAO_DE_APORTE: 1300.1,
       total: 4200.1,
     });
   });
@@ -81,11 +81,11 @@ describe("retiradas dos sócios", () => {
       ["A", 2200.1],
       ["B", 2000],
     ]);
-    expect(porSocio[0].totais.PRO_LABORE).toBe(800.1);
+    expect(porSocio[0].totais.DEVOLUCAO_DE_APORTE).toBe(800.1);
   });
 
   it("somas em centavos: dez retiradas de R$ 0,10 dão R$ 1,00 exato", () => {
-    const dez = Array.from({ length: 10 }, () => retirada("A", "PRO_LABORE", 0.1, "2026-10-10"));
+    const dez = Array.from({ length: 10 }, () => retirada("A", "DISTRIBUICAO_DE_LUCROS", 0.1, "2026-10-10"));
     expect(retiradasDoMes(dez, "2026-10").total).toBe(1);
   });
 });
@@ -180,14 +180,15 @@ describe("saldo disponível", () => {
       { valor: 300, natureza: "CONSUMO", pagoEm: new Date("2026-10-03T00:00:00Z") },
       { valor: 500, natureza: "ACERVO", pagoEm: new Date("2026-10-04T00:00:00Z") },
       { valor: 80, natureza: "CUSTEIO", pagoEm: null }, // a pagar: não saiu
+      { valor: 1000, natureza: "PRO_LABORE", pagoEm: new Date("2026-10-06T00:00:00Z") },
     ];
     const retiradas = [
-      retirada("A", "PRO_LABORE", 1000, "2026-10-06"),
+      retirada("A", "DISTRIBUICAO_DE_LUCROS", 400, "2026-10-08"),
       retirada("B", "DISTRIBUICAO_DE_LUCROS", 777, "2026-10-07", true), // estornada
     ];
     const s = saldoDisponivel([contrato], gastos, retiradas, { dia: "2026-10-02", valor: 10_000 }, "2026-10-21")!;
-    expect([s.entradas, s.despesasOperacionais, s.acervo, s.retiradas.total]).toEqual([1200, 300, 500, 1000]);
-    expect(s.saldo).toBe(9400); // 10.000 + 1.200 − 300 − 500 − 1.000
+    expect([s.entradas, s.despesasOperacionais, s.proLabore, s.acervo, s.retiradas.total]).toEqual([1200, 300, 1000, 500, 400]);
+    expect(s.saldo).toBe(9000); // 10.000 + 1.200 − 300 − 1.000 − 500 − 400
   });
 
   it("o saldo informado é o inicial do dia: a retirada do próprio dia já desconta", () => {
@@ -198,9 +199,46 @@ describe("saldo disponível", () => {
     expect(saldoDisponivel([], [], antes, { dia: "2026-10-21", valor: 10_000 }, "2026-10-21")!.saldo).toBe(10_000);
   });
 
+  it("garantias: o anterior ao saldo inicial não conta; o do dia conta uma vez só; retirada reduz; Resultado intacto", () => {
+    const contrato: ContratoApurado = {
+      fechadoEm: dia("2026-10-01"),
+      festaEm: dia("2026-11-20"),
+      valor: 3000,
+      cancelado: false,
+      recebimentos: [
+        { valor: 500, recebidoEm: new Date("2026-10-09T15:00:00Z") }, // véspera: já está no saldo inicial
+        { valor: 700, recebidoEm: new Date("2026-10-10T13:00:00Z") }, // no dia do saldo inicial: conta
+        { valor: 900, recebidoEm: new Date("2026-10-11T02:30:00Z") }, // 10/10 23h30 em Chapecó: ainda é o dia 10
+      ],
+    };
+    const gastos: GastoApurado[] = [
+      { valor: 100, natureza: "CUSTEIO", pagoEm: new Date("2026-10-09T00:00:00Z") }, // véspera: não conta
+      { valor: 200, natureza: "CUSTEIO", pagoEm: new Date("2026-10-10T00:00:00Z") }, // no dia: conta
+      { valor: 300, natureza: "PRO_LABORE", pagoEm: new Date("2026-10-10T00:00:00Z") }, // no dia: conta
+    ];
+    const retiradas = [
+      retirada("A", "DISTRIBUICAO_DE_LUCROS", 400, "2026-10-09"), // véspera: não conta
+      retirada("A", "DISTRIBUICAO_DE_LUCROS", 1000, "2026-10-10"), // no dia: conta
+    ];
+    const ref = { dia: "2026-10-10", valor: 10_000 };
+    const noDia = saldoDisponivel([contrato], gastos, retiradas, ref, "2026-10-10")!;
+    expect([noDia.entradas, noDia.despesasOperacionais, noDia.proLabore, noDia.retiradas.total]).toEqual([1600, 200, 300, 1000]);
+    expect(noDia.saldo).toBe(10_100); // 10.000 + 1.600 − 200 − 300 − 1.000
+    // Dias depois, sem movimento novo: o do dia 10 não é somado de novo.
+    expect(saldoDisponivel([contrato], gastos, retiradas, ref, "2026-10-20")!.saldo).toBe(10_100);
+    // A retirada do dia reduz exatamente o seu valor.
+    const semRetiradaDoDia = saldoDisponivel([contrato], gastos, retiradas.slice(0, 1), ref, "2026-10-20")!;
+    expect(semRetiradaDoDia.saldo - 10_100).toBe(1000);
+    // Distribuição não chega no Resultado Operacional.
+    expect(resultadoOperacionalDoMes([contrato], gastos, "2026-10")).toEqual(resultadoOperacionalDoMes([contrato], gastos, "2026-10"));
+    expect(controleDaDistribuicaoDoMes([contrato], gastos, [], "2026-10").resultadoOperacional).toBe(
+      controleDaDistribuicaoDoMes([contrato], gastos, retiradas, "2026-10").resultadoOperacional,
+    );
+  });
+
   it("antes do saldo informado não há saldo calculado; saldo negativo é aceito", () => {
     expect(saldoDisponivel([], [], [], { dia: "2026-10-10", valor: 100 }, "2026-10-09")).toBeNull();
-    const s = saldoDisponivel([], [], [retirada("A", "PRO_LABORE", 150.1, "2026-10-10")], { dia: "2026-10-10", valor: 100 }, "2026-10-12")!;
+    const s = saldoDisponivel([], [], [retirada("A", "DISTRIBUICAO_DE_LUCROS", 150.1, "2026-10-10")], { dia: "2026-10-10", valor: 100 }, "2026-10-12")!;
     expect(s.saldo).toBe(-50.1);
   });
 
@@ -222,6 +260,7 @@ describe("saldo disponível", () => {
       { valor: 400, natureza: "CONSUMO", pagoEm: new Date("2026-10-01T00:00:00Z") },
       { valor: 250, natureza: "CUSTEIO", pagoEm: new Date("2026-10-31T00:00:00Z") },
       { valor: 900, natureza: "ACERVO", pagoEm: new Date("2026-11-01T00:00:00Z") },
+      { valor: 1200, natureza: "PRO_LABORE", pagoEm: new Date("2026-10-31T00:00:00Z") },
     ];
     for (const mes of ["2026-09", "2026-10", "2026-11"]) {
       const [ano, m] = mes.split("-").map(Number);
@@ -234,7 +273,43 @@ describe("saldo disponível", () => {
   });
 });
 
-describe("pró-labore lançado em Despesas", () => {
+describe("pró-labore: despesa em Despesas, fora do Resultado Operacional", () => {
+  const contratos: ContratoApurado[] = [
+    { fechadoEm: dia("2026-09-20"), festaEm: dia("2026-10-18"), valor: 5000, cancelado: false, recebimentos: [{ valor: 5000, recebidoEm: dia("2026-10-01") }] },
+  ];
+  const semProLabore: GastoApurado[] = [{ valor: 650, natureza: "CUSTEIO", pagoEm: new Date("2026-10-03T00:00:00Z") }];
+  const comProLabore: GastoApurado[] = [...semProLabore, { valor: 1000, natureza: "PRO_LABORE", pagoEm: new Date("2026-10-05T00:00:00Z") }];
+
+  it("a fórmula do Resultado Operacional não muda: pró-labore não entra em consumo + custeio", () => {
+    expect(resultadoOperacionalDoMes(contratos, comProLabore, "2026-10")).toEqual(resultadoOperacionalDoMes(contratos, semProLabore, "2026-10"));
+    expect(resultadoOperacionalDoMes(contratos, comProLabore, "2026-10").resultado).toBe(4350);
+    expect(acumuladoNoAno(contratos, comProLabore, 2026, "2026-10")).toEqual(acumuladoNoAno(contratos, semProLabore, 2026, "2026-10"));
+  });
+
+  it("é saída de caixa em linha própria e reduz o saldo disponível", () => {
+    const f = fluxoDeCaixaDoMes(contratos, comProLabore, [], "2026-10");
+    expect([f.despesasOperacionais, f.proLabore, f.saidas, f.movimentoLiquido]).toEqual([650, 1000, 1650, 3350]);
+    const ref = { dia: "2026-10-01", valor: 0 };
+    expect(saldoDisponivel(contratos, semProLabore, [], ref, "2026-10-31")!.saldo - saldoDisponivel(contratos, comProLabore, [], ref, "2026-10-31")!.saldo).toBe(1000);
+  });
+
+  it("controle da distribuição: resultado após pró-labore e o que foi distribuído acima dele", () => {
+    const dentro = controleDaDistribuicaoDoMes(contratos, comProLabore, [retirada("A", "DISTRIBUICAO_DE_LUCROS", 2500, "2026-10-20")], "2026-10");
+    expect(dentro).toEqual({ resultadoOperacional: 4350, proLabore: 1000, resultadoAposProLabore: 3350, distribuido: 2500, distribuidoAcima: 0 });
+    const acima = controleDaDistribuicaoDoMes(
+      contratos,
+      comProLabore,
+      [retirada("A", "DISTRIBUICAO_DE_LUCROS", 4000, "2026-10-20"), retirada("B", "DEVOLUCAO_DE_APORTE", 900, "2026-10-21")],
+      "2026-10",
+    );
+    // Devolução de aporte é capital devolvido, não lucro: fica fora da comparação.
+    expect([acima.distribuido, acima.distribuidoAcima]).toEqual([4000, 650]);
+    const ano = controleDaDistribuicaoDoAno(contratos, comProLabore, [retirada("A", "DISTRIBUICAO_DE_LUCROS", 2500, "2026-10-20")], 2026, "2026-10");
+    expect([ano.resultadoOperacional, ano.proLabore, ano.resultadoAposProLabore]).toEqual([4350, 1000, 3350]);
+  });
+});
+
+describe("texto que parece pró-labore", () => {
   it("reconhece as grafias comuns, e só elas", () => {
     for (const t of ["Pró-labore outubro", "pro labore", "PROLABORE", "Pró Labore sócia", "pró‐labore"]) {
       expect(pareceProLabore(t.replace("‐", "-"))).toBe(true);

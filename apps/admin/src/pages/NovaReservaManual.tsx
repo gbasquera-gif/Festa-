@@ -29,6 +29,7 @@ import {
   type DadosDaReserva,
 } from "@/components/FormularioDeReserva";
 import { ApiError, api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 /**
  * Registro de uma venda fechada fora da loja.
@@ -43,6 +44,9 @@ import { ApiError, api } from "@/lib/api";
  * qualquer campo sem navegar.
  */
 export default function NovaReservaManual() {
+  // Registrar recebimento é do ADMIN: OPS cria a venda com tudo a receber.
+  const { user } = useAuth();
+  const ehAdmin = user?.role === "ADMIN";
   const [, navegar] = useLocation();
   const { voltar } = useVoltar();
 
@@ -61,6 +65,10 @@ export default function NovaReservaManual() {
    * é a mesma causa raiz que o campo de natureza teve na Sprint 2.
    */
   const [situacao, setSituacao] = useState<"" | "INTEGRAL" | "SINAL" | "NADA">("");
+  // Para OPS só há uma opção: não é padrão implícito, é a única possível.
+  useEffect(() => {
+    if (user && !ehAdmin && situacao === "") setSituacao("NADA");
+  }, [user, ehAdmin, situacao]);
   const [sinal, setSinal] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [origem, setOrigem] = useState("");
@@ -312,8 +320,8 @@ export default function NovaReservaManual() {
               {[
                 { chave: "INTEGRAL", titulo: "Pago integralmente", nota: "a cliente já pagou tudo" },
                 { chave: "SINAL", titulo: "Sinal recebido", nota: "parte agora, saldo na festa" },
-                { chave: "NADA", titulo: "A receber", nota: "nada recebido ainda" },
-              ].map(({ chave, titulo, nota }) => {
+                { chave: "NADA", titulo: "A receber", nota: ehAdmin ? "nada recebido ainda" : "o ADMIN registra o recebimento depois" },
+              ].filter(({ chave }) => ehAdmin || chave === "NADA").map(({ chave, titulo, nota }) => {
                 const marcado = situacao === chave;
                 return (
                   <button

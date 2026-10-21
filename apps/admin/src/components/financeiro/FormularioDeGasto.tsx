@@ -230,10 +230,16 @@ export function FormularioDeGasto({
             </div>
           </div>
 
-          {!ehAcervo && pareceProLabore(form.descricao, form.categoria) && (
+          {form.natureza !== "PRO_LABORE" && pareceProLabore(form.descricao, form.categoria) && (
             <p className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: "var(--fin-coral)", color: "var(--fin-navy-ink)" }} data-aviso-pro-labore>
-              Parece pró-labore. Pró-labore se lança em Financeiro → Retiradas dos sócios, categoria Pró-labore — não aqui.
-              Lançado em Despesas, ele entra no Resultado Operacional; lançado nos dois lugares, a mesma saída conta duas vezes.
+              Parece pró-labore. Escolha a natureza “Pró-labore”: como consumo ou custeio ele entraria no Resultado
+              Operacional, que por definição não inclui pró-labore. O sistema não aceita salvar assim.
+            </p>
+          )}
+          {form.natureza === "PRO_LABORE" && (
+            <p className="rounded-md border px-3 py-2 text-xs" style={{ color: "var(--fin-navy-ink)" }} data-nota-pro-labore>
+              Remuneração pelo trabalho dos sócios — não é distribuição de lucros. É despesa: sai do caixa e do saldo
+              disponível, e fica fora do Resultado Operacional. Lance só aqui, nunca como retirada.
             </p>
           )}
           {ehAcervo && (

@@ -217,6 +217,8 @@ export {
   fluxoDeCaixaDoAno,
   fluxoDeCaixaEntre,
   saldoDisponivel,
+  controleDaDistribuicaoDoMes,
+  controleDaDistribuicaoDoAno,
 } from "./retiradas";
 export type {
   CategoriaDaRetirada,
@@ -226,6 +228,7 @@ export type {
   FluxoDeCaixa,
   SaldoDeReferencia,
   SaldoDisponivel,
+  ControleDaDistribuicao,
 } from "./retiradas";
 
 export {
@@ -252,6 +255,8 @@ export {
   mesDaDespesa,
   acervoDoMes,
   acervoEntre,
+  proLaboreDoMes,
+  proLaboreEntre,
   acervoAcumulado,
   gastoAcumulado,
   totalAReceber,

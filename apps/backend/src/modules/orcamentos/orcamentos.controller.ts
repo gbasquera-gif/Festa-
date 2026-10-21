@@ -134,8 +134,9 @@ export class OrcamentosController {
   @ApiOperation({
     summary: "Confirma que o sinal caiu",
     description:
-      "Converte a proposta (com checagem de disponibilidade) e registra o sinal pelo mesmo caminho da tela de Reservas. Recusa se o sinal já estiver coberto.",
+      "Converte a proposta (com checagem de disponibilidade) e registra o sinal pelo mesmo caminho da tela de Reservas. Recusa se o sinal já estiver coberto. Só ADMIN: é confirmação financeira manual.",
   })
+  @Roles("ADMIN")
   @Post(":id/confirmar-sinal")
   confirmarSinal(
     @Param("id") id: string,

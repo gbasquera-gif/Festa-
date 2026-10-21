@@ -4,7 +4,7 @@ Testa a interpretação do assistente com a **OpenAI real**, no **banco local**,
 
 ## O que confere
 
-`perguntas.mjs` faz 31 perguntas: 12 de Financeiro (2 delas de retiradas dos sócios), 8 de Reservas, 4 de Orçamentos, 3 de Acervo e 4 de limites. Inclui datas relativas (amanhã, próximo sábado, mês passado, mês que vem, este ano) e três sequências ("E no mês passado?", "E quantas delas já estão pagas?", "E qual foi a conversão?").
+`perguntas.mjs` faz 32 perguntas: 13 de Financeiro (retiradas dos sócios e pró-labore incluídos), 8 de Reservas, 4 de Orçamentos, 3 de Acervo e 4 de limites. Inclui datas relativas (amanhã, próximo sábado, mês passado, mês que vem, este ano) e três sequências ("E no mês passado?", "E quantas delas já estão pagas?", "E qual foi a conversão?").
 
 Para cada resposta, compara com as rotas que as telas do painel usam:
 
@@ -33,7 +33,7 @@ apps/backend/scripts/homologacao-assistente/executar.sh
 
 Para uma rodada direcionada, `HOMOLOGACAO_PERGUNTAS="F1,F3,X1,X2,V3"` limita as perguntas de texto (F1…X4) e de voz (V1…V4).
 
-Custo estimado de uma rodada: menos de US$ 0,50 (cerca de 35 perguntas e 4 falas curtas).
+Custo estimado de uma rodada: menos de US$ 0,50 (cerca de 36 perguntas e 4 falas curtas).
 
 O resultado detalhado vai para a pasta temporária do sistema, fora do repositório, porque as respostas trazem primeiros nomes e valores.
 

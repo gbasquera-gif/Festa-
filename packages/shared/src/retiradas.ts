@@ -1,11 +1,14 @@
 /**
  * Retiradas dos sócios e o fluxo de caixa que as mostra.
  *
- * Retirada é dinheiro que sai da Festaê para um sócio. Não é despesa da
- * operação: não entra em consumo nem custeio, e por isso não mexe no
- * Resultado Operacional — que mede a festa, não o que os sócios decidem tirar
- * dela. Aparece onde é dinheiro saindo: no fluxo de caixa, como saída
- * classificada pela sua natureza.
+ * Retirada é dinheiro que sai da Festaê para um sócio como movimento de
+ * capital: distribuição do lucro ou devolução do que ele aportou. Não é
+ * despesa e não mexe no Resultado Operacional. Aparece onde é dinheiro
+ * saindo: no fluxo de caixa e no saldo disponível.
+ *
+ * Pró-labore NÃO é retirada: é remuneração pelo trabalho, uma despesa. Mora
+ * em Despesas, com natureza própria (`PRO_LABORE`), e é o único lugar onde se
+ * lança — assim a mesma saída não tem como ser lançada duas vezes.
  *
  * Nada aqui altera as fórmulas de `financeiro.ts`. O fluxo de caixa é uma
  * leitura nova, ao lado das que já existem, montada com as mesmas funções.
@@ -15,23 +18,26 @@ import { fromCentsInt, toCentsInt } from "./pricing";
 import {
   acervoDoMes,
   acervoEntre,
+  acumuladoNoAno,
   despesaDoMes,
   despesaEntre,
   entradasEntre,
   entradasNoCaixa,
   mesesDoAno,
+  proLaboreDoMes,
+  proLaboreEntre,
   reembolsosEntre,
   reembolsosNoMes,
+  resultadoOperacionalDoMes,
   type ContratoApurado,
   type GastoApurado,
 } from "./financeiro";
 
-export const CATEGORIAS_DA_RETIRADA = ["DISTRIBUICAO_DE_LUCROS", "PRO_LABORE", "DEVOLUCAO_DE_APORTE"] as const;
+export const CATEGORIAS_DA_RETIRADA = ["DISTRIBUICAO_DE_LUCROS", "DEVOLUCAO_DE_APORTE"] as const;
 export type CategoriaDaRetirada = (typeof CATEGORIAS_DA_RETIRADA)[number];
 
 export const CATEGORIA_DA_RETIRADA_LABEL: Record<CategoriaDaRetirada, string> = {
   DISTRIBUICAO_DE_LUCROS: "Distribuição de lucros",
-  PRO_LABORE: "Pró-labore",
   DEVOLUCAO_DE_APORTE: "Devolução de aporte",
 };
 
@@ -39,18 +45,16 @@ export const CATEGORIA_DA_RETIRADA_LABEL: Record<CategoriaDaRetirada, string> = 
 export const CATEGORIA_DA_RETIRADA_NOTA: Record<CategoriaDaRetirada, string> = {
   DISTRIBUICAO_DE_LUCROS:
     "Parte do lucro já apurado entregue ao sócio. Reduz o saldo disponível; não é despesa e não muda faturamento, despesas nem o Resultado Operacional.",
-  PRO_LABORE:
-    "Remuneração pelo trabalho do sócio — não é distribuição de lucros. Na contabilidade é despesa com encargos (INSS); neste painel fica fora do Resultado Operacional, que por definição não inclui pró-labore, e aparece em linha própria. Se já estiver lançado em Despesas, não lance aqui.",
   DEVOLUCAO_DE_APORTE:
-    "Devolução de dinheiro que o sócio colocou na empresa. Reduz o saldo disponível; não é lucro, remuneração nem despesa. Não confundir com a aba Aportes / Acervo, que é compra de acervo.",
+    "Devolução de dinheiro que o sócio colocou na empresa. Reduz o saldo disponível; não é lucro nem despesa. Não confundir com a aba Aportes / Acervo, que é compra de acervo.",
 };
 
 /**
- * Despesa que parece pró-labore pela descrição ou categoria.
+ * Texto que parece pró-labore.
  *
- * Pró-labore lançado em Despesas já entra no Resultado Operacional e no caixa;
- * lançá-lo também como retirada contaria a mesma saída duas vezes. A busca é
- * só um alerta: quem decide se é o mesmo pagamento é a gestão.
+ * Pró-labore se lança só em Despesas, com a natureza Pró-labore. Uma retirada
+ * que diz "pró-labore" na descrição, ou uma despesa de consumo/custeio que diz
+ * "pró-labore", é lançamento no lugar errado — e é recusado com a orientação.
  */
 export function pareceProLabore(...textos: (string | null | undefined)[]): boolean {
   return textos.some((t) => t && /pro[\s-]*labore/i.test(t.normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
@@ -87,14 +91,12 @@ export function mesDaRetirada(retiradaEm: Date): string {
 function somarPorCategoria(retiradas: readonly RetiradaApurada[]): TotalPorCategoria {
   const centavos: Record<CategoriaDaRetirada, number> = {
     DISTRIBUICAO_DE_LUCROS: 0,
-    PRO_LABORE: 0,
     DEVOLUCAO_DE_APORTE: 0,
   };
   for (const r of retiradas) if (!r.estornada) centavos[r.categoria] += toCentsInt(r.valor);
   const total = Object.values(centavos).reduce((t, v) => t + v, 0);
   return {
     DISTRIBUICAO_DE_LUCROS: fromCentsInt(centavos.DISTRIBUICAO_DE_LUCROS),
-    PRO_LABORE: fromCentsInt(centavos.PRO_LABORE),
     DEVOLUCAO_DE_APORTE: fromCentsInt(centavos.DEVOLUCAO_DE_APORTE),
     total: fromCentsInt(total),
   };
@@ -154,17 +156,20 @@ export function retiradasPorSocio(
  *   entradas            pagamentos recebidos (as mesmas do "Caixa do mês")
  *   − reembolsos        devolvidos a clientes
  *   − despesas          consumo e custeio pagos (as mesmas do Resultado)
+ *   − pró-labore        remuneração dos sócios (despesa, fora do Resultado)
  *   − acervo            compras de acervo pagas (investimento, não despesa)
- *   − retiradas         dos sócios, por categoria
+ *   − retiradas         distribuição de lucros e devolução de aporte
  *   = movimento líquido
  *
- * Não é o saldo do banco: o sistema não tem o saldo inicial da conta, e o
- * recebido sem data (histórico importado) fica de fora, como no caixa.
+ * Não é o saldo do banco: para isso há o saldo disponível, que parte de um
+ * saldo inicial informado. O recebido sem data (histórico importado) fica de
+ * fora, como no caixa.
  */
 export type FluxoDeCaixa = {
   entradas: number;
   reembolsos: number;
   despesasOperacionais: number;
+  proLabore: number;
   acervo: number;
   retiradas: TotalPorCategoria;
   saidas: number;
@@ -175,15 +180,17 @@ function montarFluxo(
   entradas: number,
   reembolsos: number,
   despesas: number,
+  proLabore: number,
   acervo: number,
   retiradas: TotalPorCategoria,
 ): FluxoDeCaixa {
   const saidas =
-    toCentsInt(reembolsos) + toCentsInt(despesas) + toCentsInt(acervo) + toCentsInt(retiradas.total);
+    toCentsInt(reembolsos) + toCentsInt(despesas) + toCentsInt(proLabore) + toCentsInt(acervo) + toCentsInt(retiradas.total);
   return {
     entradas,
     reembolsos,
     despesasOperacionais: despesas,
+    proLabore,
     acervo,
     retiradas,
     saidas: fromCentsInt(saidas),
@@ -211,6 +218,7 @@ export function fluxoDeCaixaDoMes(
     entradasNoCaixa(contratos, mes),
     reembolsosNoMes(contratos, mes),
     despesaDoMes(gastos, mes),
+    proLaboreDoMes(gastos, mes),
     acervoDoMes(gastos, mes),
     retiradasDoMes(retiradas, mes),
   );
@@ -230,8 +238,75 @@ export function fluxoDeCaixaDoAno(
     soma((m) => entradasNoCaixa(contratos, m)),
     soma((m) => reembolsosNoMes(contratos, m)),
     soma((m) => despesaDoMes(gastos, m)),
+    soma((m) => proLaboreDoMes(gastos, m)),
     soma((m) => acervoDoMes(gastos, m)),
     retiradasDoAno(retiradas, ano, ateMes),
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Controle da distribuição de lucros
+ * ------------------------------------------------------------------ */
+
+/**
+ * Quanto foi distribuído diante do resultado que havia para distribuir.
+ *
+ *   Resultado Operacional (a fórmula de sempre, sem mudança)
+ *   − pró-labore do período
+ *   = resultado após pró-labore
+ *
+ * É a referência para a distribuição de lucros: distribuir mais do que isso
+ * é tirar da empresa dinheiro que o período não gerou. Não é lucro líquido —
+ * não considera impostos nem depreciação, como o próprio Resultado
+ * Operacional. Devolução de aporte não entra na comparação: é capital
+ * devolvido, não lucro.
+ */
+export type ControleDaDistribuicao = {
+  resultadoOperacional: number;
+  proLabore: number;
+  resultadoAposProLabore: number;
+  distribuido: number;
+  /** Distribuído acima do resultado após pró-labore (0 quando dentro). */
+  distribuidoAcima: number;
+};
+
+function montarControle(resultadoOperacional: number, proLabore: number, distribuido: number): ControleDaDistribuicao {
+  const apos = toCentsInt(resultadoOperacional) - toCentsInt(proLabore);
+  return {
+    resultadoOperacional,
+    proLabore,
+    resultadoAposProLabore: fromCentsInt(apos),
+    distribuido,
+    distribuidoAcima: fromCentsInt(Math.max(0, toCentsInt(distribuido) - Math.max(0, apos))),
+  };
+}
+
+export function controleDaDistribuicaoDoMes(
+  contratos: readonly ContratoApurado[],
+  gastos: readonly GastoApurado[],
+  retiradas: readonly RetiradaApurada[],
+  mes: string,
+): ControleDaDistribuicao {
+  return montarControle(
+    resultadoOperacionalDoMes(contratos, gastos, mes).resultado,
+    proLaboreDoMes(gastos, mes),
+    retiradasDoMes(retiradas, mes).DISTRIBUICAO_DE_LUCROS,
+  );
+}
+
+/** De janeiro até `ateMes`: o Resultado Operacional acumulado de sempre, menos o pró-labore do mesmo recorte. */
+export function controleDaDistribuicaoDoAno(
+  contratos: readonly ContratoApurado[],
+  gastos: readonly GastoApurado[],
+  retiradas: readonly RetiradaApurada[],
+  ano: number,
+  ateMes: string,
+): ControleDaDistribuicao {
+  const meses = mesesDoAno(ano).filter((m) => m <= ateMes);
+  return montarControle(
+    acumuladoNoAno(contratos, gastos, ano, ateMes).resultado,
+    fromCentsInt(meses.reduce((t, m) => t + toCentsInt(proLaboreDoMes(gastos, m)), 0)),
+    retiradasDoAno(retiradas, ano, ateMes).DISTRIBUICAO_DE_LUCROS,
   );
 }
 
@@ -272,6 +347,7 @@ export function fluxoDeCaixaEntre(
     entradasEntre(contratos, de, ate),
     reembolsosEntre(contratos, de, ate),
     despesaEntre(gastos, de, ate),
+    proLaboreEntre(gastos, de, ate),
     acervoEntre(gastos, de, ate),
     retiradasEntre(retiradas, de, ate),
   );
@@ -279,11 +355,12 @@ export function fluxoDeCaixaEntre(
 
 /**
  * Saldo disponível em `ate`: o saldo inicial informado mais o que entrou e
- * menos o que saiu do dia dele até `ate` — despesas, reembolsos, acervo e
- * retiradas dos sócios.
+ * menos o que saiu do dia dele até `ate` — despesas, pró-labore, reembolsos,
+ * acervo e retiradas dos sócios.
  *
  *   saldo inicial (começo do dia de referência)
- *   + entradas − reembolsos − despesas − acervo − retiradas, de lá até `ate`
+ *   + entradas − reembolsos − despesas − pró-labore − acervo − retiradas,
+ *     de lá até `ate`
  *   = saldo disponível
  *
  * É aqui que a retirada reduz o dinheiro disponível. Faturamento, despesas e

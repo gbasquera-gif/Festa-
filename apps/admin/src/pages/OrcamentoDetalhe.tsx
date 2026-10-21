@@ -277,7 +277,7 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
               <Link href={`/reservas/${o.reservaId}/editar`}>Ver reserva</Link>
             </Button>
           )}
-          {situacao === "APROVADO" && o.sinal && !o.sinal.pago && o.sinal.recebido === 0 && (
+          {user?.role === "ADMIN" && situacao === "APROVADO" && o.sinal && !o.sinal.pago && o.sinal.recebido === 0 && (
             <Button
               className="min-h-11"
               onClick={() => { setConflito(null); confirmarSinal.mutate(); }}

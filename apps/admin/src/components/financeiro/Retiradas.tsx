@@ -14,15 +14,15 @@ import {
   type TotalPorCategoria,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, api, baixarArquivo } from "@/lib/api";
+import { api, baixarArquivo } from "@/lib/api";
 import { Indicador, Rotulo } from "./pecas";
 import { brl, dia, nomeDoMes, numero } from "./formato";
 import { useSaldoDeCaixa } from "./SaldoDisponivel";
+import type { Panorama } from "./panorama";
 
 type Socio = { id: string; nome: string; ativo: boolean };
 type Retirada = {
@@ -47,23 +47,15 @@ type Resposta = {
   porSocio: { socioId: string; socio: string; mes: number; ano: number; historico: number; porCategoria: TotalPorCategoria }[];
   itens: Retirada[];
   totalDoFiltro: TotalPorCategoria;
-  proLaboreEmDespesas?: ProLaboreEmDespesas;
-};
-type ProLaboreEmDespesas = {
-  recorte: string;
-  quantidade: number;
-  total: number;
-  itens: { id: string; descricao: string; natureza: string; valor: number; pagoEm: string }[];
 };
 
 /** Uma linha que diz o que cada categoria é, ao lado do número. */
 const RESUMO_DA_CATEGORIA: Record<CategoriaDaRetirada, string> = {
   DISTRIBUICAO_DE_LUCROS: "destino do lucro · não é despesa",
-  PRO_LABORE: "remuneração pelo trabalho · não é lucro",
   DEVOLUCAO_DE_APORTE: "devolução de capital · não é lucro nem despesa",
 };
 
-/** "distribuição R$ 1.000 · pró-labore R$ 800" — só o que não é zero. */
+/** "distribuição R$ 1.000 · devolução R$ 300" — só o que não é zero. */
 function porCategoria(t: TotalPorCategoria): string {
   const partes = CATEGORIAS_DA_RETIRADA.filter((c) => t[c] > 0).map((c) => `${CATEGORIA_DA_RETIRADA_LABEL[c].toLowerCase()} ${brl(t[c])}`);
   return partes.length > 0 ? partes.join(" · ") : "nenhuma retirada";
@@ -110,6 +102,15 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
   const periodoLivre = Boolean(de || ate);
   const { data: saldo } = useSaldoDeCaixa();
   const doMes = data?.indicadores.mes ?? null;
+  // O controle da distribuição vem do panorama: Resultado Operacional (a mesma
+  // conta da Visão Geral) menos o pró-labore, diante do distribuído no ano.
+  const hojeIso = diaEmChapeco(new Date());
+  const mesDoControle = mes ?? (String(ano) === hojeIso.slice(0, 4) ? hojeIso.slice(0, 7) : `${ano}-12`);
+  const { data: panorama } = useQuery<Panorama>({
+    queryKey: ["financeiro", "panorama", ano, mesDoControle],
+    queryFn: () => api(`/financeiro/panorama?ano=${ano}&mes=${mesDoControle}`),
+  });
+  const controle = panorama?.distribuicao?.ano;
   const recorte = doMes ?? data?.indicadores.ano ?? null;
   const rotuloDoRecorte = doMes && mes ? nomeDoMes(mes) : String(ano);
 
@@ -121,9 +122,9 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
             Retiradas dos sócios
           </h2>
           <p className="mt-1 max-w-2xl text-sm" style={{ color: "var(--fin-muted)" }}>
-            Dinheiro que saiu da Festaê para os sócios. Reduz o saldo disponível, mas não é despesa: não muda
-            faturamento, despesas nem o Resultado Operacional. Pró-labore (remuneração) e distribuição de lucros ficam
-            separados em todas as telas.
+            Distribuição de lucros e devolução de aporte: dinheiro que saiu da Festaê para os sócios como capital.
+            Reduz o saldo disponível, mas não é despesa: não muda faturamento, despesas nem o Resultado Operacional.
+            Pró-labore não entra aqui — é despesa, lançada em Despesas.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -148,8 +149,8 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
       </div>
 
       {/* Os totais respondem "quanto saiu": não mudam com a busca da lista.
-          Distribuição de lucros vem primeiro e separada do pró-labore: uma é
-          destino do lucro, a outra é remuneração pelo trabalho. */}
+          A distribuição de lucros vem diante do resultado que havia para
+          distribuir — o Resultado Operacional menos o pró-labore. */}
       <div className="grid gap-3 sm:grid-cols-3" data-indicadores-retiradas>
         <Indicador
           rotulo={`Distribuição de lucros · ${rotuloDoRecorte}`}
@@ -157,17 +158,24 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
           nota={data ? `${doMes ? `${ano}: ${brl(data.indicadores.ano.DISTRIBUICAO_DE_LUCROS)} · ` : ""}histórico: ${brl(data.indicadores.historico.DISTRIBUICAO_DE_LUCROS)}` : undefined}
         />
         <Indicador
-          rotulo={`Pró-labore · ${rotuloDoRecorte}`}
-          valor={recorte ? brl(recorte.PRO_LABORE) : "—"}
-          nota={data ? `remuneração, não é lucro${doMes ? ` · ${ano}: ${brl(data.indicadores.ano.PRO_LABORE)}` : ""}` : undefined}
+          rotulo={`Resultado após pró-labore · ${ano}`}
+          valor={controle ? brl(controle.resultadoAposProLabore) : "—"}
+          tom={controle && controle.distribuidoAcima > 0 ? "alerta" : "normal"}
+          nota={
+            controle
+              ? controle.distribuidoAcima > 0
+                ? `distribuído ${brl(controle.distribuido)} — ${brl(controle.distribuidoAcima)} acima do resultado do ano`
+                : `Resultado Operacional ${brl(controle.resultadoOperacional)} − pró-labore ${brl(controle.proLabore)} · distribuído ${brl(controle.distribuido)}`
+              : undefined
+          }
         />
         <Indicador
-          rotulo="Saldo disponível hoje"
+          rotulo="Saldo disponível hoje (calculado)"
           valor={saldo?.saldo != null ? brl(saldo.saldo) : "—"}
           tom={saldo?.saldo != null && saldo.saldo < 0 ? "alerta" : "normal"}
           nota={
             saldo?.referencia
-              ? `saldo inicial de ${dia(saldo.referencia.dia)} + entradas − saídas, retiradas inclusive`
+              ? `saldo inicial de ${dia(saldo.referencia.dia)} + entradas − saídas · depende da conciliação com o extrato`
               : "informe o saldo da conta na Visão Geral"
           }
         />
@@ -214,24 +222,6 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
         </div>
       )}
 
-      {data?.proLaboreEmDespesas && data.proLaboreEmDespesas.quantidade > 0 && (
-        <div className="fin-cartao text-sm" style={{ borderColor: "var(--fin-coral)" }} data-pro-labore-em-despesas>
-          <p style={{ color: "var(--fin-navy-ink)" }}>
-            {data.proLaboreEmDespesas.quantidade === 1
-              ? "Uma despesa de "
-              : `${data.proLaboreEmDespesas.quantidade} despesas de `}
-            {ano} parece{data.proLaboreEmDespesas.quantidade === 1 ? "" : "m"} pró-labore ({brl(data.proLaboreEmDespesas.total)}).
-            Elas já entram nas despesas e no Resultado Operacional. Não lance o mesmo pagamento aqui de novo.
-          </p>
-          <ul className="mt-2 grid gap-0.5 text-xs" style={{ color: "var(--fin-muted)" }}>
-            {data.proLaboreEmDespesas.itens.slice(0, 5).map((g) => (
-              <li key={g.id}>
-                {dia(g.pagoEm)} · {g.descricao} · {brl(g.valor)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {data && data.porSocio.length > 0 && (
         <div className="fin-cartao overflow-x-auto p-0" data-por-socio>
@@ -426,10 +416,6 @@ function FormularioDeRetirada({
   const editando = retirada !== null;
   const hoje = diaEmChapeco(new Date());
   const [chave, setChave] = useState("");
-  // Pró-labore que talvez já esteja em Despesas: o servidor devolve a lista e
-  // só aceita depois que a pessoa confirma que conferiu.
-  const [duplicidade, setDuplicidade] = useState<ProLaboreEmDespesas["itens"] | null>(null);
-  const [conferida, setConferida] = useState(false);
   const { data: saldo } = useSaldoDeCaixa();
   const [form, setForm] = useState({
     socioId: "",
@@ -444,8 +430,6 @@ function FormularioDeRetirada({
   useEffect(() => {
     if (!aberto) return;
     setChave(crypto.randomUUID());
-    setDuplicidade(null);
-    setConferida(false);
     setForm(
       retirada
         ? {
@@ -470,7 +454,6 @@ function FormularioDeRetirada({
         retiradaEm: form.retiradaEm,
         forma: form.forma,
         descricao: form.descricao.trim() || null,
-        ...(duplicidade && conferida ? { semDuplicidadeConferida: true } : {}),
       };
       return editando
         ? api(`/financeiro/retiradas/${retirada.id}`, { method: "PATCH", body: JSON.stringify({ ...corpo, justificativa: form.justificativa.trim() }) })
@@ -481,14 +464,7 @@ function FormularioDeRetirada({
       toast.success(editando ? "Retirada atualizada. A alteração ficou no histórico." : "Retirada registrada.");
       aoFechar();
     },
-    onError: (e: Error) => {
-      if (e instanceof ApiError && e.detalhes?.codigo === "PRO_LABORE_EM_DESPESAS") {
-        setDuplicidade((e.detalhes.despesas as ProLaboreEmDespesas["itens"]) ?? []);
-        setConferida(false);
-        return;
-      }
-      toast.error(e.message);
-    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const ativos = socios.filter((s) => s.ativo || s.id === form.socioId);
@@ -505,8 +481,7 @@ function FormularioDeRetirada({
     Number(form.valor) > 0 &&
     form.retiradaEm !== "" &&
     form.retiradaEm <= hoje &&
-    (!editando || form.justificativa.trim().length >= 10) &&
-    (!duplicidade || conferida);
+    (!editando || form.justificativa.trim().length >= 10);
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && !salvar.isPending && aoFechar()}>
@@ -547,10 +522,7 @@ function FormularioDeRetirada({
             <select
               id="retirada-categoria"
               value={form.categoria}
-              onChange={(e) => {
-                setDuplicidade(null);
-                setForm({ ...form, categoria: e.target.value as CategoriaDaRetirada });
-              }}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value as CategoriaDaRetirada })}
               className="h-11 rounded-md border bg-background px-3 text-sm"
             >
               <option value="">Escolha…</option>
@@ -585,10 +557,7 @@ function FormularioDeRetirada({
                 type="date"
                 max={hoje}
                 value={form.retiradaEm}
-                onChange={(e) => {
-                  setDuplicidade(null);
-                  setForm({ ...form, retiradaEm: e.target.value });
-                }}
+                onChange={(e) => setForm({ ...form, retiradaEm: e.target.value })}
                 className="min-h-11"
               />
             </div>
@@ -636,25 +605,9 @@ function FormularioDeRetirada({
               )}
             </p>
           )}
-          {duplicidade && (
-            <div className="grid gap-2 rounded-md border px-3 py-3 text-sm" style={{ borderColor: "var(--fin-coral)" }} data-duplicidade-pro-labore>
-              <p style={{ color: "var(--fin-navy-ink)" }}>
-                Já há em Despesas, neste mês, {duplicidade.length === 1 ? "um lançamento" : `${duplicidade.length} lançamentos`} com cara
-                de pró-labore. Se for o mesmo pagamento, cancele: ele já está nas despesas e no Resultado Operacional.
-              </p>
-              <ul className="grid gap-0.5 text-xs" style={{ color: "var(--fin-muted)" }}>
-                {duplicidade.map((g) => (
-                  <li key={g.id}>
-                    {dia(g.pagoEm)} · {g.descricao} · {brl(g.valor)}
-                  </li>
-                ))}
-              </ul>
-              <label className="flex cursor-pointer items-start gap-3" htmlFor="retirada-sem-duplicidade">
-                <Checkbox id="retirada-sem-duplicidade" checked={conferida} onCheckedChange={(v) => setConferida(v === true)} className="mt-0.5" />
-                <span>Conferi: é outro pagamento, não o que está em Despesas.</span>
-              </label>
-            </div>
-          )}
+          <p className="text-xs" style={{ color: "var(--fin-muted)" }} data-nota-pro-labore-na-retirada>
+            Pró-labore não é retirada: é despesa, e se lança em Despesas com a natureza “Pró-labore”.
+          </p>
           <p className="text-xs" style={{ color: "var(--fin-muted)" }}>
             O usuário logado fica registrado como responsável pelo lançamento.
           </p>

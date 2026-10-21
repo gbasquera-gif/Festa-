@@ -381,7 +381,6 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
   if (ret && ret.total > 0) {
     const partes = [
       ret.DISTRIBUICAO_DE_LUCROS > 0 ? `distribuição de lucros ${reais(ret.DISTRIBUICAO_DE_LUCROS)}` : null,
-      ret.PRO_LABORE > 0 ? `pró-labore ${reais(ret.PRO_LABORE)}` : null,
       ret.DEVOLUCAO_DE_APORTE > 0 ? `devolução de aporte ${reais(ret.DEVOLUCAO_DE_APORTE)}` : null,
     ].filter(Boolean);
     notas.push(
@@ -389,13 +388,18 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
         `Movimento líquido do caixa no mês: ${reais(r.fluxoDeCaixa.movimentoLiquido)}.`,
     );
   }
+  // Pró-labore: despesa com os sócios, fora do Resultado Operacional por
+  // definição. Só aparece quando houve no mês.
+  if ((r.fluxoDeCaixa?.proLabore ?? 0) > 0) {
+    notas.push(`Pró-labore em ${minusculo(r.mes)}: ${reais(r.fluxoDeCaixa.proLabore)} — despesa com os sócios, fora do Resultado Operacional.`);
+  }
   // Saldo disponível: só com saldo da conta informado. É onde a retirada
   // reduz o dinheiro disponível — o Resultado Operacional não muda.
   if (r.saldoDisponivel) {
     const sd = r.saldoDisponivel;
     notas.push(
       `Saldo disponível em ${dataCurta(sd.ate)}: ${reais(sd.saldo)} — saldo inicial de ${dataCurta(sd.referencia.dia)} ` +
-        `(${reais(sd.referencia.valor)}) mais entradas e menos saídas desde então, retiradas inclusive.`,
+        `(${reais(sd.referencia.valor)}) mais entradas e menos saídas desde então, retiradas inclusive. Calculado pelos lançamentos do painel: depende da conciliação com o extrato.`,
     );
   }
   const fimDasNotas =

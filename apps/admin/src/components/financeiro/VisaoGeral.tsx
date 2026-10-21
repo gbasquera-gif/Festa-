@@ -68,6 +68,12 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           investimento, não despesa do mês. Não considera impostos, pró-labore nem depreciação —
           por isso não se chama lucro líquido.
         </p>
+        {data.distribuicao && data.distribuicao.mes.proLabore > 0 && (
+          <p className="mt-2 text-xs text-white/75" data-pro-labore-a-parte>
+            Pró-labore do mês, à parte: {brl(data.distribuicao.mes.proLabore)} · resultado após pró-labore:{" "}
+            {brl(data.distribuicao.mes.resultadoAposProLabore)}.
+          </p>
+        )}
       </div>
 
       {/* Meta: só existe quando foi definida. */}
@@ -253,7 +259,7 @@ function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
     { grupo: "Saídas da operação", rotulo: "Reembolsos a clientes", mes: m.reembolsos, ano: a.reembolsos, sinal: "−" },
     { grupo: "Saídas da operação", rotulo: "Despesas (consumo e custeio)", mes: m.despesasOperacionais, ano: a.despesasOperacionais, sinal: "−" },
     { grupo: "Investimento", rotulo: "Acervo", mes: m.acervo, ano: a.acervo, sinal: "−" },
-    { grupo: "Remuneração dos sócios", rotulo: "Pró-labore", mes: m.retiradas.PRO_LABORE, ano: a.retiradas.PRO_LABORE, sinal: "−" },
+    { grupo: "Remuneração dos sócios", rotulo: "Pró-labore (despesa, fora do Resultado Operacional)", mes: m.proLabore, ano: a.proLabore, sinal: "−" },
     { grupo: "Com os sócios · capital e lucro", rotulo: "Distribuição de lucros", mes: m.retiradas.DISTRIBUICAO_DE_LUCROS, ano: a.retiradas.DISTRIBUICAO_DE_LUCROS, sinal: "−", destaque: true },
     { grupo: "Com os sócios · capital e lucro", rotulo: "Devolução de aporte", mes: m.retiradas.DEVOLUCAO_DE_APORTE, ano: a.retiradas.DEVOLUCAO_DE_APORTE, sinal: "−" },
   ];
@@ -296,8 +302,8 @@ function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
       </table>
       <p className="px-4 pb-4 pt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
         Distribuição de lucros e devolução de aporte reduzem o caixa, mas não são despesa: não mudam faturamento, despesas
-        nem o Resultado Operacional acima. Pró-labore é remuneração dos sócios, não distribuição de lucros — fica fora do
-        Resultado Operacional por definição do painel. O saldo da conta está no bloco abaixo.
+        nem o Resultado Operacional acima. Pró-labore é despesa com os sócios, lançada em Despesas — não é distribuição de
+        lucros — e fica fora do Resultado Operacional por definição. O saldo da conta está no bloco abaixo.
       </p>
     </div>
   );

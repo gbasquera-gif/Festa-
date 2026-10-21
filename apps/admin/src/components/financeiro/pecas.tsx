@@ -88,8 +88,9 @@ export function Barra({ preenchido, marca }: { preenchido: number; marca?: numbe
 
 /** Etiqueta de natureza. A cor carrega significado: dourado fica, o resto sai. */
 export function Natureza({ valor }: { valor: string }) {
-  const classe = valor === "ACERVO" ? "acervo" : valor === "CONSUMO" ? "consumo" : "custeio";
-  return <span className={`fin-etiqueta ${classe}`}>{valor}</span>;
+  const classe =
+    valor === "ACERVO" ? "acervo" : valor === "CONSUMO" ? "consumo" : valor === "PRO_LABORE" ? "prolabore" : "custeio";
+  return <span className={`fin-etiqueta ${classe}`}>{valor === "PRO_LABORE" ? "PRÓ-LABORE" : valor}</span>;
 }
 
 /** Aviso honesto: o resultado exibido ainda não desconta desgaste do acervo. */

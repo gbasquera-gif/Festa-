@@ -40,6 +40,7 @@ import { api } from "@/lib/api";
 import { AcoesDaReserva } from "@/components/AcoesDaReserva";
 import { TratarPagamentoTardio } from "@/components/credito/CancelarReserva";
 import { RegistrarReembolsoRealizado } from "@/components/credito/RegistrarReembolso";
+import { useAuth } from "@/lib/auth";
 
 interface ProductRef {
   id: string;
@@ -328,6 +329,7 @@ function Reembolso({
 }) {
   const queryClient = useQueryClient();
   const [registrando, setRegistrando] = useState(false);
+  const ehAdmin = useAuth().user?.role === "ADMIN";
   if (reembolsado <= 0) return null;
 
   if (realizado) {
@@ -359,9 +361,13 @@ function Reembolso({
       </p>
       {/* A coluna do detalhe é estreita no desktop: o botão ocupa a largura
           do bloco e quebra a linha em vez de vazar a borda. */}
-      <Button size="sm" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:min-h-8" onClick={() => setRegistrando(true)}>
-        Registrar reembolso realizado
-      </Button>
+      {ehAdmin ? (
+        <Button size="sm" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:min-h-8" onClick={() => setRegistrando(true)} data-registrar-reembolso>
+          Registrar reembolso realizado
+        </Button>
+      ) : (
+        <p className="text-xs font-medium" data-reembolso-so-admin>O registro da devolução feita é do ADMIN.</p>
+      )}
       {registrando && (
         <RegistrarReembolsoRealizado
           reservaId={row.id}
