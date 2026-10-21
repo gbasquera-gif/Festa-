@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { NATUREZA_LABEL, pareceProLabore, type NaturezaDoGasto } from "@festae/shared";
+import { NATUREZA_LABEL, type NaturezaDoGasto } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -230,18 +230,6 @@ export function FormularioDeGasto({
             </div>
           </div>
 
-          {form.natureza !== "PRO_LABORE" && pareceProLabore(form.descricao, form.categoria) && (
-            <p className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: "var(--fin-coral)", color: "var(--fin-navy-ink)" }} data-aviso-pro-labore>
-              Parece pró-labore. Escolha a natureza “Pró-labore”: como consumo ou custeio ele entraria no Resultado
-              Operacional, que por definição não inclui pró-labore. O sistema não aceita salvar assim.
-            </p>
-          )}
-          {form.natureza === "PRO_LABORE" && (
-            <p className="rounded-md border px-3 py-2 text-xs" style={{ color: "var(--fin-navy-ink)" }} data-nota-pro-labore>
-              Remuneração pelo trabalho dos sócios — não é distribuição de lucros. É despesa: sai do caixa e do saldo
-              disponível, e fica fora do Resultado Operacional. Lance só aqui, nunca como retirada.
-            </p>
-          )}
           {ehAcervo && (
             <div
               className="grid gap-4 rounded-md border p-3"

@@ -51,23 +51,7 @@ function servicos(): ServicosDoAssistente {
         festasNoMes: 2,
         meta: null,
       })) as never,
-      despesasPorNatureza: vi.fn(async (mes: string) => ({ mes, consumo: 120, custeio: 80, total: 200, acervo: 50, proLabore: 1500 })),
-    },
-    retiradas: {
-      listar: vi.fn(async (filtro: { ano?: string; mes?: string }) => {
-        const tot = (d: number, p: number, a: number) => ({ DISTRIBUICAO_DE_LUCROS: d + p, DEVOLUCAO_DE_APORTE: a, total: d + p + a });
-        return {
-          recorte: { ano: Number(filtro.ano ?? 2026), mes: filtro.mes && filtro.mes !== "todos" ? `${filtro.ano}-${filtro.mes}` : null },
-          indicadores: { mes: filtro.mes && filtro.mes !== "todos" ? tot(300, 1500, 0) : null, ano: tot(1300, 4500, 250), historico: tot(2300, 6000, 250) },
-          porSocio: [
-            { socioId: "s1", socio: "Ana Teste da Silva", mes: 1500, ano: 3000, historico: 5000, porCategoria: tot(0, 5000, 0) },
-            { socioId: "s2", socio: "Bruno Teste", mes: 300, ano: 3050, historico: 3550, porCategoria: tot(2300, 1000, 250) },
-            { socioId: "s3", socio: "Caio Teste", mes: 0, ano: 0, historico: 0, porCategoria: tot(0, 0, 0) },
-          ],
-          itens: [{}, {}],
-          totalDoFiltro: tot(300, 1500, 0),
-        };
-      }) as never,
+      despesasPorNatureza: vi.fn(async (mes: string) => ({ mes, consumo: 120, custeio: 80, total: 200, acervo: 50 })),
     },
     comercial: { visaoGeral: vi.fn() as never },
     panoramaDeOrcamentos: { panorama: vi.fn() as never },
@@ -109,7 +93,6 @@ describe("catálogo", () => {
     expect(ops).not.toContain("consultarFinanceiro");
     expect(ops).not.toContain("consultarCarteiraFutura");
     expect(ops).not.toContain("consultarUsoDoAcervo");
-    expect(ops).not.toContain("consultarRetiradasDosSocios");
     expect(ops).toEqual(
       expect.arrayContaining(["consultarFestas", "consultarPendencias", "consultarPropostas", "consultarDisponibilidadeDeProduto", "solicitarOperacao"]),
     );
@@ -128,83 +111,6 @@ describe("responder", () => {
     const resultado = roteiro.recebidas[1].mensagens.at(-1);
     expect(resultado).toMatchObject({ papel: "ferramenta", nome: "consultarFinanceiro" });
     expect((resultado as { conteudo: string }).conteudo).toContain("R$ 1.234,50");
-  });
-
-  it("retiradas dos sócios: o mês pela mesma apuração da aba, só o primeiro nome, e o critério que separa do Resultado", async () => {
-    const roteiro = new Roteiro([chama("consultarRetiradasDosSocios", { periodo: "outubro" }), diz("ok")]);
-    const { nucleo, servicos: s } = montar(roteiro);
-    const r = await nucleo.responder(entrada("Quanto os sócios retiraram em outubro?"));
-    expect(s.retiradas.listar).toHaveBeenCalledWith({ ano: "2026", mes: "10", incluirEstornadas: "nao" }, AGORA);
-    expect(r.fontes[0].caminho).toBe("/financeiro?aba=retiradas&ano=2026&mes=10");
-    const dados = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(dados.noPeriodo).toEqual({ total: "R$ 1.800,00", distribuicaoDeLucros: "R$ 1.800,00", devolucaoDeAporte: "R$ 0,00" });
-    expect(dados.anoInteiro.total).toBe("R$ 6.050,00");
-    // Quem não retirou no mês fica de fora; quem retirou vai só com o primeiro nome.
-    expect(dados.porSocio).toEqual([
-      { socio: "Ana", noPeriodo: "R$ 1.500,00", noAno: "R$ 3.000,00" },
-      { socio: "Bruno", noPeriodo: "R$ 300,00", noAno: "R$ 3.050,00" },
-    ]);
-    expect(JSON.stringify(dados)).not.toContain("Silva");
-    expect(dados.criterios.join(" ")).toContain("não muda faturamento, despesas nem o Resultado Operacional");
-    expect(dados.criterios.join(" ")).toContain("Pró-labore NÃO é retirada: é despesa");
-  });
-
-  it("retiradas dos sócios: ano, histórico sem período e semana recusada com as alternativas reais", async () => {
-    const roteiro = new Roteiro([
-      chama("consultarRetiradasDosSocios", { periodo: "2026" }),
-      diz("ok"),
-      chama("consultarRetiradasDosSocios", {}),
-      diz("ok"),
-      chama("consultarRetiradasDosSocios", {}),
-      diz("ok"),
-      chama("consultarRetiradasDosSocios", { periodo: "esta semana" }),
-      diz("ok"),
-    ]);
-    const { nucleo, servicos: s } = montar(roteiro);
-    await nucleo.responder(entrada("Retiradas dos sócios em 2026?"));
-    expect(s.retiradas.listar).toHaveBeenLastCalledWith({ ano: "2026", mes: "todos", incluirEstornadas: "nao" }, AGORA);
-    const doAno = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(doAno.noPeriodo.total).toBe("R$ 6.050,00");
-    expect(doAno.porSocio.map((x: { socio: string }) => x.socio)).toEqual(["Ana", "Bruno"]);
-
-    await nucleo.responder(entrada("E no total, desde o começo?"));
-    const historico = JSON.parse((roteiro.recebidas[3].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(historico.periodo.rotulo).toBe("todo o histórico");
-    expect(historico.noPeriodo.total).toBe("R$ 8.550,00");
-
-    // Mesmo primeiro nome: o mínimo que separa as pessoas, nunca o nome completo.
-    vi.mocked(s.retiradas.listar).mockResolvedValueOnce({
-      recorte: { ano: 2026, mes: null },
-      indicadores: { mes: null, ano: { DISTRIBUICAO_DE_LUCROS: 0, DEVOLUCAO_DE_APORTE: 0, total: 0 }, historico: { DISTRIBUICAO_DE_LUCROS: 30, DEVOLUCAO_DE_APORTE: 0, total: 30 } },
-      porSocio: [
-        { socioId: "a", socio: "Ana Silva Costa", mes: 0, ano: 0, historico: 20 },
-        { socioId: "b", socio: "Ana Pereira", mes: 0, ano: 0, historico: 10 },
-        { socioId: "c", socio: "Bia Souza", mes: 0, ano: 0, historico: 8 },
-        { socioId: "d", socio: "Bia Santos", mes: 0, ano: 0, historico: 7 },
-        { socioId: "e", socio: "Caio Lima", mes: 0, ano: 0, historico: 6 },
-        { socioId: "f", socio: "Caio Lima Neto", mes: 0, ano: 0, historico: 5 },
-        { socioId: "g", socio: "Davi Rocha", mes: 0, ano: 0, historico: 4 },
-      ],
-      itens: [],
-    } as never);
-    await nucleo.responder(entrada("E por sócio?"));
-    const homonimos = JSON.parse((roteiro.recebidas[5].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(homonimos.porSocio.map((x: { socio: string }) => x.socio)).toEqual([
-      "Ana S.",
-      "Ana P.",
-      "Bia Souza",
-      "Bia Santos",
-      "Caio Lima (1)",
-      "Caio Lima (2)",
-      "Davi",
-    ]);
-    expect(JSON.stringify(homonimos)).not.toMatch(/Silva|Costa|Rocha|Neto/);
-
-    const r = await nucleo.responder(entrada("E nesta semana?"));
-    const semana = JSON.parse((roteiro.recebidas[7].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(semana.limitacao).toContain("por mês ou por ano");
-    expect(semana.alternativasDisponiveis).toHaveLength(2);
-    expect(r.tipo).toBe("LIMITACAO");
   });
 
   it("as instruções levam a data de hoje em Chapecó e o perfil", async () => {
@@ -515,32 +421,8 @@ describe("provedor simulado (demonstração)", () => {
       args: { produto: "arco dourado", data: "dia 14/11" },
     });
     expect(await decide("Qual o valor de crédito disponível das clientes?")).toEqual({ nome: "consultarFinanceiro", args: { periodo: "este mes" } });
-    // Pró-labore é despesa: vai para o Financeiro, não para as retiradas.
-    expect(await decide("Quanto de pró-labore saiu em outubro?")).toEqual({ nome: "consultarFinanceiro", args: { periodo: "outubro" } });
-    expect(await decide("Quanto distribuímos de lucros em outubro?")).toEqual({ nome: "consultarRetiradasDosSocios", args: { periodo: "outubro" } });
-    expect(await decide("Quanto foi de distribuição de lucros?")).toEqual({ nome: "consultarRetiradasDosSocios", args: {} });
-    expect(await decide("Teve devolução de aporte este ano?")).toMatchObject({ nome: "consultarRetiradasDosSocios" });
-    expect(await decide("Quantas reservas estão prontas para retirada?")).not.toMatchObject({ nome: "consultarRetiradasDosSocios" });
     expect(await decide("Cadastre um produto novo")).toMatchObject({ nome: "solicitarOperacao" });
     expect(await decide("Quantas festas temos?")).toMatchObject({ texto: expect.stringContaining("Para qual período") });
-  });
-
-  it("redige a resposta de retiradas com os números da ferramenta", async () => {
-    const { nucleo } = montar(new ProvedorSimulado());
-    const r = await nucleo.responder(entrada("Quanto distribuímos de lucros em outubro?"));
-    expect(r.ferramentas).toEqual(["consultarRetiradasDosSocios"]);
-    expect(r.texto).toContain("distribuição de lucros R$ 1.800,00");
-    expect(r.texto).toContain("Ana R$ 1.500,00");
-    expect(r.texto).toContain("não muda o Resultado Operacional");
-  });
-
-  it("pró-labore: responde como despesa, fora do Resultado Operacional, pelo Financeiro", async () => {
-    const { nucleo } = montar(new ProvedorSimulado());
-    const r = await nucleo.responder(entrada("Quanto de pró-labore saiu em outubro?"));
-    expect(r.ferramentas).toEqual(["consultarFinanceiro"]);
-    expect(r.texto).toContain("R$ 1.500,00");
-    expect(r.texto).toContain("fora do Resultado Operacional");
-    expect(r.texto).toContain("não é distribuição de lucros");
   });
 
   it("continuação mantém o período e filtra as pagas", async () => {

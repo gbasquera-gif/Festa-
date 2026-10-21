@@ -11,8 +11,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "studio": "prisma studio",
-    "check": "pnpm run generate && tsc --noEmit",
-    "test": "tsx --test prisma/administrador.test.ts"
+    "check": "pnpm run generate && tsc --noEmit"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",

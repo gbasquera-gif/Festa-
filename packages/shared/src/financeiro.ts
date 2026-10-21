@@ -37,28 +37,21 @@ export const REGIME_LABEL: Record<Regime, string> = {
 };
 
 /** O que o dinheiro que saiu virou. Espelha o enum do banco. */
-export const NATUREZAS_DO_GASTO = ["ACERVO", "CONSUMO", "CUSTEIO", "PRO_LABORE"] as const;
+export const NATUREZAS_DO_GASTO = ["ACERVO", "CONSUMO", "CUSTEIO"] as const;
 export type NaturezaDoGasto = (typeof NATUREZAS_DO_GASTO)[number];
 
 export const NATUREZA_LABEL: Record<NaturezaDoGasto, string> = {
   ACERVO: "Acervo",
   CONSUMO: "Consumo",
   CUSTEIO: "Custeio",
-  PRO_LABORE: "Pró-labore",
 };
 
 /**
- * As naturezas que são despesa do mês no Resultado Operacional.
+ * As naturezas que são despesa do mês.
  *
  * Acervo fica de fora porque não é despesa: é capital que continua existindo
  * depois da festa e pode ser alugado de novo. Contar a compra de um painel
  * como despesa do mês faria todo mês de investimento parecer prejuízo.
- *
- * Pró-labore também fica de fora, por definição do indicador: o Resultado
- * Operacional mede a operação antes da remuneração dos sócios (e antes de
- * impostos e depreciação). O pró-labore é despesa — mora em Despesas, com
- * natureza própria — e aparece à parte: no fluxo de caixa, no saldo e no
- * "resultado gerencial após pró-labore" (controle, não lucro contábil).
  */
 export const NATUREZAS_DE_DESPESA: readonly NaturezaDoGasto[] = ["CONSUMO", "CUSTEIO"];
 
@@ -385,78 +378,6 @@ export function acervoDoMes(gastos: readonly GastoApurado[], mes: string): numbe
           gasto.natureza === "ACERVO" && gasto.pagoEm !== null && mesDaDespesa(gasto.pagoEm) === mes,
       )
       .map((gasto) => gasto.valor),
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Por intervalo de dias
- *
- * As mesmas regras de entradasNoCaixa, reembolsosNoMes, despesaDoMes e
- * acervoDoMes, para um intervalo (de, ate] de dias "AAAA-MM-DD" em vez de um
- * mês. Servem ao saldo disponível, que parte de um saldo informado num dia e
- * soma o que veio depois dele. As funções mensais acima não mudam.
- * ------------------------------------------------------------------ */
-
-const noIntervalo = (dia: string, de: string, ate: string) => dia > de && dia <= ate;
-
-/** Entradas no caixa com data em (de, ate], no fuso de Chapecó. */
-export function entradasEntre(contratos: readonly ContratoApurado[], de: string, ate: string): number {
-  return somar(
-    contratos.flatMap((contrato) =>
-      recebimentosNoCaixa(contrato)
-        .filter((r) => r.recebidoEm !== null && noIntervalo(diaEmChapeco(r.recebidoEm), de, ate))
-        .map((r) => r.valor),
-    ),
-  );
-}
-
-/** Reembolsos realizados com data em (de, ate]. */
-export function reembolsosEntre(contratos: readonly ContratoApurado[], de: string, ate: string): number {
-  return somar(
-    contratos.flatMap((contrato) =>
-      (contrato.reembolsos ?? []).filter((r) => noIntervalo(diaEmChapeco(r.realizadoEm), de, ate)).map((r) => r.valor),
-    ),
-  );
-}
-
-/** O dia em que uma saída foi paga — a mesma leitura de `mesDaDespesa`. */
-function diaDaDespesa(pagoEm: Date): string {
-  return pagoEm.toISOString().slice(0, 10);
-}
-
-/** Despesas (consumo e custeio) pagas em (de, ate]. */
-export function despesaEntre(gastos: readonly GastoApurado[], de: string, ate: string): number {
-  return somar(
-    gastos
-      .filter((g) => NATUREZAS_DE_DESPESA.includes(g.natureza) && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
-      .map((g) => g.valor),
-  );
-}
-
-/** Acervo pago em (de, ate]. */
-export function acervoEntre(gastos: readonly GastoApurado[], de: string, ate: string): number {
-  return somar(
-    gastos
-      .filter((g) => g.natureza === "ACERVO" && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
-      .map((g) => g.valor),
-  );
-}
-
-/** Pró-labore pago no mês: despesa com os sócios, fora do Resultado Operacional. */
-export function proLaboreDoMes(gastos: readonly GastoApurado[], mes: string): number {
-  return somar(
-    gastos
-      .filter((g) => g.natureza === "PRO_LABORE" && g.pagoEm !== null && mesDaDespesa(g.pagoEm) === mes)
-      .map((g) => g.valor),
-  );
-}
-
-/** Pró-labore pago em (de, ate]. */
-export function proLaboreEntre(gastos: readonly GastoApurado[], de: string, ate: string): number {
-  return somar(
-    gastos
-      .filter((g) => g.natureza === "PRO_LABORE" && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
-      .map((g) => g.valor),
   );
 }
 

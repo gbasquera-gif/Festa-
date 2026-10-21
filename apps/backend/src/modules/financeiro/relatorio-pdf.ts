@@ -375,33 +375,6 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
   if (r.creditoEmAberto > 0) {
     notas.push(`Crédito Festaê em aberto das clientes: ${reais(r.creditoEmAberto)} — já entrou no caixa quando foi pago; não é receita nova.`);
   }
-  // Retiradas dos sócios: saída de caixa, nunca despesa. Só aparecem quando
-  // houve retirada no mês, com o movimento líquido do caixa que elas afetam.
-  const ret = r.fluxoDeCaixa?.retiradas;
-  if (ret && ret.total > 0) {
-    const partes = [
-      ret.DISTRIBUICAO_DE_LUCROS > 0 ? `distribuição de lucros ${reais(ret.DISTRIBUICAO_DE_LUCROS)}` : null,
-      ret.DEVOLUCAO_DE_APORTE > 0 ? `devolução de aporte ${reais(ret.DEVOLUCAO_DE_APORTE)}` : null,
-    ].filter(Boolean);
-    notas.push(
-      `Retiradas dos sócios em ${minusculo(r.mes)}: ${reais(ret.total)} (${partes.join("; ")}) — saídas de caixa fora do Resultado Operacional. ` +
-        `Movimento líquido do caixa no mês: ${reais(r.fluxoDeCaixa.movimentoLiquido)}.`,
-    );
-  }
-  // Pró-labore: despesa com os sócios, fora do Resultado Operacional por
-  // definição. Só aparece quando houve no mês.
-  if ((r.fluxoDeCaixa?.proLabore ?? 0) > 0) {
-    notas.push(`Pró-labore em ${minusculo(r.mes)}: ${reais(r.fluxoDeCaixa.proLabore)} — despesa com os sócios, fora do Resultado Operacional.`);
-  }
-  // Saldo disponível: só com saldo da conta informado. É onde a retirada
-  // reduz o dinheiro disponível — o Resultado Operacional não muda.
-  if (r.saldoDisponivel) {
-    const sd = r.saldoDisponivel;
-    notas.push(
-      `Saldo disponível em ${dataCurta(sd.ate)}: ${reais(sd.saldo)} — saldo inicial de ${dataCurta(sd.referencia.dia)} ` +
-        `(${reais(sd.referencia.valor)}) mais entradas e menos saídas desde então, retiradas inclusive. Calculado pelos lançamentos do painel: depende da conciliação com o extrato.`,
-    );
-  }
   const fimDasNotas =
     notas.length > 0
       ? escrever(notas.join(" "), MARGEM, y + 8, { tamanho: 7.6, cor: COR.apagado, largura: LARGURA })
@@ -473,10 +446,4 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
 /** "Festae-Relatorio-Financeiro-2026-09.pdf" */
 export function nomeDoArquivo(mes: string): string {
   return `Festae-Relatorio-Financeiro-${mes}.pdf`;
-}
-
-/** "2026-10-31" → "31/10/2026". */
-function dataCurta(dia: string): string {
-  const [a, m, d] = dia.split("-");
-  return `${d}/${m}/${a}`;
 }

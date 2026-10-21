@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { pareceProLabore, type NaturezaDoGasto } from "@festae/shared";
+import type { NaturezaDoGasto } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -61,16 +61,6 @@ export function Gastos({
   const pagos = lancamentos.filter((g) => g.pagoEm !== null);
   const emAberto = lancamentos.filter((g) => g.pagoEm === null);
   const totalEmAberto = emAberto.reduce((soma, g) => soma + Number(g.valor), 0);
-  // Despesas: o que entra no Resultado Operacional e o pró-labore, à parte.
-  const comProLabore = naturezas.includes("PRO_LABORE");
-  const somaDe = (lista: Gasto[]) => Math.round(lista.reduce((t, g) => t + Number(g.valor) * 100, 0)) / 100;
-  const doResultado = somaDe(lancamentos.filter((g) => g.natureza === "CONSUMO" || g.natureza === "CUSTEIO"));
-  const proLabore = somaDe(lancamentos.filter((g) => g.natureza === "PRO_LABORE"));
-  // Lançamentos antigos de consumo/custeio que dizem "pró-labore": só aviso.
-  // Reclassificar é decisão da gestão — muda o Resultado Operacional do mês.
-  const proLaboreForaDaNatureza = comProLabore
-    ? lancamentos.filter((g) => (g.natureza === "CONSUMO" || g.natureza === "CUSTEIO") && pareceProLabore(g.descricao, g.categoria))
-    : [];
 
   return (
     <div className="space-y-5">
@@ -112,29 +102,6 @@ export function Gastos({
           tom={totalEmAberto > 0 ? "alerta" : "normal"}
         />
       </div>
-
-      {comProLabore && lancamentos.length > 0 && (
-        <p className="text-xs" style={{ color: "var(--fin-muted)" }} data-separacao-pro-labore>
-          Consumo + custeio (entram no Resultado Operacional): <strong>{brl(doResultado)}</strong> · Pró-labore (despesa com os
-          sócios, fora do Resultado Operacional): <strong>{brl(proLabore)}</strong>
-        </p>
-      )}
-      {proLaboreForaDaNatureza.length > 0 && (
-        <div className="fin-cartao text-sm" style={{ borderColor: "var(--fin-coral)" }} data-pro-labore-fora-da-natureza>
-          <p style={{ color: "var(--fin-navy-ink)" }}>
-            {proLaboreForaDaNatureza.length === 1 ? "Um lançamento" : `${proLaboreForaDaNatureza.length} lançamentos`} de
-            consumo/custeio parece{proLaboreForaDaNatureza.length === 1 ? "" : "m"} pró-labore. Se for{proLaboreForaDaNatureza.length === 1 ? "" : "em"},
-            edite e escolha a natureza “Pró-labore” — o Resultado Operacional daquele mês muda, por isso a decisão é da gestão.
-          </p>
-          <ul className="mt-1 grid gap-0.5 text-xs" style={{ color: "var(--fin-muted)" }}>
-            {proLaboreForaDaNatureza.slice(0, 5).map((g) => (
-              <li key={g.id}>
-                {g.descricao} · {brl(Number(g.valor))}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {isLoading && <p className="text-sm" style={{ color: "var(--fin-muted)" }}>Carregando…</p>}
       {error && <p className="text-sm text-destructive">Não foi possível carregar os lançamentos.</p>}
