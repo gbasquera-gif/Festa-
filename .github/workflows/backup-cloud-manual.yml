@@ -1,0 +1,51 @@
+name: Festae - backup cloud manual (sem deploy)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: festae-backup-manual
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Procedimento no branch principal
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scripts homologados da Festae
+        uses: actions/checkout@v4
+        with:
+          ref: eee094bee946c18078eba8678aa4bad484a1b157
+          path: fonte-homologada
+          persist-credentials: false
+      - name: Verificar segredos e ferramentas
+        env:
+          DB_CONFIGURADO: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL != '' }}
+          SENHA_CONFIGURADA: ${{ secrets.FESTAE_BACKUP_PASSPHRASE != '' }}
+        run: |
+          test "$DB_CONFIGURADO" = true || { echo 'Falta FESTAE_DATABASE_PUBLIC_URL'; exit 1; }
+          test "$SENHA_CONFIGURADA" = true || { echo 'Falta FESTAE_BACKUP_PASSPHRASE'; exit 1; }
+          command -v docker
+          command -v gpg
+      - name: Backup e restauracao isolada
+        env:
+          FESTAE_DATABASE_PUBLIC_URL: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL }}
+          FESTAE_BACKUP_PASSPHRASE: ${{ secrets.FESTAE_BACKUP_PASSPHRASE }}
+          SOURCE_DIR: fonte-homologada/packages/database/reversao/2026-10-aprovacao-retiradas
+        run: bash .github/scripts/backup-cloud.sh
+      - name: Publicar SOMENTE arquivo criptografado
+        uses: actions/upload-artifact@v4
+        with:
+          name: festae-backup-cifrado
+          path: backup-cifrado/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
