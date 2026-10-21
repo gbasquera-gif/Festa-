@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import {
@@ -17,6 +17,8 @@ import {
   editarRetiradaSchema,
   estornarRetiradaSchema,
   filtroDeRetiradasSchema,
+  informarSaldoDeCaixaSchema,
+  type InformarSaldoDeCaixaInput,
   type SocioInput,
   type EditarSocioInput,
   type RegistrarRetiradaInput,
@@ -243,6 +245,26 @@ export class FinanceiroController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.retiradas.estornar(id, body, user.userId);
+  }
+
+  /** Saldo disponível num dia (padrão: hoje): saldo informado + entradas − saídas depois dele. */
+  @Get("saldo-de-caixa")
+  saldoDeCaixa(@Query("ate") ate?: string) {
+    if (ate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(ate)) throw new BadRequestException("Use a data no formato AAAA-MM-DD.");
+    return this.financeiro.saldoDeCaixa(ate);
+  }
+
+  @Get("saldo-de-caixa/historico")
+  saldosDeCaixaInformados() {
+    return this.financeiro.saldosDeCaixaInformados();
+  }
+
+  @Post("saldo-de-caixa")
+  informarSaldoDeCaixa(
+    @Body(new ZodValidationPipe(informarSaldoDeCaixaSchema)) body: InformarSaldoDeCaixaInput,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.financeiro.informarSaldoDeCaixa(body, user.userId);
   }
 
   @Post("meta")

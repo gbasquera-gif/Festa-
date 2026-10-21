@@ -930,6 +930,9 @@ export class OrcamentosService {
             observacao: dados.observacao,
             chaveDeIdempotencia: dados.chave,
           },
+          // A ficha da cliente nasce dentro da transação, depois da conferência
+          // de material: falta de peça ou qualquer falha não deixa cadastro órfão.
+          clienteNaTransacao: true,
           naMesmaTransacao: {
             // A mesma trava por data do aceite pelo link: aprovações do mesmo
             // dia passam uma de cada vez. Sob ela, a proposta é relida (outra

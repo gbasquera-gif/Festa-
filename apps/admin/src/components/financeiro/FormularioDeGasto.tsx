@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { NATUREZA_LABEL, type NaturezaDoGasto } from "@festae/shared";
+import { NATUREZA_LABEL, pareceProLabore, type NaturezaDoGasto } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -230,6 +230,12 @@ export function FormularioDeGasto({
             </div>
           </div>
 
+          {!ehAcervo && pareceProLabore(form.descricao, form.categoria) && (
+            <p className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: "var(--fin-coral)", color: "var(--fin-navy-ink)" }} data-aviso-pro-labore>
+              Parece pró-labore. Pró-labore se lança em Financeiro → Retiradas dos sócios, categoria Pró-labore — não aqui.
+              Lançado em Despesas, ele entra no Resultado Operacional; lançado nos dois lugares, a mesma saída conta duas vezes.
+            </p>
+          )}
           {ehAcervo && (
             <div
               className="grid gap-4 rounded-md border p-3"

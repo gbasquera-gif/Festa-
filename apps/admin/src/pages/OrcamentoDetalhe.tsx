@@ -26,6 +26,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { urlDaProposta } from "@/lib/site";
 import { brl } from "@/components/financeiro/formato";
 import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
@@ -58,6 +59,7 @@ async function copiar(texto: string, aviso: string) {
 }
 
 export default function OrcamentoDetalhe({ id }: { id: string }) {
+  const { user } = useAuth();
   const [, navegar] = useLocation();
   const { voltar } = useVoltar();
   const queryClient = useQueryClient();
@@ -214,9 +216,13 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
    * Aprovação manual com Pix recebido por fora: enviada (inclusive vencida)
    * ou aprovada pelo link e ainda sem reserva, com a data definida.
    * Convertida não: outro recebimento se lança na reserva.
+   * Só ADMIN: é confirmação financeira manual (o servidor também barra OPS).
    */
   const podeAprovarManual =
-    !o.reservaId && Boolean(o.festaEm) && ["ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
+    user?.role === "ADMIN" &&
+    !o.reservaId &&
+    Boolean(o.festaEm) &&
+    ["ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
   const tipoDeFesta = isEventType(String(o.tipoDeFesta))
     ? EVENT_TYPE_META[String(o.tipoDeFesta) as keyof typeof EVENT_TYPE_META].label
     : String(o.tipoDeFesta);

@@ -53,6 +53,7 @@ vi.mock("@festae/database", () => ({
     },
     gasto: { findMany: async () => banco.gastos },
     retiradaDeSocio: { findMany: async () => [] },
+    saldoDeCaixa: { findFirst: async () => null },
     metaMensal: { findUnique: async () => null },
     creditoClienteMovimento: { aggregate: async () => ({ _sum: { valor: null } }) },
   },
@@ -335,6 +336,25 @@ describe("retiradas dos sócios no relatório", () => {
     expect(paginas).toBe(1);
     expect(semGlifo).toEqual([]);
     expect(textos.join(" ")).toContain("Retiradas dos sócios em setembro de 2026: R$ 1.500,00");
+  });
+
+  it("com saldo da conta informado: a retirada reduz o saldo disponível do fim do mês, e só ele", async () => {
+    const ref = { dia: "2026-09-01", valor: 10_000 };
+    const semRetirada = montarRelatorioExecutivo({ contratos: CONTRATOS, gastos: GASTOS, carteira: [], ano: 2026, mes: "2026-09", agora: AGORA, saldoDeReferencia: ref });
+    const comRetirada = montarRelatorioExecutivo({ contratos: CONTRATOS, gastos: GASTOS, carteira: [], ano: 2026, mes: "2026-09", agora: AGORA, retiradas, saldoDeReferencia: ref });
+    // Mês corrente (hoje é 23/09): o saldo é o de hoje, não o do fim do mês.
+    expect(semRetirada.saldoDisponivel!.ate).toBe("2026-09-23");
+    expect(semRetirada.saldoDisponivel!.saldo - comRetirada.saldoDisponivel!.saldo).toBe(1500);
+    expect(comRetirada.saldoDisponivel!.saldo).toBe(10_000 + comRetirada.fluxoDeCaixa.movimentoLiquido);
+    expect(comRetirada.resultado).toEqual(semRetirada.resultado);
+    expect(comRetirada.faturamento).toEqual(semRetirada.faturamento);
+    const { paginas, textos } = await gerarRelatorioPdf(comRetirada);
+    expect(paginas).toBe(1);
+    expect(textos.join(" ")).toContain("Saldo disponível em 23/09/2026");
+    // Mês encerrado: o saldo é o do último dia.
+    const agosto = montarRelatorioExecutivo({ contratos: CONTRATOS, gastos: GASTOS, carteira: [], ano: 2026, mes: "2026-08", agora: AGORA, saldoDeReferencia: { dia: "2026-07-31", valor: 500 } });
+    expect(agosto.saldoDisponivel!.ate).toBe("2026-08-31");
+    expect(relatorio().saldoDisponivel).toBeNull();
   });
 
   it("sem retirada no mês, o PDF não ganha nota nova", async () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileDown } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { Barra, Indicador, NumeroEscuro, Rotulo } from "./pecas";
 import { brl, nomeDoMes, numero, pct } from "./formato";
 import { DetalheDoIndicador, type TipoDeDetalhe } from "./DetalheDoIndicador";
 import type { Panorama } from "./panorama";
+import { SaldoDisponivel } from "./SaldoDisponivel";
 
 /**
  * A leitura executiva do mês.
@@ -131,7 +132,7 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
           <Indicador rotulo="Reembolsos" valor={brl(data.caixa.reembolsos)}
             nota="devolvidos a clientes no mês" tom={data.caixa.reembolsos > 0 ? "alerta" : "normal"} />
           <Indicador rotulo="Caixa do mês" valor={brl(data.caixa.liquido)}
-            nota="entradas − reembolsos" />
+            nota="entradas − reembolsos · recebimentos, não o saldo da conta" />
         </div>
         {(data.caixa.reembolsosARealizar ?? 0) > 0 && (
           <p className="mt-2 text-xs font-medium" style={{ color: "var(--fin-coral-dark)" }} data-reembolsos-a-realizar>
@@ -148,6 +149,7 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
       </div>
 
       <FluxoDeCaixaDoMes data={data} mes={mes} />
+      <SaldoDisponivel mes={mes} />
 
       {/* Comparação com o mês anterior. */}
       <div className="fin-cartao">
@@ -244,14 +246,16 @@ function BotaoDoRelatorio({ ano, mes }: { ano: number; mes: string }) {
 function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
   if (!data.fluxoDeCaixa) return null;
   const { mes: m, ano: a } = data.fluxoDeCaixa;
-  const linhas: { rotulo: string; mes: number; ano: number; sinal: "+" | "−"; destaque?: boolean }[] = [
-    { rotulo: "Entradas (pagamentos recebidos)", mes: m.entradas, ano: a.entradas, sinal: "+" },
-    { rotulo: "Reembolsos a clientes", mes: m.reembolsos, ano: a.reembolsos, sinal: "−" },
-    { rotulo: "Despesas (consumo e custeio)", mes: m.despesasOperacionais, ano: a.despesasOperacionais, sinal: "−" },
-    { rotulo: "Acervo (investimento)", mes: m.acervo, ano: a.acervo, sinal: "−" },
-    { rotulo: "Retiradas · distribuição de lucros", mes: m.retiradas.DISTRIBUICAO_DE_LUCROS, ano: a.retiradas.DISTRIBUICAO_DE_LUCROS, sinal: "−", destaque: true },
-    { rotulo: "Retiradas · pró-labore", mes: m.retiradas.PRO_LABORE, ano: a.retiradas.PRO_LABORE, sinal: "−", destaque: true },
-    { rotulo: "Retiradas · devolução de aporte", mes: m.retiradas.DEVOLUCAO_DE_APORTE, ano: a.retiradas.DEVOLUCAO_DE_APORTE, sinal: "−", destaque: true },
+  // Agrupado pela natureza da saída. Pró-labore (remuneração) e distribuição
+  // de lucros (destino do lucro) ficam em grupos diferentes de propósito.
+  const linhas: { grupo: string; rotulo: string; mes: number; ano: number; sinal: "+" | "−"; destaque?: boolean }[] = [
+    { grupo: "Entradas", rotulo: "Pagamentos recebidos", mes: m.entradas, ano: a.entradas, sinal: "+" },
+    { grupo: "Saídas da operação", rotulo: "Reembolsos a clientes", mes: m.reembolsos, ano: a.reembolsos, sinal: "−" },
+    { grupo: "Saídas da operação", rotulo: "Despesas (consumo e custeio)", mes: m.despesasOperacionais, ano: a.despesasOperacionais, sinal: "−" },
+    { grupo: "Investimento", rotulo: "Acervo", mes: m.acervo, ano: a.acervo, sinal: "−" },
+    { grupo: "Remuneração dos sócios", rotulo: "Pró-labore", mes: m.retiradas.PRO_LABORE, ano: a.retiradas.PRO_LABORE, sinal: "−" },
+    { grupo: "Com os sócios · capital e lucro", rotulo: "Distribuição de lucros", mes: m.retiradas.DISTRIBUICAO_DE_LUCROS, ano: a.retiradas.DISTRIBUICAO_DE_LUCROS, sinal: "−", destaque: true },
+    { grupo: "Com os sócios · capital e lucro", rotulo: "Devolução de aporte", mes: m.retiradas.DEVOLUCAO_DE_APORTE, ano: a.retiradas.DEVOLUCAO_DE_APORTE, sinal: "−" },
   ];
   const valor = (v: number, sinal: "+" | "−") => (v === 0 ? "—" : `${sinal} ${numero(v)}`);
   return (
@@ -268,12 +272,14 @@ function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
           </tr>
         </thead>
         <tbody>
-          {linhas.map((l) => (
-            <tr key={l.rotulo}>
-              <td style={l.destaque ? { color: "var(--fin-navy-ink)" } : undefined}>{l.rotulo}</td>
-              <td className="num">{valor(l.mes, l.sinal)}</td>
-              <td className="num">{valor(l.ano, l.sinal)}</td>
-            </tr>
+          {linhas.map((l, i) => (
+            <FragmentoDoGrupo key={l.rotulo} grupo={i === 0 || linhas[i - 1].grupo !== l.grupo ? l.grupo : null}>
+              <tr data-linha-do-fluxo={l.rotulo}>
+                <td className="pl-6" style={l.destaque ? { color: "var(--fin-navy-ink)", fontWeight: 600 } : undefined}>{l.rotulo}</td>
+                <td className="num">{valor(l.mes, l.sinal)}</td>
+                <td className="num">{valor(l.ano, l.sinal)}</td>
+              </tr>
+            </FragmentoDoGrupo>
           ))}
         </tbody>
         <tfoot>
@@ -289,9 +295,25 @@ function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
         </tfoot>
       </table>
       <p className="px-4 pb-4 pt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
-        Retiradas dos sócios não são despesa e não entram no Resultado Operacional acima. O movimento líquido não é o
-        saldo do banco: o sistema não tem o saldo inicial da conta, e recebimentos importados sem data ficam de fora.
+        Distribuição de lucros e devolução de aporte reduzem o caixa, mas não são despesa: não mudam faturamento, despesas
+        nem o Resultado Operacional acima. Pró-labore é remuneração dos sócios, não distribuição de lucros — fica fora do
+        Resultado Operacional por definição do painel. O saldo da conta está no bloco abaixo.
       </p>
     </div>
+  );
+}
+
+function FragmentoDoGrupo({ grupo, children }: { grupo: string | null; children: ReactNode }) {
+  return (
+    <>
+      {grupo && (
+        <tr data-grupo-do-fluxo>
+          <th colSpan={3} className="fin-rotulo pt-3 text-left">
+            {grupo}
+          </th>
+        </tr>
+      )}
+      {children}
+    </>
   );
 }

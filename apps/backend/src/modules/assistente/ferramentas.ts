@@ -365,8 +365,8 @@ const consultarFinanceiro: Ferramenta<z.ZodObject<{ periodo: typeof periodoParam
 };
 
 const CRITERIOS_DAS_RETIRADAS = [
-  "Retirada dos sócios é dinheiro que saiu do caixa para um sócio: não é despesa, não entra em consumo nem custeio e não muda o Resultado Operacional.",
-  "Pró-labore fica em linha própria, fora do Resultado Operacional (que por definição não inclui pró-labore). Devolução de aporte devolve capital do sócio: não é lucro nem despesa.",
+  "Retirada dos sócios reduz o saldo disponível, mas não é despesa: não entra em consumo nem custeio e não muda faturamento, despesas nem o Resultado Operacional.",
+  "Distribuição de lucros é destino do lucro; pró-labore é remuneração pelo trabalho, não distribuição de lucros — diga os dois separados, nunca como a mesma coisa. Pró-labore fica fora do Resultado Operacional por definição do painel. Devolução de aporte devolve capital do sócio: não é lucro nem despesa.",
   "Pela data da retirada. Retiradas estornadas não contam. Não há retirada com data futura: o ano corrente vai até hoje.",
 ];
 

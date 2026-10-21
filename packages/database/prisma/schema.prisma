@@ -233,6 +233,7 @@ model User {
   alteracoesFinanceiras      AlteracaoFinanceira[]                  @relation("AlteracoesFinanceiras")
   retiradasRegistradas       RetiradaDeSocio[]                      @relation("RetiradasRegistradas")
   retiradasEstornadas        RetiradaDeSocio[]                      @relation("RetiradasEstornadas")
+  saldosDeCaixaInformados    SaldoDeCaixa[]                         @relation("SaldosDeCaixaInformados")
 
   @@map("users")
 }
@@ -1514,4 +1515,32 @@ model RetiradaDeSocio {
   @@index([socioId])
   @@index([categoria])
   @@map("retiradas_de_socios")
+}
+
+/// O saldo inicial da conta da Festaê num dia, lido do extrato pela gestão.
+///
+/// É o ponto de partida do saldo disponível: o sistema não lê o banco. O
+/// saldo disponível de uma data é o informado mais recente até ela, mais o
+/// que entrou e menos o que saiu a partir do dia dele (despesas, reembolsos,
+/// acervo, retiradas dos sócios). Nunca se edita nem se apaga: um saldo
+/// errado se corrige informando de novo — o mais recente do mesmo dia vale.
+model SaldoDeCaixa {
+  id String @id @default(cuid())
+
+  /// O dia, ao meio-dia UTC. Vale como o saldo no COMEÇO deste dia.
+  referenciaEm DateTime
+  /// Pode ser negativo (conta no limite).
+  valor        Decimal  @db.Decimal(12, 2)
+  observacao   String?
+
+  registradoPorId String?
+  registradoEm    DateTime @default(now())
+
+  /// Ver `Payment.chaveDeIdempotencia`: o mesmo clique não grava duas vezes.
+  chaveDeIdempotencia String @unique
+
+  registradoPor User? @relation("SaldosDeCaixaInformados", fields: [registradoPorId], references: [id], onDelete: SetNull)
+
+  @@index([referenciaEm])
+  @@map("saldos_de_caixa")
 }

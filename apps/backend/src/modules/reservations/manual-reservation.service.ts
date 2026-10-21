@@ -120,8 +120,13 @@ export class ManualReservationService {
      * rota de venda manual não o expõe.
      */
     kitCombinado?: { itens: { productId: string; nome: string; quantity: number }[] },
-    /** Só a aprovação manual da proposta passa estes dois. */
-    extra: { pagamentoInicial?: PagamentoInicial; naMesmaTransacao?: NaMesmaTransacao } = {},
+    /**
+     * Só a aprovação manual da proposta passa estes. `clienteNaTransacao`
+     * acha ou cria o cadastro da cliente dentro da transação, depois da
+     * conferência de material: se a aprovação falhar, não sobra ficha órfã.
+     * A venda manual não passa e segue como sempre foi.
+     */
+    extra: { pagamentoInicial?: PagamentoInicial; naMesmaTransacao?: NaMesmaTransacao; clienteNaTransacao?: boolean } = {},
   ) {
     // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
     // segunda regra de fuso à espera de divergir da primeira.
@@ -186,18 +191,21 @@ export class ManualReservationService {
     const total = totalDaVendaManual(input.financeiro);
     const precos = await this.precosDosItens(input.produtos.itens.map((i) => i.productId));
 
-    const cliente = await this.acharOuCriarCliente(input.cliente);
-
-    // O crédito que a tela ofereceu é o da ficha que ela mostrou. Se a venda
-    // acabou ligada a outra ficha (outro e-mail digitado depois, por exemplo),
-    // recusar é melhor do que tirar crédito de quem não estava na tela.
-    if (input.credito && input.credito.clienteId !== cliente.id) {
-      throw new ConflictException({
-        message:
-          "O crédito mostrado é de outro cadastro. Confira o telefone e o e-mail da cliente e aplique o crédito de novo.",
-        codigo: "CREDITO_DE_OUTRA_FICHA",
-      });
-    }
+    const resolverCliente = async (db: Prisma.TransactionClient) => {
+      const achado = await this.acharOuCriarCliente(input.cliente, db);
+      // O crédito que a tela ofereceu é o da ficha que ela mostrou. Se a venda
+      // acabou ligada a outra ficha (outro e-mail digitado depois, por exemplo),
+      // recusar é melhor do que tirar crédito de quem não estava na tela.
+      if (input.credito && input.credito.clienteId !== achado.id) {
+        throw new ConflictException({
+          message:
+            "O crédito mostrado é de outro cadastro. Confira o telefone e o e-mail da cliente e aplique o crédito de novo.",
+          codigo: "CREDITO_DE_OUTRA_FICHA",
+        });
+      }
+      return achado;
+    };
+    const clienteDeFora = extra.clienteNaTransacao ? null : await resolverCliente(prisma);
 
     // O recebimento inicial não passa do total da venda: é sobrepagamento.
     if (extra.pagamentoInicial && toCentsInt(extra.pagamentoInicial.valor) > toCentsInt(total)) {
@@ -208,6 +216,7 @@ export class ManualReservationService {
 
     const reserva = await prisma.$transaction(async (tx) => {
       await extra.naMesmaTransacao?.antes?.(tx);
+      const cliente = clienteDeFora ?? (await resolverCliente(tx));
 
       const evento = await tx.event.create({
         data: {
@@ -582,23 +591,23 @@ export class ManualReservationService {
    * pessoa um dia criar conta no app com o mesmo e-mail, cai neste mesmo
    * registro e leva o histórico junto.
    */
-  private async acharOuCriarCliente(dados: ManualReservationInput["cliente"]) {
+  private async acharOuCriarCliente(dados: ManualReservationInput["cliente"], db: Prisma.TransactionClient = prisma) {
     const email = dados.email?.trim() || null;
     const telefone = normalizarTelefone(dados.telefone);
 
-    const existente = await this.clienteExistente(dados);
+    const existente = await this.clienteExistente(dados, db);
 
     if (existente) {
       // Telefone novo de cliente conhecido é atualização, não conflito. A
       // comparação é pelos dígitos: o mesmo número com outra máscara não é
       // telefone novo, e reescrevê-lo só mudaria a formatação.
       if (normalizarTelefone(existente.phone) !== telefone) {
-        await prisma.user.update({ where: { id: existente.id }, data: { phone: telefone } });
+        await db.user.update({ where: { id: existente.id }, data: { phone: telefone } });
       }
       return existente;
     }
 
-    return prisma.user.create({
+    return db.user.create({
       data: {
         name: dados.nome.trim(),
         email,
@@ -615,11 +624,11 @@ export class ManualReservationService {
    * para a tela de venda poder perguntar "essa cliente tem crédito?" pela
    * mesma regra que, ao salvar, vai decidir de quem é a venda.
    */
-  async clienteExistente(dados: { telefone: string; email?: string | null }) {
+  async clienteExistente(dados: { telefone: string; email?: string | null }, db: Prisma.TransactionClient = prisma) {
     const email = dados.email?.trim() || null;
     const existente = email
-      ? await prisma.user.findUnique({ where: { email } })
-      : await this.clientePorTelefone(dados.telefone);
+      ? await db.user.findUnique({ where: { email } })
+      : await this.clientePorTelefone(dados.telefone, db);
     return existente && !existente.deletedAt ? existente : null;
   }
 
@@ -631,17 +640,17 @@ export class ManualReservationService {
    * mesmo número — duplicata de antes desta regra —, vale o mais antigo, e
    * nenhum é fundido: juntar fichas é decisão de gente, não de busca.
    */
-  private async clientePorTelefone(telefone: string) {
+  private async clientePorTelefone(telefone: string, db: Prisma.TransactionClient = prisma) {
     const formas = formasDoTelefone(telefone);
     if (formas.length === 0) return null;
 
-    const [achado] = await prisma.$queryRaw<{ id: string }[]>`
+    const [achado] = await db.$queryRaw<{ id: string }[]>`
       SELECT id FROM users
        WHERE "deletedAt" IS NULL
          AND regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g') = ANY(${formas})
        ORDER BY "createdAt" ASC
        LIMIT 1`;
-    return achado ? prisma.user.findUnique({ where: { id: achado.id } }) : null;
+    return achado ? db.user.findUnique({ where: { id: achado.id } }) : null;
   }
 
   /** Preço de tabela de cada item, congelado no pedido. */

@@ -120,15 +120,34 @@ const camposDaRetirada = z.object({
   descricao: z.string().trim().max(500).optional().nullable(),
 });
 
-/** `chave` vem da tela: o mesmo envio, repetido, não lança duas vezes. */
+/**
+ * `chave` vem da tela: o mesmo envio, repetido, não lança duas vezes.
+ * `semDuplicidadeConferida`: a gestão conferiu que este pró-labore não é o
+ * mesmo pagamento de uma despesa que já parece pró-labore no mesmo mês.
+ */
 export const registrarRetiradaSchema = camposDaRetirada.extend({
   chave: z.string().uuid("Chave de envio inválida. Feche e abra o formulário de novo."),
+  semDuplicidadeConferida: z.boolean().optional(),
 });
 
 /** Editar exige dizer por quê: o antes e o depois ficam no histórico. */
 export const editarRetiradaSchema = camposDaRetirada.partial().extend({
   justificativa: z.string().trim().min(10, "Explique a alteração em ao menos 10 caracteres.").max(500),
+  semDuplicidadeConferida: z.boolean().optional(),
 });
+
+/**
+ * O saldo inicial da conta num dia, lido do extrato. Ponto de partida do
+ * saldo disponível. Pode ser negativo (conta no limite).
+ */
+export const informarSaldoDeCaixaSchema = z.object({
+  /** O dia: vale como o saldo no começo dele, antes das movimentações do dia. */
+  dia: diaSchema,
+  valor: z.coerce.number().min(-100_000_000).max(100_000_000),
+  observacao: z.string().trim().max(300).optional().nullable(),
+  chave: z.string().uuid("Chave de envio inválida. Feche e abra o formulário de novo."),
+});
+export type InformarSaldoDeCaixaInput = z.infer<typeof informarSaldoDeCaixaSchema>;
 
 export const estornarRetiradaSchema = z.object({
   motivo: z.string().trim().min(10, "Explique o estorno em ao menos 10 caracteres.").max(500),

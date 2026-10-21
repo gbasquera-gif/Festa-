@@ -381,6 +381,60 @@ export function acervoDoMes(gastos: readonly GastoApurado[], mes: string): numbe
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Por intervalo de dias
+ *
+ * As mesmas regras de entradasNoCaixa, reembolsosNoMes, despesaDoMes e
+ * acervoDoMes, para um intervalo (de, ate] de dias "AAAA-MM-DD" em vez de um
+ * mês. Servem ao saldo disponível, que parte de um saldo informado num dia e
+ * soma o que veio depois dele. As funções mensais acima não mudam.
+ * ------------------------------------------------------------------ */
+
+const noIntervalo = (dia: string, de: string, ate: string) => dia > de && dia <= ate;
+
+/** Entradas no caixa com data em (de, ate], no fuso de Chapecó. */
+export function entradasEntre(contratos: readonly ContratoApurado[], de: string, ate: string): number {
+  return somar(
+    contratos.flatMap((contrato) =>
+      recebimentosNoCaixa(contrato)
+        .filter((r) => r.recebidoEm !== null && noIntervalo(diaEmChapeco(r.recebidoEm), de, ate))
+        .map((r) => r.valor),
+    ),
+  );
+}
+
+/** Reembolsos realizados com data em (de, ate]. */
+export function reembolsosEntre(contratos: readonly ContratoApurado[], de: string, ate: string): number {
+  return somar(
+    contratos.flatMap((contrato) =>
+      (contrato.reembolsos ?? []).filter((r) => noIntervalo(diaEmChapeco(r.realizadoEm), de, ate)).map((r) => r.valor),
+    ),
+  );
+}
+
+/** O dia em que uma saída foi paga — a mesma leitura de `mesDaDespesa`. */
+function diaDaDespesa(pagoEm: Date): string {
+  return pagoEm.toISOString().slice(0, 10);
+}
+
+/** Despesas (consumo e custeio) pagas em (de, ate]. */
+export function despesaEntre(gastos: readonly GastoApurado[], de: string, ate: string): number {
+  return somar(
+    gastos
+      .filter((g) => NATUREZAS_DE_DESPESA.includes(g.natureza) && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
+      .map((g) => g.valor),
+  );
+}
+
+/** Acervo pago em (de, ate]. */
+export function acervoEntre(gastos: readonly GastoApurado[], de: string, ate: string): number {
+  return somar(
+    gastos
+      .filter((g) => g.natureza === "ACERVO" && g.pagoEm !== null && noIntervalo(diaDaDespesa(g.pagoEm), de, ate))
+      .map((g) => g.valor),
+  );
+}
+
 /** Todo o acervo acumulado, de qualquer mês. */
 export function acervoAcumulado(gastos: readonly GastoApurado[]): number {
   return somar(gastos.filter((gasto) => gasto.natureza === "ACERVO").map((gasto) => gasto.valor));

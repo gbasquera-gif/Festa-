@@ -389,6 +389,15 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
         `Movimento líquido do caixa no mês: ${reais(r.fluxoDeCaixa.movimentoLiquido)}.`,
     );
   }
+  // Saldo disponível: só com saldo da conta informado. É onde a retirada
+  // reduz o dinheiro disponível — o Resultado Operacional não muda.
+  if (r.saldoDisponivel) {
+    const sd = r.saldoDisponivel;
+    notas.push(
+      `Saldo disponível em ${dataCurta(sd.ate)}: ${reais(sd.saldo)} — saldo inicial de ${dataCurta(sd.referencia.dia)} ` +
+        `(${reais(sd.referencia.valor)}) mais entradas e menos saídas desde então, retiradas inclusive.`,
+    );
+  }
   const fimDasNotas =
     notas.length > 0
       ? escrever(notas.join(" "), MARGEM, y + 8, { tamanho: 7.6, cor: COR.apagado, largura: LARGURA })
@@ -460,4 +469,10 @@ export function gerarRelatorioPdf(r: RelatorioExecutivo): Promise<PdfGerado> {
 /** "Festae-Relatorio-Financeiro-2026-09.pdf" */
 export function nomeDoArquivo(mes: string): string {
   return `Festae-Relatorio-Financeiro-${mes}.pdf`;
+}
+
+/** "2026-10-31" → "31/10/2026". */
+function dataCurta(dia: string): string {
+  const [a, m, d] = dia.split("-");
+  return `${d}/${m}/${a}`;
 }

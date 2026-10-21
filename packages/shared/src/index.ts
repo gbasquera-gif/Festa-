@@ -184,6 +184,7 @@ export {
   editarRetiradaSchema,
   estornarRetiradaSchema,
   filtroDeRetiradasSchema,
+  informarSaldoDeCaixaSchema,
 } from "./schemas/financeiro";
 export type {
   CriarGastoInput,
@@ -196,6 +197,7 @@ export type {
   EditarRetiradaInput,
   EstornarRetiradaInput,
   FiltroDeRetiradas,
+  InformarSaldoDeCaixaInput,
 } from "./schemas/financeiro";
 
 export {
@@ -209,8 +211,12 @@ export {
   retiradasDoAno,
   retiradasNoHistorico,
   retiradasPorSocio,
+  retiradasEntre,
+  pareceProLabore,
   fluxoDeCaixaDoMes,
   fluxoDeCaixaDoAno,
+  fluxoDeCaixaEntre,
+  saldoDisponivel,
 } from "./retiradas";
 export type {
   CategoriaDaRetirada,
@@ -218,6 +224,8 @@ export type {
   RetiradaApurada,
   TotalPorCategoria,
   FluxoDeCaixa,
+  SaldoDeReferencia,
+  SaldoDisponivel,
 } from "./retiradas";
 
 export {
@@ -233,13 +241,17 @@ export {
   receitaPorCompetencia,
   receitaPorCaixa,
   entradasNoCaixa,
+  entradasEntre,
   reembolsosNoMes,
+  reembolsosEntre,
   reembolsosARealizar,
   receitaDeRetencao,
   recebidoSemData,
   despesaDoMes,
+  despesaEntre,
   mesDaDespesa,
   acervoDoMes,
+  acervoEntre,
   acervoAcumulado,
   gastoAcumulado,
   totalAReceber,

@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { prisma } from "@festae/database";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma, prisma } from "@festae/database";
 import { lerCarteiraCrua } from "./carteira";
-import { montarRelatorioExecutivo } from "./relatorio";
+import { fimDoMesOuHoje, montarRelatorioExecutivo } from "./relatorio";
 import { gerarRelatorioPdf, nomeDoArquivo } from "./relatorio-pdf";
 import { filtroDeGastos, type FiltroDeGastos } from "./periodo";
 import {
@@ -35,6 +35,10 @@ import {
   totalRecebido,
   fluxoDeCaixaDoAno,
   fluxoDeCaixaDoMes,
+  saldoDisponivel,
+  diaEmChapeco,
+  normalizarDataDaFesta,
+  type InformarSaldoDeCaixaInput,
   retiradasDoAno,
   retiradasDoMes,
   type CategoriaDaRetirada,
@@ -366,12 +370,13 @@ export class FinanceiroService {
    */
   async relatorioExecutivo(ano: number, mes: string) {
     const agora = new Date();
-    const [contratos, gastos, reservas, creditoEmAberto, retiradas] = await Promise.all([
+    const [contratos, gastos, reservas, creditoEmAberto, retiradas, ref] = await Promise.all([
       this.contratos(),
       this.gastos(),
       this.carteiraCrua(),
       this.creditoEmAberto(),
       this.retiradas(),
+      this.saldoDeReferencia(fimDoMesOuHoje(mes, agora)),
     ]);
     return montarRelatorioExecutivo({
       contratos,
@@ -382,7 +387,108 @@ export class FinanceiroService {
       mes,
       agora,
       creditoEmAberto,
+      saldoDeReferencia: ref ? { dia: ref.referenciaEm.toISOString().slice(0, 10), valor: paraNumero(ref.valor) } : null,
     });
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Saldo disponível
+   * ---------------------------------------------------------------- */
+
+  /**
+   * O saldo informado que vale para um dia: o de data mais recente até ele;
+   * no mesmo dia, o último registrado (é assim que se corrige um saldo).
+   */
+  private async saldoDeReferencia(dia: string) {
+    return prisma.saldoDeCaixa.findFirst({
+      where: { referenciaEm: { lte: normalizarDataDaFesta(dia) } },
+      orderBy: [{ referenciaEm: "desc" }, { registradoEm: "desc" }],
+      include: { registradoPor: { select: { name: true } } },
+    });
+  }
+
+  /**
+   * O saldo disponível num dia (hoje, se nada vier ou se vier data futura).
+   *
+   * Saldo inicial informado + entradas − reembolsos − despesas − acervo −
+   * retiradas, do dia dele até a data pedida. Sem saldo informado até o dia, devolve `saldo: null` e diz
+   * desde quando há saldo — a tela pede para informar, em vez de inventar.
+   */
+  async saldoDeCaixa(ate?: string, agora = new Date()) {
+    const hoje = diaEmChapeco(agora);
+    const dia = ate && ate < hoje ? ate : hoje;
+    const ref = await this.saldoDeReferencia(dia);
+    if (!ref) {
+      const primeiro = await prisma.saldoDeCaixa.findFirst({ orderBy: { referenciaEm: "asc" }, select: { referenciaEm: true } });
+      return {
+        ate: dia,
+        referencia: null,
+        saldo: null,
+        fluxo: null,
+        primeiroSaldoInformadoEm: primeiro ? primeiro.referenciaEm.toISOString().slice(0, 10) : null,
+      };
+    }
+    const [contratos, gastos, retiradas] = await Promise.all([this.contratos(), this.gastos(), this.retiradas()]);
+    const referencia = { dia: ref.referenciaEm.toISOString().slice(0, 10), valor: paraNumero(ref.valor) };
+    const calculado = saldoDisponivel(contratos, gastos, retiradas, referencia, dia)!;
+    const { referencia: _r, ate: _a, saldo, ...fluxo } = calculado;
+    return {
+      ate: dia,
+      referencia: {
+        id: ref.id,
+        ...referencia,
+        observacao: ref.observacao,
+        registradoPor: ref.registradoPor?.name ?? null,
+        registradoEm: ref.registradoEm.toISOString(),
+      },
+      saldo,
+      fluxo,
+      primeiroSaldoInformadoEm: null,
+    };
+  }
+
+  /** Registra o saldo inicial da conta num dia. A mesma `chave` não grava duas vezes. */
+  async informarSaldoDeCaixa(dados: InformarSaldoDeCaixaInput, usuarioId: string, agora = new Date()) {
+    if (dados.dia > diaEmChapeco(agora)) {
+      throw new BadRequestException("O saldo informado não pode ser de uma data futura. Use o saldo do extrato de hoje ou de antes.");
+    }
+    const ja = await prisma.saldoDeCaixa.findUnique({ where: { chaveDeIdempotencia: dados.chave } });
+    if (ja) return { id: ja.id, repetido: true };
+    try {
+      const criado = await prisma.saldoDeCaixa.create({
+        data: {
+          referenciaEm: normalizarDataDaFesta(dados.dia),
+          valor: dados.valor,
+          observacao: dados.observacao?.trim() || null,
+          registradoPorId: usuarioId,
+          chaveDeIdempotencia: dados.chave,
+        },
+      });
+      return { id: criado.id, repetido: false };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        const doPrimeiro = await prisma.saldoDeCaixa.findUnique({ where: { chaveDeIdempotencia: dados.chave } });
+        if (doPrimeiro) return { id: doPrimeiro.id, repetido: true };
+      }
+      throw e;
+    }
+  }
+
+  /** Os saldos informados, do mais recente para o mais antigo. Nada se apaga. */
+  async saldosDeCaixaInformados() {
+    const linhas = await prisma.saldoDeCaixa.findMany({
+      orderBy: [{ referenciaEm: "desc" }, { registradoEm: "desc" }],
+      take: 50,
+      include: { registradoPor: { select: { name: true } } },
+    });
+    return linhas.map((l) => ({
+      id: l.id,
+      dia: l.referenciaEm.toISOString().slice(0, 10),
+      valor: paraNumero(l.valor),
+      observacao: l.observacao,
+      registradoPor: l.registradoPor?.name ?? null,
+      registradoEm: l.registradoEm.toISOString(),
+    }));
   }
 
   /** O relatório em PDF, gerado agora e devolvido — nada é guardado. */

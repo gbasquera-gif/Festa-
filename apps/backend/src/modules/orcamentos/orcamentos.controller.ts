@@ -152,8 +152,9 @@ export class OrcamentosController {
     description:
       "Aprova (se ainda não aprovada), converte em reserva com checagem de disponibilidade e registra o Pix " +
       "recebido — de qualquer valor até o total —, tudo numa transação. A mesma chave devolve o resultado " +
-      "gravado em vez de lançar de novo. Proposta já convertida recusa com 409.",
+      "gravado em vez de lançar de novo. Proposta já convertida recusa com 409. Só ADMIN: é confirmação financeira manual.",
   })
+  @Roles("ADMIN")
   @Post(":id/aprovar-manualmente")
   aprovarManualmente(
     @Param("id") id: string,

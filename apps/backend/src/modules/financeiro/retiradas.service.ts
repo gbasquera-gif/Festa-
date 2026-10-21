@@ -4,7 +4,9 @@ import {
   CATEGORIA_DA_RETIRADA_LABEL,
   FORMA_DA_RETIRADA_LABEL,
   diaEmChapeco,
+  formatarReais,
   normalizarDataDaFesta,
+  pareceProLabore,
   retiradasDoAno,
   retiradasDoMes,
   retiradasNoHistorico,
@@ -83,8 +85,61 @@ function apurada(r: { socioId: string; categoria: string; valor: unknown; retira
  * Nada se apaga. Editar exige justificativa e guarda o antes e o depois;
  * estornar tira dos totais e mantém no histórico, riscado, com motivo e autor.
  */
+/** O intervalo [início, fim) em UTC de um recorte "AAAA" ou "AAAA-MM" — a mesma leitura de `mesDaDespesa`. */
+function intervaloUtc(recorte: string): { gte: Date; lt: Date } {
+  const [ano, mes] = recorte.split("-").map(Number);
+  return mes
+    ? { gte: new Date(Date.UTC(ano, mes - 1, 1)), lt: new Date(Date.UTC(ano, mes, 1)) }
+    : { gte: new Date(Date.UTC(ano, 0, 1)), lt: new Date(Date.UTC(ano + 1, 0, 1)) };
+}
+
 @Injectable()
 export class RetiradasService {
+  /**
+   * Despesas pagas no recorte (ano ou mês) que parecem pró-labore pela
+   * descrição ou categoria. Só leitura: alimenta o alerta da tela e a
+   * conferência antes de lançar pró-labore como retirada.
+   */
+  async proLaboreEmDespesas(recorte: string) {
+    const gastos = await prisma.gasto.findMany({
+      where: { natureza: { in: ["CONSUMO", "CUSTEIO"] }, pagoEm: intervaloUtc(recorte) },
+      select: { id: true, descricao: true, categoria: true, valor: true, pagoEm: true, natureza: true },
+      orderBy: { pagoEm: "asc" },
+    });
+    const itens = gastos
+      .filter((g) => pareceProLabore(g.descricao, g.categoria))
+      .map((g) => ({
+        id: g.id,
+        descricao: g.descricao,
+        natureza: g.natureza,
+        valor: Number(g.valor),
+        pagoEm: g.pagoEm!.toISOString().slice(0, 10),
+      }));
+    const total = itens.reduce((t, g) => t + Math.round(g.valor * 100), 0) / 100;
+    return { recorte, quantidade: itens.length, total, itens };
+  }
+
+  /**
+   * Pró-labore que talvez já esteja em Despesas no mesmo mês.
+   *
+   * Lançar nos dois lugares conta a mesma saída duas vezes (e uma delas já
+   * está no Resultado Operacional). Sem a confirmação de quem lança, recusa
+   * com a lista do que encontrou.
+   */
+  private async conferirDuplicidadeDoProLabore(categoria: CategoriaDaRetirada, dia: string, conferida?: boolean) {
+    if (categoria !== "PRO_LABORE" || conferida) return;
+    const achadas = await this.proLaboreEmDespesas(dia.slice(0, 7));
+    if (achadas.quantidade === 0) return;
+    throw new ConflictException({
+      message:
+        `Já há ${achadas.quantidade === 1 ? "uma despesa" : `${achadas.quantidade} despesas`} com cara de pró-labore neste mês ` +
+        `(${formatarReais(achadas.total)}). Se for o mesmo pagamento, não lance aqui: ele já está em Despesas e no ` +
+        "Resultado Operacional. Se for outro pagamento, confirme que conferiu e registre.",
+      codigo: "PRO_LABORE_EM_DESPESAS",
+      despesas: achadas.itens,
+    });
+  }
+
   // ------------------------------------------------------------ sócios
 
   async socios() {
@@ -193,6 +248,8 @@ export class RetiradasService {
       })),
       itens,
       totalDoFiltro: doFiltro,
+      /** Alerta só de leitura: pró-labore que parece estar em Despesas no ano. */
+      proLaboreEmDespesas: await this.proLaboreEmDespesas(String(ano)),
     };
   }
 
@@ -227,6 +284,7 @@ export class RetiradasService {
     if (!socio) throw new BadRequestException("Sócio não encontrado.");
     if (!socio.ativo) throw new BadRequestException("Este sócio está inativo. Reative-o antes de lançar uma retirada.");
     const retiradaEm = this.conferirData(dados.retiradaEm);
+    await this.conferirDuplicidadeDoProLabore(dados.categoria, dados.retiradaEm, dados.semDuplicidadeConferida);
 
     try {
       const criada = await prisma.retiradaDeSocio.create({
@@ -296,6 +354,12 @@ export class RetiradasService {
         data.descricao = dados.descricao?.trim() || null;
       }
       if (Object.keys(data).length === 0) throw new BadRequestException("Nada foi alterado.");
+      // Virou pró-labore, ou o pró-labore mudou de mês: a mesma conferência do registro.
+      const categoriaFinal = (data.categoria as CategoriaDaRetirada | undefined) ?? atual.categoria;
+      const diaFinal = dados.retiradaEm ?? atual.retiradaEm.toISOString().slice(0, 10);
+      if (data.categoria !== undefined || data.retiradaEm !== undefined) {
+        await this.conferirDuplicidadeDoProLabore(categoriaFinal, diaFinal, dados.semDuplicidadeConferida);
+      }
 
       await tx.retiradaDeSocio.update({ where: { id }, data });
       await tx.alteracaoFinanceira.create({

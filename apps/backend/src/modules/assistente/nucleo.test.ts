@@ -145,7 +145,8 @@ describe("responder", () => {
       { socio: "Bruno", noPeriodo: "R$ 300,00", noAno: "R$ 3.050,00" },
     ]);
     expect(JSON.stringify(dados)).not.toContain("Silva");
-    expect(dados.criterios.join(" ")).toContain("não muda o Resultado Operacional");
+    expect(dados.criterios.join(" ")).toContain("não muda faturamento, despesas nem o Resultado Operacional");
+    expect(dados.criterios.join(" ")).toContain("pró-labore é remuneração pelo trabalho, não distribuição de lucros");
   });
 
   it("retiradas dos sócios: ano, histórico sem período e semana recusada com as alternativas reais", async () => {

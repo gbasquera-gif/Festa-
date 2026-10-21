@@ -17,6 +17,9 @@ import {
   type GastoApurado,
   type Variacao,
   fluxoDeCaixaDoMes,
+  saldoDisponivel,
+  diaEmChapeco,
+  type SaldoDeReferencia,
   type FluxoDeCaixa,
   type RetiradaApurada,
 } from "@festae/shared";
@@ -121,6 +124,12 @@ export type RelatorioExecutivo = {
    * classificadas. Fora do Resultado Operacional, que não muda.
    */
   fluxoDeCaixa: FluxoDeCaixa;
+  /**
+   * Saldo disponível no fim do mês (ou hoje, no mês corrente): o saldo
+   * informado + entradas − saídas, retiradas inclusive. Nulo sem saldo
+   * informado até a data.
+   */
+  saldoDisponivel: { ate: string; saldo: number; referencia: SaldoDeReferencia } | null;
   recebimentos: {
     /** Carteira ativa inteira, não só o mês. */
     contratado: number;
@@ -165,6 +174,8 @@ export function montarRelatorioExecutivo(entrada: {
   agora: Date;
   creditoEmAberto?: number;
   retiradas?: readonly RetiradaApurada[];
+  /** O saldo informado que vale para o fim do mês. */
+  saldoDeReferencia?: SaldoDeReferencia | null;
 }): RelatorioExecutivo {
   const { contratos, gastos, carteira, ano, mes, agora } = entrada;
 
@@ -217,6 +228,12 @@ export function montarRelatorioExecutivo(entrada: {
     creditoEmAberto: entrada.creditoEmAberto ?? 0,
     acervoNoMes: acervoDoMes(gastos, mes),
     fluxoDeCaixa: fluxoDeCaixaDoMes(contratos, gastos, entrada.retiradas ?? [], mes),
+    saldoDisponivel: (() => {
+      if (!entrada.saldoDeReferencia) return null;
+      const ate = fimDoMesOuHoje(mes, agora);
+      const s = saldoDisponivel(contratos, gastos, entrada.retiradas ?? [], entrada.saldoDeReferencia, ate);
+      return s ? { ate, saldo: s.saldo, referencia: entrada.saldoDeReferencia } : null;
+    })(),
     recebimentos: {
       contratado: carteiraAtiva.contratado,
       recebido: carteiraAtiva.recebido,
@@ -240,4 +257,12 @@ export function montarRelatorioExecutivo(entrada: {
       resultado: variacao(operacional.resultado, doAnterior.resultado),
     },
   };
+}
+
+/** O último dia do mês, ou hoje se o mês ainda não acabou. */
+export function fimDoMesOuHoje(mes: string, agora: Date): string {
+  const [a, m] = mes.split("-").map(Number);
+  const ultimo = new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
+  const hoje = diaEmChapeco(agora);
+  return ultimo < hoje ? ultimo : hoje;
 }
