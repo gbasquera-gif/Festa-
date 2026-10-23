@@ -1,3 +1,5 @@
+import type { PagamentoNoProvedor } from "../conferencia-do-provedor";
+
 export interface CreateCheckoutInput {
   paymentId: string;
   amount: number;
@@ -20,25 +22,27 @@ export interface CheckoutResult {
 
 export type GatewayPaymentStatus = "PENDING" | "PAID" | "FAILED";
 
-export interface WebhookResult {
-  externalReference: string;
-  status: "PENDING" | "PAID" | "FAILED";
-}
-
 // Ponto de extensão: qualquer gateway (Mercado Pago hoje; Stripe, Pagar.me
 // etc. amanhã, se fizer sentido) implementa esta interface. Nada que chama
 // PaymentsService precisa saber qual gateway está por trás.
 export interface PaymentGateway {
   createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult>;
-  parseWebhook(payload: unknown): Promise<WebhookResult | null>;
   /**
-   * Consulta o status atual de um pagamento.
+   * O pagamento como está no provedor, pelo id dele.
    *
-   * Rede de segurança para quando o webhook não chega: sem isto, uma
-   * notificação perdida deixaria um cliente que já pagou olhando
-   * "aguardando confirmação" para sempre.
+   * Devolve o pagamento inteiro — referência, valor, moeda, estorno —, e não
+   * só o status: o status não prova que o pagamento é o desta cobrança nem
+   * que tem o valor dela (`decidirPeloProvedor` confere). `null` quando o
+   * provedor não o encontra. Falha de comunicação é exceção.
    */
-  getStatus(externalReference: string): Promise<GatewayPaymentStatus | null>;
+  consultarPagamento(idNoProvedor: string): Promise<PagamentoNoProvedor | null>;
+  /**
+   * Os pagamentos do provedor que dizem ser desta cobrança.
+   *
+   * Para o cartão, cujo id no provedor só existe depois do pagamento. Mais de
+   * um resultado é possível, e cada um passa pela mesma conferência.
+   */
+  buscarPorReferencia(referencia: string): Promise<PagamentoNoProvedor[]>;
   /**
    * Encerra no provedor uma cobrança Pix que ainda não foi paga.
    *

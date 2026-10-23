@@ -1,4 +1,5 @@
 import { useFiltroNaUrl } from "@/lib/filtro-na-url";
+import { ConciliacaoMercadoPago } from "@/components/financeiro/ConciliacaoMercadoPago";
 import { Contratos } from "@/components/financeiro/Contratos";
 import { Evolucao } from "@/components/financeiro/Evolucao";
 import { Gastos } from "@/components/financeiro/Gastos";
@@ -29,6 +30,7 @@ const ABAS = [
   { chave: "despesas", rotulo: "Despesas" },
   { chave: "aportes", rotulo: "Aportes / Acervo" },
   { chave: "retiradas", rotulo: "Retiradas dos sócios" },
+  { chave: "mercadopago", rotulo: "Mercado Pago" },
 ] as const;
 
 type Aba = (typeof ABAS)[number]["chave"];
@@ -159,6 +161,7 @@ export default function Financeiro() {
         />
       )}
       {aba === "retiradas" && <Retiradas ano={ano} mes={mesFiltrado} />}
+      {aba === "mercadopago" && <ConciliacaoMercadoPago />}
     </div>
   );
 }

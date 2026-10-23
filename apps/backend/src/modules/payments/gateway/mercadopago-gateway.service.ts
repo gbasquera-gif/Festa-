@@ -7,8 +7,8 @@ import type {
   GatewayPaymentStatus,
   PaymentGateway,
   ResultadoDoCancelamentoNoProvedor,
-  WebhookResult,
 } from "./payment-gateway.interface";
+import type { PagamentoNoProvedor } from "../conferencia-do-provedor";
 
 /**
  * Integração com o Mercado Pago via Checkout Transparente.
@@ -103,20 +103,21 @@ export class MercadoPagoGateway implements PaymentGateway {
     return { externalReference: input.paymentId, checkoutUrl: result.init_point };
   }
 
-  async parseWebhook(payload: unknown): Promise<WebhookResult | null> {
-    const body = payload as { type?: string; action?: string; data?: { id?: string } };
-    const isPayment = body?.type === "payment" || body?.action?.startsWith("payment.");
-    if (!isPayment || !body.data?.id) return null;
+  async consultarPagamento(idNoProvedor: string): Promise<PagamentoNoProvedor | null> {
+    const pagamento = new MpPayment(this.client());
+    try {
+      return paraConferencia(await pagamento.get({ id: idNoProvedor }));
+    } catch (error) {
+      // 404 é resposta, não falha: o id não existe na conta da Festaê.
+      if ((error as { status?: number })?.status === 404) return null;
+      throw error;
+    }
+  }
 
-    const payment = new MpPayment(this.client());
-    // Nunca acreditamos no corpo da notificação: o status vem da consulta ao
-    // Mercado Pago. É isso que impede alguém de forjar um "pago".
-    const result = await payment.get({ id: body.data.id });
-
-    const externalReference = result.external_reference;
-    if (!externalReference) return null;
-
-    return { externalReference, status: this.toStatus(result.status) };
+  async buscarPorReferencia(referencia: string): Promise<PagamentoNoProvedor[]> {
+    const pagamento = new MpPayment(this.client());
+    const busca = await pagamento.search({ options: { external_reference: referencia, limit: 10 } });
+    return (busca.results ?? []).map(paraConferencia);
   }
 
   /**
@@ -158,20 +159,25 @@ export class MercadoPagoGateway implements PaymentGateway {
     return "NAO_CONFIRMADO";
   }
 
-  async getStatus(externalReference: string): Promise<GatewayPaymentStatus | null> {
-    try {
-      const payment = new MpPayment(this.client());
-      const search = await payment.search({
-        options: { external_reference: externalReference, limit: 1 },
-      });
-      const found = search.results?.[0];
-      return found ? this.toStatus(found.status) : null;
-    } catch (error) {
-      // Consulta ativa é rede de segurança, não caminho principal: se o
-      // Mercado Pago estiver fora do ar, a tela segue esperando o webhook em
-      // vez de mostrar erro para quem já pagou.
-      this.logger.warn(`Não foi possível consultar o pagamento ${externalReference}: ${error}`);
-      return null;
-    }
-  }
+}
+
+/** Os campos que a conferência usa, do jeito que o SDK os devolve. */
+function paraConferencia(p: {
+  id?: string | number;
+  external_reference?: string;
+  status?: string;
+  transaction_amount?: number;
+  transaction_amount_refunded?: number;
+  currency_id?: string;
+  live_mode?: boolean;
+}): PagamentoNoProvedor {
+  return {
+    id: String(p.id ?? ""),
+    referencia: p.external_reference ?? null,
+    status: p.status ?? null,
+    valor: typeof p.transaction_amount === "number" ? p.transaction_amount : null,
+    valorEstornado: typeof p.transaction_amount_refunded === "number" ? p.transaction_amount_refunded : null,
+    moeda: p.currency_id ?? null,
+    producao: typeof p.live_mode === "boolean" ? p.live_mode : null,
+  };
 }

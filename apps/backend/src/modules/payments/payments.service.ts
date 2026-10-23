@@ -1,5 +1,13 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { prisma } from "@festae/database";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
+import { prisma, type Payment } from "@festae/database";
 import {
   PERCENTUAL_DO_SALDO,
   PERCENTUAL_DO_SINAL,
@@ -12,6 +20,14 @@ import {
 import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
 import { travarPedido } from "../creditos/ledger";
+import {
+  TEXTO_DO_ALERTA,
+  consolidarDecisoes,
+  decidirPeloProvedor,
+  type DecisaoConsolidada,
+  type MotivoDoAlerta,
+  type PagamentoNoProvedor,
+} from "./conferencia-do-provedor";
 
 /** Reserva que não existe mais como festa: cancelada ou recusada. */
 const ENCERRADAS = ["CANCELLED", "REJECTED"];
@@ -68,11 +84,86 @@ export function valorACobrar(
 /** Intervalo mínimo entre duas consultas ao Mercado Pago sobre o mesmo Pix. */
 const SYNC_INTERVAL_MS = 20_000;
 
+/** De quanto em quanto tempo os Pix pendentes são conferidos sem ninguém pedir. */
+const INTERVALO_DA_CONFERENCIA_MS = 5 * 60_000;
+/** Até quanto tempo depois de criado um Pix ainda é conferido sozinho. */
+const IDADE_MAXIMA_DA_CONFERENCIA_MS = 48 * 60 * 60_000;
+/** Quantas cobranças por rodada: limita as chamadas ao Mercado Pago. */
+const COBRANCAS_POR_RODADA = 25;
+
+/** Teto da conciliação: dias para trás e cobranças por pedido. */
+export const DIAS_MAXIMOS_DA_CONCILIACAO = 90;
+const COBRANCAS_POR_CONCILIACAO = 200;
+
+export function emProducao(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+/**
+ * A conferência periódica liga sozinha em produção, com o Mercado Pago
+ * configurado. `PAGAMENTOS_CONFERENCIA_PERIODICA=desligada` a desliga sem
+ * deploy de código.
+ */
+export function conferenciaPeriodicaLigada(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.NODE_ENV !== "production" || !env.MP_ACCESS_TOKEN?.trim()) return false;
+  return env.PAGAMENTOS_CONFERENCIA_PERIODICA?.trim().toLowerCase() !== "desligada";
+}
+
+/** O que a conciliação diz de cada cobrança. */
+export type SituacaoNaConciliacao =
+  | "CONFERE"
+  /** Aprovado no Mercado Pago, conferido, e ainda não registrado aqui. */
+  | "PAGO_NAO_REGISTRADO"
+  /** Pendente ou recusado lá também: nada a registrar. */
+  | "SEM_PAGAMENTO"
+  | "NAO_ENCONTRADO"
+  | "ERRO_NA_CONSULTA"
+  | MotivoDoAlerta;
+
+export type ItemDaConciliacao = {
+  pagamentoId: string;
+  reservaId: string | null;
+  contrato: number | null;
+  tipo: string;
+  metodo: string;
+  statusAqui: string;
+  valorAqui: number;
+  recebidoEm: string | null;
+  criadoEm: string;
+  idNoProvedor: string | null;
+  statusNoProvedor: string | null;
+  valorNoProvedor: number | null;
+  valorEstornado: number | null;
+  situacao: SituacaoNaConciliacao;
+};
+
+function paraConferir(c: Pick<Payment, "id" | "status" | "method" | "amount" | "externalReference">) {
+  return {
+    id: c.id,
+    status: c.status,
+    metodo: c.method,
+    valor: Number(c.amount),
+    externalReference: c.externalReference,
+  };
+}
+
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PaymentsService.name);
+  private conferencia?: NodeJS.Timeout;
+  private conferindo = false;
 
   constructor(@Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway) {}
+
+  onModuleInit() {
+    if (!conferenciaPeriodicaLigada()) return;
+    this.conferencia = setInterval(() => void this.conferirPendentes(), INTERVALO_DA_CONFERENCIA_MS);
+    this.conferencia.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.conferencia) clearInterval(this.conferencia);
+  }
 
   /**
    * Pagamentos do pedido, com o pendente reconferido no Mercado Pago.
@@ -95,37 +186,158 @@ export class PaymentsService {
   }
 
   /**
-   * Confere no Mercado Pago o status de um pagamento pendente.
+   * Confere no Mercado Pago um pagamento pendente.
    *
-   * Só pergunta se faz sentido perguntar: pagamento vencido não muda mais, e
-   * consultar a cada 5 segundos por cliente com a tela aberta estouraria o
-   * limite de requisições deles sem necessidade.
+   * Só pergunta se faz sentido perguntar: consultar a cada 5 segundos por
+   * cliente com a tela aberta estouraria o limite de requisições deles sem
+   * necessidade — e a marca de "consultado" é gravada antes da chamada, para
+   * o intervalo valer também quando o Mercado Pago está falhando. Pix vencido
+   * é perguntado uma última vez antes de virar recusado: pago no último minuto
+   * e com o aviso perdido, ele seria dado como não pago com o dinheiro na conta.
+   *
+   * Devolve se a consulta aconteceu.
    */
-  private async syncWithGateway(paymentId: string) {
+  private async syncWithGateway(paymentId: string): Promise<boolean> {
     const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
-    if (!payment || payment.status !== "PENDING" || !payment.externalReference) return;
+    if (!payment || payment.status !== "PENDING" || !payment.externalReference) return false;
 
     const recentlySynced =
       payment.syncedAt && Date.now() - payment.syncedAt.getTime() < SYNC_INTERVAL_MS;
-    if (recentlySynced) return;
-
-    const expired = payment.expiresAt && payment.expiresAt.getTime() < Date.now();
-    if (expired) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: "FAILED", syncedAt: new Date() },
-      });
-      return;
-    }
-
-    const status = await this.gateway.getStatus(payment.id);
+    if (recentlySynced) return false;
     await prisma.payment.update({ where: { id: payment.id }, data: { syncedAt: new Date() } });
 
-    if (status === "PAID") {
-      this.logger.log(`Pagamento ${payment.id} confirmado por consulta ativa (webhook não chegou).`);
-      await this.settle(payment.id, "PAID");
-    } else if (status === "FAILED") {
-      await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
+    let resultado: DecisaoConsolidada;
+    try {
+      resultado = await this.conferirNoProvedor(payment);
+    } catch (error) {
+      // Consulta ativa é rede de segurança, não caminho principal: se o
+      // Mercado Pago estiver fora do ar, a cobrança espera a próxima consulta
+      // em vez de mostrar erro — e nem o Pix vencido é dado como recusado.
+      this.logger.warn(`Não foi possível consultar o pagamento ${payment.id} no Mercado Pago: ${error}`);
+      return false;
+    }
+    if (resultado.acao === "LIQUIDAR") {
+      this.logger.log(`Pagamento ${payment.id} confirmado por consulta ativa.`);
+      return true;
+    }
+
+    // Vencido sem pagamento lá vira recusado. Com alerta (aprovado com outro
+    // valor, contestado) fica como está: alerta não muda nada, e a
+    // conciliação mostra o caso.
+    const expired = payment.expiresAt && payment.expiresAt.getTime() < Date.now();
+    if (expired && resultado.acao === "NADA" && resultado.alertas.length === 0) {
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: "PENDING" },
+        data: { status: "FAILED" },
+      });
+    }
+    return true;
+  }
+
+  /**
+   * Consulta a cobrança no Mercado Pago e aplica a conferência.
+   *
+   * Pix: pelo id do Pix gravado na criação — o pagamento exato, não "algum
+   * pagamento com esta referência". Cartão: pela referência, porque o id só
+   * existe depois de pagar; cada resultado passa pela mesma conferência.
+   *
+   * Falha de comunicação sobe como exceção: quem chama decide se espera.
+   */
+  private async conferirNoProvedor(cobranca: Payment): Promise<DecisaoConsolidada> {
+    const encontrados = await this.consultarCobranca(cobranca);
+    await prisma.payment.update({ where: { id: cobranca.id }, data: { syncedAt: new Date() } });
+    return this.aplicarDecisoes(cobranca, encontrados);
+  }
+
+  private async consultarCobranca(cobranca: Payment): Promise<PagamentoNoProvedor[]> {
+    if (!cobranca.externalReference) return [];
+    if (cobranca.method === "PIX") {
+      const achado = await this.gateway.consultarPagamento(cobranca.externalReference);
+      return achado ? [achado] : [];
+    }
+    return this.gateway.buscarPorReferencia(cobranca.id);
+  }
+
+  /**
+   * Confere os pagamentos do provedor contra a cobrança e aplica o resultado.
+   *
+   * Uma aprovação conferida liquida, mesmo com outras tentativas recusadas na
+   * mesma referência (cartão); recusa só quando todas recusam. Alerta nunca
+   * muda nada: vai para o log, sem valores, e aparece na conciliação — e é
+   * registrado mesmo quando outra tentativa liquida.
+   */
+  private async aplicarDecisoes(
+    cobranca: Payment,
+    noProvedor: readonly PagamentoNoProvedor[],
+  ): Promise<DecisaoConsolidada> {
+    const resultado = consolidarDecisoes(
+      noProvedor.map((p) => decidirPeloProvedor(paraConferir(cobranca), p, { producao: emProducao() })),
+    );
+    for (const motivo of resultado.alertas) {
+      this.logger.warn(
+        `Pagamento ${cobranca.id}: ${TEXTO_DO_ALERTA[motivo]}. Nada foi alterado por isso; confira na conciliação do Mercado Pago.`,
+      );
+    }
+    if (resultado.acao === "LIQUIDAR") await this.settle(cobranca.id, "PAID");
+    else if (resultado.acao === "RECUSAR") await this.settle(cobranca.id, "FAILED");
+    return resultado;
+  }
+
+  /**
+   * Rede de segurança para aviso perdido: confere, sem ninguém pedir, as
+   * cobranças online das últimas 48 horas que ainda estão pendentes, e as
+   * vencidas que ainda não foram conferidas depois de vencer.
+   *
+   * É o que permite a assinatura do webhook ser estrita: uma notificação
+   * verdadeira recusada (janela, troca de segredo) não deixa um pagamento
+   * para trás — no máximo, ele é registrado alguns minutos depois.
+   *
+   * Rodízio pela última consulta: a menos conferida vai primeiro, e um
+   * acúmulo de cobranças abandonadas não impede as recentes de serem vistas.
+   */
+  async conferirPendentes(): Promise<number> {
+    if (this.conferindo) return 0;
+    this.conferindo = true;
+    try {
+      const agora = new Date();
+      const desde = new Date(agora.getTime() - IDADE_MAXIMA_DA_CONFERENCIA_MS);
+      const aindaNaoConferidaDepoisDeVencer = {
+        expiresAt: { not: null, lt: agora },
+        OR: [{ syncedAt: null }, { syncedAt: { lte: prisma.payment.fields.expiresAt } }],
+      };
+      const daVez = await prisma.payment.findMany({
+        where: {
+          externalReference: { not: null },
+          createdAt: { gte: desde },
+          OR: [
+            // Pendente: o cartão (sem validade) e o Pix ainda válido, sempre;
+            // o Pix vencido, uma última vez.
+            { status: "PENDING", OR: [{ expiresAt: null }, { expiresAt: { gte: agora } }] },
+            { status: "PENDING", ...aindaNaoConferidaDepoisDeVencer },
+            // Recusada por vencimento, mas talvez paga no último minuto.
+            { status: "FAILED", ...aindaNaoConferidaDepoisDeVencer },
+          ],
+        },
+        orderBy: [{ syncedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
+        take: COBRANCAS_POR_RODADA,
+      });
+
+      let conferidas = 0;
+      for (const cobranca of daVez) {
+        try {
+          if (cobranca.status === "PENDING") {
+            if (await this.syncWithGateway(cobranca.id)) conferidas += 1;
+          } else {
+            await this.conferirNoProvedor(cobranca);
+            conferidas += 1;
+          }
+        } catch (error) {
+          this.logger.warn(`Conferência periódica: não foi possível conferir ${cobranca.id}: ${error}`);
+        }
+      }
+      return conferidas;
+    } finally {
+      this.conferindo = false;
     }
   }
 
@@ -258,7 +470,9 @@ export class PaymentsService {
         where: { id: paymentId },
         include: { order: { include: { reservation: true } } },
       });
-      if (!payment || payment.status === "PAID") return null;
+      // Pago não se liquida de novo; anulado foi decisão humana registrada e
+      // não volta sozinho (a conferência transforma isso em alerta).
+      if (!payment || payment.status === "PAID" || payment.status === "ANULADO") return null;
 
       const reserva = payment.order.reservation;
       const confirmsReservation =
@@ -315,7 +529,7 @@ export class PaymentsService {
 
     if (registro?.aposCancelamento) {
       this.logger.warn(
-        `Pagamento ${registro.payment.id} (R$ ${Number(registro.payment.amount).toFixed(2)}) confirmado com a ` +
+        `Pagamento ${registro.payment.id} confirmado com a ` +
           `reserva ${registro.reserva!.id} já cancelada: registrado como pago, com tratamento financeiro pendente.`,
       );
     } else if (
@@ -380,8 +594,17 @@ export class PaymentsService {
         });
         resultado.encerradas += count;
       } else if (noProvedor === "JA_PAGA") {
-        await this.settle(p.id, "PAID");
-        resultado.jaPagas += 1;
+        // "Já paga" diz só o status: o registro passa pela mesma conferência
+        // de id e valor que o webhook. Divergência fica como não encerrada.
+        const cobranca = await prisma.payment.findUnique({ where: { id: p.id } });
+        const conferida = cobranca
+          ? await this.conferirNoProvedor(cobranca).catch((error) => {
+              this.logger.warn(`Pagamento ${p.id}: pago no Mercado Pago, mas não foi possível conferir agora: ${error}`);
+              return null;
+            })
+          : null;
+        if (conferida?.acao === "LIQUIDAR") resultado.jaPagas += 1;
+        else resultado.naoEncerradas += 1;
       } else {
         resultado.naoEncerradas += 1;
       }
@@ -396,17 +619,163 @@ export class PaymentsService {
     return resultado;
   }
 
-  /** Notificação do Mercado Pago. A autenticidade é checada no controller. */
-  async handleWebhook(payload: unknown) {
-    const result = await this.gateway.parseWebhook(payload);
-    if (!result) return;
+  /**
+   * Notificação do Mercado Pago, já autenticada no controller.
+   *
+   * Recebe só o id que foi assinado. O corpo da notificação não decide nada:
+   * o pagamento é buscado na API pelo id e conferido contra a cobrança antes
+   * de qualquer gravação. Falha na API sobe como exceção (500), e o Mercado
+   * Pago reenvia.
+   */
+  async processarNotificacao(idNoProvedor: string): Promise<void> {
+    const noProvedor = await this.gateway.consultarPagamento(idNoProvedor);
+    if (!noProvedor?.referencia) return;
 
-    const payment = await prisma.payment.findUnique({ where: { id: result.externalReference } });
-    if (!payment) return;
-    // Webhook repetido é normal no Mercado Pago: ignorar o que já está pago
-    // evita reconfirmar reserva e reescrever a data de pagamento.
-    if (payment.status === "PAID") return;
+    const cobranca = await prisma.payment.findUnique({ where: { id: noProvedor.referencia } });
+    if (!cobranca) return;
 
-    await this.settle(payment.id, result.status);
+    // Pix: decide pelo pagamento notificado — se não for o Pix da cobrança, é
+    // alerta. Cartão: uma tentativa recusada não decide sozinha enquanto a
+    // cliente tenta de novo; todas as tentativas da referência entram juntas.
+    const pagamentos = cobranca.method === "PIX" ? [noProvedor] : await this.tentativasDoCartao(cobranca, noProvedor);
+    await this.aplicarDecisoes(cobranca, pagamentos);
   }
+
+  private async tentativasDoCartao(cobranca: Payment, notificado: PagamentoNoProvedor) {
+    const todas = await this.gateway.buscarPorReferencia(cobranca.id);
+    return todas.some((p) => p.id === notificado.id) ? todas : [...todas, notificado];
+  }
+
+  /**
+   * Confere uma cobrança no Mercado Pago a pedido da administração.
+   *
+   * Mesmo caminho e mesma conferência do webhook: registra o que estiver
+   * aprovado e conferido, e não muda nada no que divergir.
+   */
+  async conferirCobranca(pagamentoId: string) {
+    const cobranca = await prisma.payment.findUnique({ where: { id: pagamentoId } });
+    if (!cobranca) throw new NotFoundException("Pagamento não encontrado.");
+    if (!cobranca.externalReference) {
+      throw new ConflictException("Este pagamento não foi feito pelo Mercado Pago.");
+    }
+    const resultado = await this.conferirNoProvedor(cobranca);
+    const depois = await prisma.payment.findUniqueOrThrow({ where: { id: pagamentoId }, select: { status: true } });
+    return { resultado: resultado.acao, alertas: resultado.alertas, status: depois.status };
+  }
+
+  /**
+   * Conciliação com o Mercado Pago: só leitura.
+   *
+   * Para cada cobrança online do período — recebida, pendente ou recusada —,
+   * diz se o que está aqui bate com o que está lá: valor, situação, estorno,
+   * contestação. Não grava nada; registrar um pagamento encontrado é outra
+   * ação (`conferirCobranca`), com a mesma conferência do webhook.
+   */
+  async conciliar(dias: number): Promise<{
+    de: string;
+    ate: string;
+    total: number;
+    limitado: boolean;
+    itens: ItemDaConciliacao[];
+  }> {
+    const agora = new Date();
+    const desde = new Date(agora.getTime() - dias * 24 * 60 * 60_000);
+    const cobrancas = await prisma.payment.findMany({
+      where: {
+        externalReference: { not: null },
+        OR: [
+          { status: "PAID", paidAt: { gte: desde } },
+          // Recebido sem data de recebimento não some da conferência.
+          { status: "PAID", paidAt: null, createdAt: { gte: desde } },
+          { status: { in: ["PENDING", "FAILED", "ANULADO"] }, createdAt: { gte: desde } },
+        ],
+      },
+      include: { order: { select: { reservation: { select: { id: true, contractSeq: true } } } } },
+      orderBy: { createdAt: "desc" },
+      take: COBRANCAS_POR_CONCILIACAO + 1,
+    });
+    const limitado = cobrancas.length > COBRANCAS_POR_CONCILIACAO;
+    const lista = cobrancas.slice(0, COBRANCAS_POR_CONCILIACAO);
+
+    const itens: ItemDaConciliacao[] = [];
+    // Poucas por vez: o limite de requisições do Mercado Pago vale para a
+    // conta inteira, inclusive para o checkout das clientes.
+    for (let i = 0; i < lista.length; i += 4) {
+      itens.push(...(await Promise.all(lista.slice(i, i + 4).map((c) => this.conciliarCobranca(c)))));
+    }
+    return { de: desde.toISOString(), ate: agora.toISOString(), total: itens.length, limitado, itens };
+  }
+
+  private async conciliarCobranca(
+    c: Payment & { order: { reservation: { id: string; contractSeq: number } | null } },
+  ): Promise<ItemDaConciliacao> {
+    const base = {
+      pagamentoId: c.id,
+      reservaId: c.order.reservation?.id ?? null,
+      contrato: c.order.reservation?.contractSeq ?? null,
+      tipo: c.type,
+      metodo: c.method,
+      statusAqui: c.status,
+      valorAqui: Number(c.amount),
+      recebidoEm: c.paidAt?.toISOString() ?? null,
+      criadoEm: c.createdAt.toISOString(),
+    };
+    let encontrados: PagamentoNoProvedor[];
+    try {
+      encontrados = await this.consultarCobranca(c);
+    } catch {
+      return { ...base, ...semProvedor(c), situacao: "ERRO_NA_CONSULTA" };
+    }
+    if (encontrados.length === 0) return { ...base, ...semProvedor(c), situacao: "NAO_ENCONTRADO" };
+
+    const conferidos = encontrados.map((p) => ({
+      p,
+      d: decidirPeloProvedor(paraConferir(c), p, { producao: emProducao() }),
+    }));
+    const consolidado = consolidarDecisoes(conferidos.map((x) => x.d));
+    const alerta = PRIORIDADE_DOS_ALERTAS.find((m) => consolidado.alertas.includes(m));
+    const situacao: SituacaoNaConciliacao = alerta
+      ? alerta
+      : consolidado.acao === "LIQUIDAR"
+        ? "PAGO_NAO_REGISTRADO"
+        : consolidado.confere
+          ? "CONFERE"
+          : "SEM_PAGAMENTO";
+    // O pagamento mostrado é o que explica a situação.
+    const mostrado =
+      (alerta && conferidos.find((x) => x.d.acao === "ALERTA" && x.d.motivo === alerta)) ||
+      conferidos.find((x) => x.d.acao === "LIQUIDAR" || x.d.acao === "CONFERE") ||
+      conferidos[0];
+    const { p } = mostrado;
+    return {
+      ...base,
+      idNoProvedor: p.id,
+      statusNoProvedor: p.status,
+      valorNoProvedor: p.valor,
+      valorEstornado: p.valorEstornado,
+      situacao,
+    };
+  }
+}
+
+/** Quando há mais de um alerta, o que aparece é o mais grave. */
+const PRIORIDADE_DOS_ALERTAS: MotivoDoAlerta[] = [
+  "ESTORNO_NO_PROVEDOR",
+  "CONTESTACAO_NO_PROVEDOR",
+  "VALOR_DIVERGENTE",
+  "NAO_APROVADO_NO_PROVEDOR",
+  "ID_DIVERGENTE",
+  "REFERENCIA_DIVERGENTE",
+  "MOEDA_DIVERGENTE",
+  "PAGAMENTO_DE_TESTE",
+  "COBRANCA_ANULADA",
+];
+
+function semProvedor(c: Payment) {
+  return {
+    idNoProvedor: c.method === "PIX" ? c.externalReference : null,
+    statusNoProvedor: null,
+    valorNoProvedor: null,
+    valorEstornado: null,
+  };
 }
