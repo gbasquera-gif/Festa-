@@ -244,11 +244,21 @@ function vazamentos(envios) {
   const falhas = new Set();
   let mensagens = 0;
   for (const e of envios) {
-    let corpo;
+    let corpo = null;
     try {
       corpo = JSON.parse(e.corpo);
     } catch {
-      continue; // áudio da transcrição: é o que a pessoa falou
+      corpo = null;
+    }
+    // Áudio da transcrição (corpo que não é JSON): é o que a pessoa falou.
+    if (!corpo || typeof corpo !== "object") continue;
+    // Voz gerada no servidor: o texto vai com os nomes de volta. Está
+    // bloqueada nesta versão; se algum dia sair, nome nenhum pode ir junto.
+    if (typeof corpo.input === "string") {
+      mensagens++;
+      const texto = normalizar(corpo.input);
+      for (const c of CONTATOS_PROIBIDOS) if (texto.includes(c)) falhas.add(`contato ou documento "${c}" no texto da voz`);
+      for (const nome of NOMES_PROIBIDOS) if (texto.includes(nome)) falhas.add(`nome fictício "${nome}" no texto da voz`);
     }
     (corpo.messages ?? []).forEach((m, i) => {
       mensagens++;
@@ -267,7 +277,12 @@ function vazamentos(envios) {
   const corpo = (messages) => ({ caminho: "/chat/completions", corpo: JSON.stringify({ messages }) });
   const limpo = vazamentos([corpo([{ role: "system", content: "x" }, { role: "user", content: "Quanto gastamos com a Paula?" }, { role: "tool", content: '{"f":"[F1]"}' }])]);
   const sujo = vazamentos([corpo([{ role: "system", content: "x" }, { role: "user", content: "e-mail ana@exemplo.invalid" }, { role: "tool", content: '{"f":"Freelancer Paula Fictícia"}' }])]);
-  if (limpo.falhas.length || sujo.falhas.length !== 4) throw new Error(`verificador de privacidade com defeito: ${JSON.stringify([limpo, sujo])}`);
+  // Transcrição (corpo nulo) é pulada sem quebrar; a voz com nome é pega.
+  const audio = vazamentos([{ caminho: "/audio/transcriptions", corpo: null }, corpo([{ role: "user", content: "oi" }])]);
+  const voz = vazamentos([{ caminho: "/audio/speech", corpo: JSON.stringify({ input: "A Paula Fictícia recebeu" }) }]);
+  if (limpo.falhas.length || sujo.falhas.length !== 4 || audio.falhas.length || voz.falhas.length !== 2) {
+    throw new Error(`verificador de privacidade com defeito: ${JSON.stringify([limpo, sujo, audio, voz])}`);
+  }
 }
 
 const resultados = [];
