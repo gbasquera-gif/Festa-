@@ -28,11 +28,11 @@ import {
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { urlDaProposta } from "@/lib/site";
-import { brl } from "@/components/financeiro/formato";
 import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
 import { DisponibilidadeDaProposta } from "@/components/orcamento/DisponibilidadeDaProposta";
 import { mensagemDeConflito } from "@/components/orcamento/conflito";
 import { AprovacaoManual } from "@/components/orcamento/AprovacaoManual";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A proposta vista por dentro.
@@ -59,6 +59,7 @@ async function copiar(texto: string, aviso: string) {
 }
 
 export default function OrcamentoDetalhe({ id }: { id: string }) {
+  const { brl } = useFormato();
   const { user } = useAuth();
   const [, navegar] = useLocation();
   const { voltar } = useVoltar();
@@ -649,6 +650,7 @@ function OpcaoNoDetalhe({
   esmaecida: boolean;
   mostrarValoresIndividuais: boolean;
 }) {
+  const { brl } = useFormato();
   return (
     <section
       className="painel-cartao p-0"

@@ -15,7 +15,9 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Rotulo } from "@/components/financeiro/pecas";
-import { brl, pct } from "@/components/financeiro/formato";
+import { useFormato } from "@/lib/privacidade";
+// Percentuais daqui são de operação e de conversão, não de dinheiro: ficam à vista.
+import { pct } from "@/components/financeiro/formato";
 
 /**
  * Acervo → Performance: das peças que a Festaê tem, quais estão trabalhando,
@@ -231,6 +233,7 @@ function Painel() {
 // ---------------------------------------------------------------- KPIs
 
 function Kpis({ dados }: { dados: Performance }) {
+  const { brl } = useFormato();
   const { kpis, cobertura } = dados;
   const desconhecidas = cobertura.kitSemSnapshot + cobertura.semItensRegistrados;
   const semUso = kpis.semUsoRecente;
@@ -328,6 +331,7 @@ function TabelaDeProdutos({
   determinavel: boolean;
   aoAbrir: (id: string) => void;
 }) {
+  const { brl } = useFormato();
   const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
   const [filtro, setFiltro] = useFiltroNaUrl<Filtro>("filtro", "TODOS", FILTROS);
   const [ordem, setOrdem] = useFiltroNaUrl<Ordem>("ordem", "MAIS_FESTAS", ORDENS);
@@ -605,6 +609,7 @@ function ListaComValor({
   linhas: { chave: string; nome: string; festas: number; contratos: number }[];
   vazio: string;
 }) {
+  const { brl } = useFormato();
   const [todos, setTodos] = useState(false);
   if (linhas.length === 0) return <p className="text-sm" style={cinza}>{vazio}</p>;
   const maior = Math.max(...linhas.map((l) => l.festas), 1);
@@ -666,6 +671,7 @@ function Cobertura({ cobertura, dias }: { cobertura: Performance["cobertura"]; d
 // ---------------------------------------------------------------- detalhe
 
 function DetalheDoProduto({ productId, janela, aoFechar }: { productId: string; janela: number; aoFechar: () => void }) {
+  const { brl } = useFormato();
   const { data: d, isLoading, error } = useQuery<Detalhe>({
     queryKey: ["acervo", "performance", "produto", productId, janela],
     queryFn: () => api(`/acervo/performance/produtos/${productId}?periodo=${janela}`),

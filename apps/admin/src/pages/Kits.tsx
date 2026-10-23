@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FormErrors } from "@/components/form-errors";
 import { api } from "@/lib/api";
+import { useFormato } from "@/lib/privacidade";
 
 interface Theme {
   id: string;
@@ -199,6 +200,7 @@ function KitForm({
 }
 
 export default function Kits() {
+  const { brl } = useFormato();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Kit | undefined>(undefined);
   const queryClient = useQueryClient();
@@ -271,7 +273,7 @@ export default function Kits() {
             <TableRow key={kit.id}>
               <TableCell data-label="Nome" className="font-medium">{kit.name}</TableCell>
               <TableCell data-label="Tema" className="text-muted-foreground">{kit.theme?.name ?? "—"}</TableCell>
-              <TableCell data-label="Preço base">R$ {Number(kit.basePrice).toFixed(2)}</TableCell>
+              <TableCell data-label="Preço base">{brl(Number(kit.basePrice))}</TableCell>
               <TableCell data-label="Itens">{kit.products.length}</TableCell>
               <TableCell className="flex justify-end gap-2">
                 <Button

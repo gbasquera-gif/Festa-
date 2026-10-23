@@ -23,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, baixarArquivo } from "@/lib/api";
 import { CorrigirDadosReserva } from "@/components/CorrigirDadosReserva";
+import { useFormato } from "@/lib/privacidade";
 
 interface Festa {
   reservaId: string;
@@ -67,7 +68,6 @@ interface Radar {
   };
 }
 
-const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /**
  * Quatro cores e nada mais.
@@ -104,6 +104,7 @@ function dataCurta(iso: string) {
 }
 
 function CartaoDaFesta({ festa }: { festa: Festa }) {
+  const { brl } = useFormato();
   const [aberto, setAberto] = useState(festa.situacao === "URGENTE" || festa.situacao === "ATRASADO");
   const [corrigindo, setCorrigindo] = useState(false);
   const queryClient = useQueryClient();

@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import type { PanoramaDeOrcamentos as Panorama, StatusDoOrcamento } from "@festae/shared";
 import { api } from "@/lib/api";
-import { brl, nomeDoMes, pct } from "@/components/financeiro/formato";
+// Percentuais daqui são de operação e de conversão, não de dinheiro: ficam à vista.
+import { nomeDoMes, pct } from "@/components/financeiro/formato";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * O resumo do topo da aba Orçamentos.
@@ -49,6 +51,7 @@ export function PanoramaDeOrcamentos({
   aba: Aba;
   aoEscolherAba: (aba: Aba) => void;
 }) {
+  const { brl } = useFormato();
   const { data: p, isLoading, error } = useQuery<Panorama>({
     queryKey: ["orcamentos", "panorama", ano, mes],
     queryFn: () => api(`/orcamentos/panorama?ano=${ano}&mes=${mes}`),

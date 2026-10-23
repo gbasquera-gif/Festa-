@@ -17,7 +17,14 @@ import {
   type EditarReservaInput,
   type ManualReservationInput,
 } from "@festae/shared";
-import { creditoAplicadoEmCentavos, pagoEmCentavos, travarPedido, utilizarCredito } from "../creditos/ledger";
+import {
+  creditoAplicadoEmCentavos,
+  pagoEmCentavos,
+  repeticaoDaVenda,
+  travarPedido,
+  utilizarCredito,
+} from "../creditos/ledger";
+import { decidirFicha, type DecisaoDaFicha, type FichaCandidata } from "./ficha-da-cliente";
 import { AvailabilityService } from "../availability/availability.service";
 import { itensDoKitDoPedido } from "../availability/item-commitment";
 import {
@@ -128,6 +135,15 @@ export class ManualReservationService {
      */
     extra: { pagamentoInicial?: PagamentoInicial; naMesmaTransacao?: NaMesmaTransacao; clienteNaTransacao?: boolean } = {},
   ) {
+    // Venda com crédito repetida (clique duplo, rede que caiu): a chave já
+    // tem movimento gravado, e a resposta é a reserva que ele criou — sem
+    // criar outra festa nem gastar o crédito de novo.
+    const chaveDoCredito = input.credito?.chaveDeIdempotencia;
+    if (chaveDoCredito) {
+      const ja = await this.vendaJaRegistrada(chaveDoCredito, input);
+      if (ja) return ja;
+    }
+
     // Já vem ancorada ao meio-dia UTC pelo schema. Reancorar aqui seria uma
     // segunda regra de fuso à espera de divergir da primeira.
     const dataDaFesta = input.evento.data;
@@ -192,7 +208,13 @@ export class ManualReservationService {
     const precos = await this.precosDosItens(input.produtos.itens.map((i) => i.productId));
 
     const resolverCliente = async (db: Prisma.TransactionClient) => {
-      const achado = await this.acharOuCriarCliente(input.cliente, db);
+      // Na venda digitada no painel, contato que bate com mais de uma ficha
+      // vira pergunta para quem vende. As outras origens (proposta) seguem a
+      // regra de sempre.
+      const achado =
+        contexto.tipo === "VENDA_MANUAL"
+          ? await this.fichaDaVenda(input.cliente, db)
+          : await this.acharOuCriarCliente(input.cliente, db);
       // O crédito que a tela ofereceu é o da ficha que ela mostrou. Se a venda
       // acabou ligada a outra ficha (outro e-mail digitado depois, por exemplo),
       // recusar é melhor do que tirar crédito de quem não estava na tela.
@@ -327,13 +349,26 @@ export class ManualReservationService {
           valor: input.credito.valor,
           createdById: criadoPorId,
           observacao: "Aplicado na venda",
+          chaveDeIdempotencia: chaveDoCredito,
         });
       }
 
       await extra.naMesmaTransacao?.depois?.(tx, { id: criada.id, orderId: ordem.id });
 
       return criada;
-    }, { timeout: 15_000 });
+    }, { timeout: 15_000 }).catch(async (erro: unknown) => {
+      // Dois envios juntos com a mesma chave: o segundo espera a trava do
+      // crédito e, quando o primeiro grava, ou esbarra no índice único da
+      // chave ou já não acha saldo. Nos dois casos a transação inteira dele é
+      // desfeita (nenhuma festa a mais); se a chave já tem venda gravada, a
+      // resposta é ela — não um "saldo insuficiente" para uma venda que deu
+      // certo.
+      if (chaveDoCredito) {
+        const ja = await this.vendaJaRegistrada(chaveDoCredito, input);
+        if (ja) return ja;
+      }
+      throw erro;
+    });
 
     this.logger.log(
       `Reserva manual ${reserva.id} criada por ${criadoPorId} — canal ${input.origem}.`,
@@ -581,6 +616,167 @@ export class ManualReservationService {
   }
 
   /**
+   * A reserva criada pela venda que gravou o crédito com esta chave — se o
+   * pedido for a mesma venda. Chave de outra venda é recusada.
+   */
+  private async vendaJaRegistrada(chave: string, input: ManualReservationInput) {
+    const movimento = await prisma.creditoClienteMovimento.findUnique({
+      where: { chaveDeIdempotencia: chave },
+      select: { tipo: true, userId: true, valor: true, reservationDestinoId: true },
+    });
+    if (!movimento?.reservationDestinoId || !input.credito) return null;
+    const gravada = await prisma.reservation.findUnique({
+      where: { id: movimento.reservationDestinoId },
+      include: { order: { select: { total: true } } },
+    });
+    if (!gravada) return null;
+    const { order, ...reserva } = gravada;
+    const repeticao = repeticaoDaVenda(
+      { movimento: { ...movimento, valor: Number(movimento.valor) }, dataDaFesta: reserva.eventDate, total: Number(order.total) },
+      {
+        clienteId: input.credito.clienteId,
+        valorDoCredito: input.credito.valor,
+        dataDaFesta: input.evento.data,
+        total: totalDaVendaManual(input.financeiro),
+      },
+    );
+    if (repeticao === "CHAVE_DE_OUTRA_OPERACAO") {
+      throw new ConflictException({
+        message:
+          "Esta venda já tinha sido registrada, com outros dados. Nada novo foi gravado: confira a reserva em Reservas e corrija por lá.",
+        codigo: "CHAVE_DE_OUTRA_OPERACAO",
+        reservaId: reserva.id,
+      });
+    }
+    this.logger.log(`Venda manual repetida: a reserva ${reserva.id} já existia; nada novo gravado.`);
+    return reserva;
+  }
+
+  /**
+   * As fichas que batem com o contato digitado: o e-mail sem diferenciar
+   * maiúsculas de minúsculas, o telefone pelos dígitos, com qualquer máscara.
+   * Fichas excluídas não entram.
+   *
+   * O e-mail é comparado por igualdade (`lower = lower`), não pelo
+   * `mode: "insensitive"` do Prisma: no Postgres ele vira ILIKE, e "_" e "%"
+   * num e-mail digitado casariam com o de outra pessoa ("a_c@" achava
+   * "abc@") — e a venda, com o crédito, iria para a ficha errada.
+   */
+  async fichasPossiveis(
+    dados: { telefone: string; email?: string | null },
+    db: Prisma.TransactionClient = prisma,
+  ): Promise<FichaCandidata[]> {
+    const email = dados.email?.trim() || null;
+    const formas = formasDoTelefone(dados.telefone);
+    const [porEmail, porTelefone] = await Promise.all([
+      email
+        ? db.$queryRaw<{ id: string }[]>`
+            SELECT id FROM users WHERE "deletedAt" IS NULL AND lower(email) = lower(${email})`
+        : Promise.resolve([]),
+      formas.length > 0
+        ? db.$queryRaw<{ id: string }[]>`
+            SELECT id FROM users
+             WHERE "deletedAt" IS NULL
+               AND regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g') = ANY(${formas})`
+        : Promise.resolve([]),
+    ]);
+    const idsPorEmail = new Set(porEmail.map((u) => u.id));
+    const idsPorTelefone = new Set(porTelefone.map((u) => u.id));
+    const ids = [...new Set([...idsPorEmail, ...idsPorTelefone])];
+    if (ids.length === 0) return [];
+    const fichas = await db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, email: true, phone: true, createdAt: true },
+    });
+    return fichas.map((f) => ({
+      id: f.id,
+      nome: f.name,
+      email: f.email,
+      telefone: f.phone,
+      criadaEm: f.createdAt,
+      porEmail: idsPorEmail.has(f.id),
+      porTelefone: idsPorTelefone.has(f.id),
+    }));
+  }
+
+  /** A decisão sobre a ficha de um contato, com a escolha da operação se houver. */
+  async decidirFichaDoContato(
+    dados: { telefone: string; email?: string | null; fichaId?: string },
+    db: Prisma.TransactionClient = prisma,
+  ): Promise<DecisaoDaFicha> {
+    return decidirFicha({
+      emailDigitado: dados.email,
+      candidatas: await this.fichasPossiveis(dados, db),
+      escolhida: dados.fichaId,
+    });
+  }
+
+  /**
+   * A ficha da venda manual: a única possível, a que a operação escolheu, ou
+   * uma nova. Ambígua sem escolha é recusada com as opções, para a tela
+   * perguntar — nunca decidida em silêncio.
+   */
+  private async fichaDaVenda(dados: ManualReservationInput["cliente"], db: Prisma.TransactionClient) {
+    const decisao = await this.decidirFichaDoContato(dados, db);
+    if (decisao.tipo === "AMBIGUA") {
+      throw new ConflictException({
+        message: "O telefone ou o e-mail bate com mais de uma ficha de cliente. Escolha qual é esta cliente.",
+        codigo: "FICHA_AMBIGUA",
+        candidatas: decisao.candidatas.map((c) => ({ id: c.id, nome: c.nome })),
+        podeCriarNova: decisao.podeCriarNova,
+      });
+    }
+    if (decisao.tipo === "ESCOLHA_INVALIDA") {
+      throw new ConflictException({
+        message: "A ficha escolhida não corresponde ao telefone nem ao e-mail digitados. Escolha de novo.",
+        codigo: "FICHA_INVALIDA",
+      });
+    }
+    if (decisao.tipo === "NOVA") {
+      return db.user.create({
+        data: {
+          name: dados.nome.trim(),
+          email: dados.email?.trim() || null,
+          phone: normalizarTelefone(dados.telefone),
+          role: "CLIENT",
+        },
+      });
+    }
+    const existente = await db.user.findUniqueOrThrow({ where: { id: decisao.id } });
+    await this.atualizarContato(existente, dados, db);
+    return existente;
+  }
+
+  /**
+   * Contato novo de cliente conhecida é atualização, não conflito.
+   *
+   * Telefone: comparado pelos dígitos — o mesmo número com outra máscara não
+   * é telefone novo, e reescrevê-lo só mudaria a formatação. E-mail: a ficha
+   * que não tinha recebe o digitado (ficha antiga só com telefone, venda
+   * nova com e-mail), a menos que outra ficha já o use, sem diferenciar
+   * maiúsculas — aí seriam duas pessoas com o mesmo e-mail. E-mail que a
+   * ficha já tem não é trocado, nem o de conta com senha (é o login dela).
+   */
+  private async atualizarContato(
+    existente: { id: string; phone: string | null; email: string | null; passwordHash: string | null },
+    dados: { telefone: string; email?: string | null },
+    db: Prisma.TransactionClient,
+  ) {
+    const mudancas: { phone?: string; email?: string } = {};
+    const telefone = normalizarTelefone(dados.telefone);
+    if (normalizarTelefone(existente.phone) !== telefone) mudancas.phone = telefone;
+    const email = dados.email?.trim() || null;
+    if (email && !existente.email && !existente.passwordHash) {
+      const [outra] = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM users WHERE id <> ${existente.id} AND lower(email) = lower(${email}) LIMIT 1`;
+      if (!outra) mudancas.email = email;
+    }
+    if (Object.keys(mudancas).length > 0) {
+      await db.user.update({ where: { id: existente.id }, data: mudancas });
+    }
+  }
+
+  /**
    * Reaproveita o cadastro do cliente quando ele já existe.
    *
    * Procura por e-mail e, na falta dele, por telefone. É o que faz a cliente
@@ -598,12 +794,7 @@ export class ManualReservationService {
     const existente = await this.clienteExistente(dados, db);
 
     if (existente) {
-      // Telefone novo de cliente conhecido é atualização, não conflito. A
-      // comparação é pelos dígitos: o mesmo número com outra máscara não é
-      // telefone novo, e reescrevê-lo só mudaria a formatação.
-      if (normalizarTelefone(existente.phone) !== telefone) {
-        await db.user.update({ where: { id: existente.id }, data: { phone: telefone } });
-      }
+      await this.atualizarContato(existente, dados, db);
       return existente;
     }
 

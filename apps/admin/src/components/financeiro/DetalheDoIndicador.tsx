@@ -3,7 +3,8 @@ import { X } from "lucide-react";
 import { formatarDataDaFesta, EVENT_TYPE_META, isEventType } from "@festae/shared";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
-import { brl, nomeDoMes, numero } from "./formato";
+import { nomeDoMes } from "./formato";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * De que contratos um indicador é feito.
@@ -143,6 +144,7 @@ export function DetalhePainel({
   explicacao?: string;
   vazio?: string;
 }) {
+  const { brl, numero } = useFormato();
   const data = dados;
   const isLoading = carregando;
   const error = erro;

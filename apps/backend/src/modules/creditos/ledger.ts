@@ -73,6 +73,8 @@ export async function utilizarCredito(
     valor: number;
     createdById: string;
     observacao?: string | null;
+    /** A chave do pedido: o mesmo pedido repetido não grava outro movimento. */
+    chaveDeIdempotencia?: string | null;
   },
 ) {
   await travarCredito(tx, dados.userId);
@@ -97,6 +99,54 @@ export async function utilizarCredito(
       reservationDestinoId: dados.reservationId,
       observacao: dados.observacao?.trim() || null,
       createdById: dados.createdById,
+      chaveDeIdempotencia: dados.chaveDeIdempotencia ?? null,
     },
   });
+}
+
+/**
+ * Um pedido chegou com uma chave que já tem movimento gravado: é o mesmo
+ * pedido repetido, ou a chave está sendo usada para outra coisa?
+ *
+ * Mesmo pedido é a mesma utilização, na mesma reserva, do mesmo valor. Aí a
+ * resposta é a do primeiro, sem gastar o crédito de novo. Qualquer outra
+ * combinação é recusada: uma chave não pode autorizar duas operações.
+ */
+export function repeticaoDoPedido(
+  gravado: { tipo: string; reservationDestinoId: string | null; valor: number },
+  pedido: { reservationId?: string; valor: number },
+): "MESMO_PEDIDO" | "CHAVE_DE_OUTRA_OPERACAO" {
+  const mesmo =
+    gravado.tipo === "CREDITO_UTILIZADO" &&
+    (pedido.reservationId === undefined || gravado.reservationDestinoId === pedido.reservationId) &&
+    -toCentsInt(gravado.valor) === toCentsInt(pedido.valor);
+  return mesmo ? "MESMO_PEDIDO" : "CHAVE_DE_OUTRA_OPERACAO";
+}
+
+/**
+ * A venda manual com crédito chegou de novo com a mesma chave: é a mesma
+ * venda, ou outra?
+ *
+ * Mesma venda é o mesmo crédito (da mesma ficha, do mesmo valor), para a
+ * mesma data e o mesmo total. A tela mantém a chave enquanto está aberta:
+ * se a primeira resposta se perdeu e a operação corrigiu a data ou o valor
+ * antes de salvar de novo, devolver a venda antiga como sucesso esconderia
+ * que a correção não foi gravada. Aí a resposta é recusa, e nada novo é
+ * gravado — a venda antiga continua lá para ser conferida e editada.
+ */
+export function repeticaoDaVenda(
+  gravada: {
+    movimento: { tipo: string; userId: string; reservationDestinoId: string | null; valor: number };
+    dataDaFesta: Date;
+    total: number;
+  },
+  pedido: { clienteId: string; valorDoCredito: number; dataDaFesta: Date; total: number },
+): "MESMA_VENDA" | "CHAVE_DE_OUTRA_OPERACAO" {
+  const dia = (d: Date) => d.toISOString().slice(0, 10);
+  const mesma =
+    repeticaoDoPedido(gravada.movimento, { valor: pedido.valorDoCredito }) === "MESMO_PEDIDO" &&
+    gravada.movimento.userId === pedido.clienteId &&
+    dia(gravada.dataDaFesta) === dia(pedido.dataDaFesta) &&
+    toCentsInt(gravada.total) === toCentsInt(pedido.total);
+  return mesma ? "MESMA_VENDA" : "CHAVE_DE_OUTRA_OPERACAO";
 }

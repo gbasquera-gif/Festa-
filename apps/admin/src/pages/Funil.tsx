@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useFormato } from "@/lib/privacidade";
 
 const ROTULOS: Record<string, string> = {
   VISITA_LOJA: "Chegaram na loja",
@@ -58,8 +59,6 @@ interface Resumo {
   }[];
 }
 
-const brl = (valor: number) =>
-  valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /** Valor especial do seletor: janela móvel em vez de mês fechado. */
 const TRINTA_DIAS = "30d";
@@ -241,6 +240,7 @@ export default function Funil() {
 
 /** O corpo da tela. Separado para o seletor e o título não sumirem enquanto carrega. */
 function Numeros({ data, pct }: { data: Resumo; pct: (v: number | null) => string }) {
+  const { brl } = useFormato();
   const { placar, origens, funnel } = data;
 
   return (

@@ -8,8 +8,8 @@ import {
   extratoDeCredito,
   formatarDataDaFesta,
   formatarDiaDoMomento,
-  formatarReais,
   numeroDoContrato,
+  resumoDoExtrato,
   type LinhaDoExtrato,
   type MovimentoDeCredito,
 } from "@festae/shared";
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useFormato } from "@/lib/privacidade";
 
 type DadosDaCliente = {
   cliente: {
@@ -70,6 +71,7 @@ function origemOuDestino(l: LinhaDoExtrato): string {
  * errado se desfaz com um estorno que fica registrado ao lado do uso.
  */
 export default function ClienteDetalhe({ id }: { id: string }) {
+  const { formatarReais } = useFormato();
   const [, navegar] = useLocation();
   const { user } = useAuth();
   const [estornando, setEstornando] = useState<LinhaDoExtrato | null>(null);
@@ -83,6 +85,7 @@ export default function ClienteDetalhe({ id }: { id: string }) {
   if (error || !data) return <p className="text-destructive">Não foi possível carregar este cadastro.</p>;
 
   const extrato = extratoDeCredito(data.movimentos);
+  const resumo = resumoDoExtrato(data.movimentos);
   const canceladas = new Set(data.festas.filter((f) => f.status === "CANCELLED" || f.status === "REJECTED").map((f) => f.id));
   const podeEstornar = (l: LinhaDoExtrato) =>
     user?.role === "ADMIN" &&
@@ -121,6 +124,25 @@ export default function ClienteDetalhe({ id }: { id: string }) {
           </Button>
         )}
       </section>
+
+      {data.movimentos.length > 0 && (
+        // A conta do saldo à vista: o que foi concedido, usado e devolvido,
+        // tirado do mesmo extrato logo abaixo.
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-resumo-do-credito>
+          {[
+            { rotulo: "Concedido", valor: resumo.concedido, nota: "em cancelamentos" },
+            { rotulo: "Utilizado", valor: resumo.utilizado, nota: "em festas" },
+            { rotulo: "Devolvido ao saldo", valor: resumo.devolvido, nota: "estornos e festas canceladas" },
+            { rotulo: "Saldo", valor: resumo.saldo, nota: "concedido − utilizado + devolvido" },
+          ].map((item) => (
+            <div key={item.rotulo} className="painel-cartao p-3">
+              <dt className="painel-periodo">{item.rotulo}</dt>
+              <dd className="mt-1 text-lg font-semibold tabular-nums text-navy">{formatarReais(item.valor)}</dd>
+              <dd className="text-xs text-muted-foreground">{item.nota}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-[0.95rem] font-medium text-navy">Extrato de créditos</h2>
@@ -247,6 +269,7 @@ function EstornarUtilizacao({
   clienteId: string;
   aoFechar: () => void;
 }) {
+  const { formatarReais } = useFormato();
   const queryClient = useQueryClient();
   const [motivo, setMotivo] = useState("");
   const [recusa, setRecusa] = useState<string | null>(null);

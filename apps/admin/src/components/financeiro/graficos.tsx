@@ -1,4 +1,4 @@
-import { brl } from "./formato";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * Os gráficos da Evolução, desenhados em SVG à mão.
@@ -43,6 +43,7 @@ function escala(valores: number[], altura: number, topo: number, base: number) {
  * faturamos o que ainda vamos entregar.
  */
 export function GraficoDoAno({ serie, mesSelecionado }: { serie: PontoDaSerie[]; mesSelecionado: string }) {
+  const { brl } = useFormato();
   const L = 760, A = 260, esq = 8, dir = 8, topo = 16, base = 30;
   const passo = (L - esq - dir) / 11;
   const x = (n: number) => esq + (n - 1) * passo;
@@ -116,6 +117,7 @@ export function GraficoDoAno({ serie, mesSelecionado }: { serie: PontoDaSerie[];
 
 /** A curva do acumulado: quanto do ano já foi somado até cada mês. */
 export function GraficoAcumulado({ serie }: { serie: PontoDaSerie[] }) {
+  const { brl } = useFormato();
   const L = 760, A = 150, esq = 8, dir = 8, topo = 12, base = 26;
   const passo = (L - esq - dir) / 11;
   const x = (n: number) => esq + (n - 1) * passo;

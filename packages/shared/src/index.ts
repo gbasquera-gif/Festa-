@@ -490,6 +490,8 @@ export {
   motivoDeRecusaDaDistribuicao,
   numeroDoCredito,
   saldoDeCredito,
+  resumoDoExtrato,
+  type ResumoDoExtrato,
   textoDoVoucher,
 } from "./credito";
 export type {

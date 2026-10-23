@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FormErrors } from "@/components/form-errors";
 import { api } from "@/lib/api";
+import { useFormato } from "@/lib/privacidade";
 
 interface Product extends CreateProductInput {
   id: string;
@@ -131,6 +132,7 @@ function ProductForm({ product, onSaved }: { product?: Product; onSaved: () => v
 }
 
 export default function Products() {
+  const { brl } = useFormato();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | undefined>(undefined);
   const queryClient = useQueryClient();
@@ -196,7 +198,7 @@ export default function Products() {
               <TableCell data-label="Categoria">
                 <Badge variant="secondary">{PRODUCT_CATEGORY_LABEL[product.category]}</Badge>
               </TableCell>
-              <TableCell data-label="Preço">R$ {Number(product.unitPrice).toFixed(2)}</TableCell>
+              <TableCell data-label="Preço">{brl(Number(product.unitPrice))}</TableCell>
               <TableCell data-label="Estoque">{product.stockQuantity}</TableCell>
               <TableCell className="flex justify-end gap-2">
                 <Button
