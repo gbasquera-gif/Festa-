@@ -21,6 +21,7 @@ type Situacao =
   | "PAGAMENTO_DE_TESTE"
   | "ESTORNO_NO_PROVEDOR"
   | "CONTESTACAO_NO_PROVEDOR"
+  | "NAO_APROVADO_NO_PROVEDOR"
   | "COBRANCA_ANULADA";
 
 type Item = {
@@ -71,13 +72,30 @@ const SITUACAO: Record<Situacao, { rotulo: string; classe: string; nota: string 
     classe: "vencido",
     nota: "O Mercado Pago informa contestação ou mediação. Nada foi desfeito aqui: acompanhe a disputa no painel do Mercado Pago.",
   },
+  NAO_APROVADO_NO_PROVEDOR: {
+    rotulo: "Não aprovado lá",
+    classe: "vencido",
+    nota: "Registrado como recebido aqui, mas o Mercado Pago não aprovou (pendente, recusado ou cancelado). Nada foi desfeito aqui: confira no painel do Mercado Pago antes de qualquer ajuste.",
+  },
   COBRANCA_ANULADA: { rotulo: "Anulado aqui", classe: "vencido", nota: "Anulado no painel, mas aprovado no Mercado Pago." },
 };
+
+/**
+ * Situação que esta tela ainda não conhece (o servidor ganhou uma nova antes
+ * do painel): aparece como alerta, em vez de derrubar a tela inteira.
+ */
+const SITUACAO_DESCONHECIDA = {
+  rotulo: "Conferir",
+  classe: "vencido",
+  nota: "Situação que esta tela ainda não sabe descrever. Confira a cobrança no painel do Mercado Pago.",
+};
+const situacaoDe = (situacao: string) => SITUACAO[situacao as Situacao] ?? SITUACAO_DESCONHECIDA;
 
 /** O que pede atenção vem primeiro; o que confere, por último. */
 const ORDEM: Situacao[] = [
   "ESTORNO_NO_PROVEDOR",
   "CONTESTACAO_NO_PROVEDOR",
+  "NAO_APROVADO_NO_PROVEDOR",
   "VALOR_DIVERGENTE",
   "ID_DIVERGENTE",
   "REFERENCIA_DIVERGENTE",
@@ -114,7 +132,7 @@ const STATUS_LA: Record<string, string> = {
 const statusLa = (s: string | null) => (s ? (STATUS_LA[s] ?? s) : "—");
 
 function Etiqueta({ situacao }: { situacao: Situacao }) {
-  const s = SITUACAO[situacao];
+  const s = situacaoDe(situacao);
   return (
     <span className={`fin-situacao ${s.classe}`} title={s.nota}>
       {s.rotulo}
@@ -174,6 +192,7 @@ export function ConciliacaoMercadoPago() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Situação desconhecida (-1) vem primeiro: é alerta até alguém olhar.
   const itens = [...(data?.itens ?? [])].sort((a, b) => ORDEM.indexOf(a.situacao) - ORDEM.indexOf(b.situacao));
   const atencao = itens.filter((i) => !["CONFERE", "SEM_PAGAMENTO"].includes(i.situacao)).length;
 
@@ -321,7 +340,7 @@ export function ConciliacaoMercadoPago() {
                       </span>
                     </div>
                     <p className="mt-2 text-xs" style={{ color: "var(--fin-muted)" }}>
-                      {SITUACAO[i.situacao].nota}
+                      {situacaoDe(i.situacao).nota}
                     </p>
                     <dl>
                       <div>
