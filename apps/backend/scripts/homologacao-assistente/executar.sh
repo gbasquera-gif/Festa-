@@ -46,6 +46,7 @@ HOMOLOGACAO_TOKEN_OPS=""
 [ -n "${HOMOLOGACAO_OPS_EMAIL:-}" ] && HOMOLOGACAO_TOKEN_OPS="$(entrar "$HOMOLOGACAO_OPS_EMAIL" "${HOMOLOGACAO_OPS_SENHA:-}")"
 export HOMOLOGACAO_TOKEN_ADMIN HOMOLOGACAO_TOKEN_OPS BASE="http://localhost:$PORTA"
 
+node "$AQUI/dados-ficticios.mjs" || exit 1
 node "$AQUI/perguntas.mjs"; r1=$?
 node "$AQUI/voz.mjs"; r2=$?
 curl -s "http://localhost:$PORTA/api/v1/assistente/metricas" -H "Authorization: Bearer $HOMOLOGACAO_TOKEN_ADMIN" \

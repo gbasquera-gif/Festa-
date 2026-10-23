@@ -23,6 +23,7 @@ import { rotuloDoDia } from "./periodo";
 import { FalhaDoProvedor, type MensagemDoModelo, type ProvedorDeIA, type UsoDoModelo } from "./provedor";
 import { pareceOperacao, PREFIXO_DO_CONTEXTO } from "./provedor-simulado";
 import type { Pseudonimos } from "./pseudonimos";
+import { semContatoNemDocumento } from "./minimizacao";
 
 /** Erro que o canal transforma em resposta HTTP (ou mensagem, no WhatsApp). */
 export class RecusaDoAssistente extends Error {
@@ -478,11 +479,12 @@ export class NucleoDoAssistente {
     const mensagens: MensagemDoModelo[] = [{ papel: "sistema", texto: instrucoes(identidade.papel, agora) }];
     const consultas = turnos.flatMap((t) => t.consultas).slice(-3);
     if (consultas.length) mensagens.push({ papel: "sistema", texto: `${PREFIXO_DO_CONTEXTO}${JSON.stringify(consultas)}` });
+    // A pergunta vai como foi escrita, menos contato e documento (minimizacao.ts).
     for (const t of turnos) {
-      mensagens.push({ papel: "usuario", texto: t.pergunta });
+      mensagens.push({ papel: "usuario", texto: semContatoNemDocumento(t.pergunta) });
       mensagens.push({ papel: "assistente", texto: t.resposta });
     }
-    mensagens.push({ papel: "usuario", texto: pergunta });
+    mensagens.push({ papel: "usuario", texto: semContatoNemDocumento(pergunta) });
     return mensagens;
   }
 
