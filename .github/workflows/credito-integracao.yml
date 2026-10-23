@@ -1,0 +1,88 @@
+name: Crédito Festaê (integração)
+
+# Roda os cenários do crédito Festaê (apps/backend/scripts/homologacao-credito)
+# contra a API compilada de verdade, num Postgres descartável criado só para
+# este job. Nenhum segredo do repositório é lido: o banco é um container do
+# próprio job, o JWT_SECRET é gerado na hora e nenhuma variável de produção
+# existe aqui. Qualquer cenário que falhe derruba o job.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: credito-integracao-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: festae
+          POSTGRES_PASSWORD: festae_ci_password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U festae"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PG_ADMIN_URL: postgresql://festae:festae_ci_password@localhost:5432/postgres
+      BANCO_DESCARTAVEL: festae_credito_${{ github.run_id }}_${{ github.run_attempt }}
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Criar o banco descartável e o segredo de teste
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$PG_ADMIN_URL" -v ON_ERROR_STOP=1 -qc "CREATE DATABASE \"$BANCO_DESCARTAVEL\""
+          echo "DATABASE_URL=postgresql://festae:festae_ci_password@localhost:5432/$BANCO_DESCARTAVEL" >> "$GITHUB_ENV"
+          segredo="$(openssl rand -hex 32)"
+          echo "::add-mask::$segredo"
+          echo "JWT_SECRET=$segredo" >> "$GITHUB_ENV"
+
+      - name: Conferir que o banco é o descartável deste job
+        run: |
+          case "$DATABASE_URL" in
+            "postgresql://festae:festae_ci_password@localhost:5432/$BANCO_DESCARTAVEL") echo "Banco local e descartável." ;;
+            *) echo "Recusado: DATABASE_URL não é o banco descartável deste job."; exit 1 ;;
+          esac
+
+      - name: Aplicar as migrations no banco descartável
+        run: pnpm --filter @festae/database run migrate:deploy
+
+      - name: Build da API
+        run: pnpm exec turbo run build --filter=@festae/backend...
+
+      - name: Cenários do crédito
+        run: apps/backend/scripts/homologacao-credito/executar.sh
+
+      - name: Log do servidor (só se falhar)
+        if: failure()
+        run: tail -n 200 "${TMPDIR:-/tmp}/homologacao-credito.log" || true
+
+      - name: Descartar o banco
+        if: always()
+        run: psql "$PG_ADMIN_URL" -qc "DROP DATABASE IF EXISTS \"$BANCO_DESCARTAVEL\" WITH (FORCE)"
