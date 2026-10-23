@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatarReais } from "@festae/shared";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -34,6 +33,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useFormato } from "@/lib/privacidade";
 
 interface UserRow {
   id: string;
@@ -274,6 +274,7 @@ function DeleteUserDialog({ user, onClose }: { user: UserRow; onClose: () => voi
 }
 
 export default function Users() {
+  const { formatarReais } = useFormato();
   const { user: currentUser } = useAuth();
   const [resetting, setResetting] = useState<UserRow | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);

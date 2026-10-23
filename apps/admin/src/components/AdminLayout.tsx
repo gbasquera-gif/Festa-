@@ -21,6 +21,7 @@ import { useRegistroDeNavegacao } from "@/lib/voltar";
 import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { useAuth } from "@/lib/auth";
 import { AssistenteFestae } from "@/components/assistente/AssistenteFestae";
+import { BotaoDeValores } from "@/lib/privacidade";
 
 /**
  * A navegação, em grupos.
@@ -285,6 +286,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <ChevronsRight className="size-4" />
           </button>
         )}
+        {/* O olho fica no alto e em toda tela: esconder os valores antes de
+            compartilhar a tela tem de estar a um clique, em qualquer lugar. */}
+        <BotaoDeValores
+          compacto={recolhida}
+          className={`mb-3 h-10 w-full ${recolhida ? "justify-center" : "px-3"}`}
+        />
         <Navegacao recolhida={recolhida} />
         <Rodape recolhida={recolhida} />
       </aside>
@@ -333,7 +340,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <span className="truncate font-semibold" style={{ color: "var(--color-navy)" }}>
             {tituloDaRota(location)}
           </span>
-          <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} className="ml-auto h-auto w-[104px] pr-1" />
+          <BotaoDeValores compacto className="ml-auto size-11 justify-center" />
+          <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} className="h-auto w-[104px] pr-1" />
         </header>
 
         {/* min-w-0 no pai é o que permite o conteúdo encolher: sem ele, uma

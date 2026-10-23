@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ListChecks, Wallet, Coins, ArrowRight, ChevronRight } from "lucide-react";
 import { STATUS_QUE_SEGURAM_ACERVO, formatarDataDaFesta } from "@festae/shared";
 import { api } from "@/lib/api";
-import { brl, nomeDoMes, pct } from "@/components/financeiro/formato";
+import { nomeDoMes } from "@/components/financeiro/formato";
 import type { Panorama, Variacao } from "@/components/financeiro/panorama";
 import {
   DetalheDoIndicador,
@@ -12,6 +12,7 @@ import {
   type Detalhamento,
   type TipoDeDetalhe,
 } from "@/components/financeiro/DetalheDoIndicador";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A Visão Geral — o cockpit da operação.
@@ -104,6 +105,7 @@ function mesesDisponiveis(): string[] {
 const ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 export default function Dashboard() {
+  const { brl, pct } = useFormato();
   const [janela, setJanela] = useState<Janela>("mes");
   const agora = new Date();
   const [mes, setMes] = useState(agora.toISOString().slice(0, 7));
@@ -483,6 +485,7 @@ export default function Dashboard() {
  * adicionar um terceiro indicador é obrigado a decidir.
  */
 function VariacaoDoMes({ v, melhorQuandoSobe }: { v: Variacao; melhorQuandoSobe: boolean }) {
+  const { brl, pct } = useFormato();
   if (!v.temBase || v.percentual === null) return null;
   const subiu = v.absoluta > 0;
   const parado = v.absoluta === 0;

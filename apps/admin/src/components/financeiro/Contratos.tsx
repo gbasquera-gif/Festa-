@@ -14,7 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { NumeroEscuro, Rotulo, Situacao } from "./pecas";
-import { brl, dia, nomeDoMes, numero } from "./formato";
+import { dia, nomeDoMes } from "./formato";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A carteira de contratos.
@@ -102,6 +103,7 @@ const STATUS_LABEL: Record<string, string> = {
  * as duas telas passariam a somar conjuntos diferentes.
  */
 export function Contratos({ mes }: { mes: string | null }) {
+  const { brl, pct } = useFormato();
   const [situacao, setSituacao] = useFiltroNaUrl<"" | SituacaoDePagamento>("situacao", "", ["", ...SITUACOES_DE_PAGAMENTO]);
   const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
   const [aberto, setAberto] = useState<string | null>(null);
@@ -157,7 +159,7 @@ export function Contratos({ mes }: { mes: string | null }) {
               valor={brl(resumo.recebido)}
               nota={
                 resumo.contratado > 0
-                  ? `${((resumo.recebido / resumo.contratado) * 100).toFixed(0)}% do contratado`
+                  ? `${pct(resumo.recebido / resumo.contratado, 0)} do contratado`
                   : "—"
               }
             />
@@ -301,6 +303,7 @@ function Linha({
   aberto: boolean;
   aoAbrir: (id: string | null) => void;
 }) {
+  const { numero } = useFormato();
   return (
     <>
       <tr className={c.vigente ? undefined : "riscado"}>
@@ -369,6 +372,7 @@ function Linha({
 
 /** O que está por trás do número: como a festa foi vendida e o que já entrou. */
 function Detalhe({ contrato: c }: { contrato: ContratoComercial }) {
+  const { numero } = useFormato();
   return (
     <div className="grid gap-4 py-2 md:grid-cols-2">
       <div>
@@ -465,6 +469,7 @@ function Detalhe({ contrato: c }: { contrato: ContratoComercial }) {
 }
 
 function Cartao({ contrato: c }: { contrato: ContratoComercial }) {
+  const { numero } = useFormato();
   return (
     <div className={`fin-linha ${c.vigente ? "" : "riscado"}`}>
       <div className="flex items-start justify-between gap-3">

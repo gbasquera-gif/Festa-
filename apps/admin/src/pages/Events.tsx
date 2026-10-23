@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useFormato } from "@/lib/privacidade";
 
 interface EventRow {
   id: string;
@@ -240,6 +241,7 @@ const ABA_NOTA: Record<Aba, string> = {
 };
 
 export default function Events() {
+  const { brl } = useFormato();
   const [editando, setEditando] = useState<EventRow | null>(null);
   const [excluindo, setExcluindo] = useState<EventRow | null>(null);
   const [aba, setAba] = useState<Aba>("PROXIMOS");
@@ -365,7 +367,7 @@ export default function Events() {
               <TableCell data-label="Tipo">{typeLabel(event.type)}</TableCell>
               <TableCell data-label="Tema">{event.theme?.name ?? "—"}</TableCell>
               <TableCell data-label="Convidados">{event.guestCount ?? "—"}</TableCell>
-              <TableCell data-label="Orçamento">{event.order ? `R$ ${Number(event.order.total).toFixed(2)}` : "—"}</TableCell>
+              <TableCell data-label="Orçamento">{event.order ? brl(Number(event.order.total)) : "—"}</TableCell>
               <TableCell data-label="Status">
                 <Badge variant="secondary">{event.order?.status ?? "—"}</Badge>
               </TableCell>

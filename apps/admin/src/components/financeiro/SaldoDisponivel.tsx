@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { Rotulo } from "./pecas";
-import { brl, dia, nomeDoMes } from "./formato";
+import { dia, nomeDoMes } from "./formato";
+import { useFormato } from "@/lib/privacidade";
 
 export type SaldoDeCaixa = {
   ate: string;
@@ -62,6 +63,7 @@ export function useSaldoDeCaixa(ate?: string) {
  * Operacional não leem nada deste bloco.
  */
 export function SaldoDisponivel({ mes }: { mes: string }) {
+  const { brl } = useFormato();
   const ate = fimDoMesOuHoje(mes);
   const hoje = diaEmChapeco(new Date());
   const { data, isLoading } = useSaldoDeCaixa(ate);
@@ -139,6 +141,7 @@ export function SaldoDisponivel({ mes }: { mes: string }) {
 
 /** Uma linha da conta. O sinal está no rótulo (+ ou −); o valor vem sem sinal, como num extrato. */
 function Linha({ rotulo, valor, destaque }: { rotulo: string; valor: number; destaque?: boolean }) {
+  const { brl } = useFormato();
   return (
     <tr style={valor === 0 ? { opacity: 0.55 } : undefined}>
       <td style={destaque ? { color: "var(--fin-navy-ink)", fontWeight: 600 } : undefined}>{rotulo}</td>
@@ -149,6 +152,7 @@ function Linha({ rotulo, valor, destaque }: { rotulo: string; valor: number; des
 
 /** O saldo inicial da conta num dia. Nada se apaga: um saldo errado se corrige informando de novo. */
 export function InformarSaldo({ aberto, aoFechar }: { aberto: boolean; aoFechar: () => void }) {
+  const { brl } = useFormato();
   const queryClient = useQueryClient();
   const hoje = diaEmChapeco(new Date());
   const [chave, setChave] = useState("");

@@ -8,7 +8,6 @@ import {
   extratoDeCredito,
   formatarDataDaFesta,
   formatarDiaDoMomento,
-  formatarReais,
   numeroDoContrato,
   type LinhaDoExtrato,
   type MovimentoDeCredito,
@@ -19,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useFormato } from "@/lib/privacidade";
 
 type DadosDaCliente = {
   cliente: {
@@ -70,6 +70,7 @@ function origemOuDestino(l: LinhaDoExtrato): string {
  * errado se desfaz com um estorno que fica registrado ao lado do uso.
  */
 export default function ClienteDetalhe({ id }: { id: string }) {
+  const { formatarReais } = useFormato();
   const [, navegar] = useLocation();
   const { user } = useAuth();
   const [estornando, setEstornando] = useState<LinhaDoExtrato | null>(null);
@@ -247,6 +248,7 @@ function EstornarUtilizacao({
   clienteId: string;
   aoFechar: () => void;
 }) {
+  const { formatarReais } = useFormato();
   const queryClient = useQueryClient();
   const [motivo, setMotivo] = useState("");
   const [recusa, setRecusa] = useState<string | null>(null);

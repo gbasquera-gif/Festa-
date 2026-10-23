@@ -27,7 +27,6 @@ import { Label } from "@/components/ui/label";
 import {
   PAYMENT_METHODS,
   diaEmChapeco,
-  formatarReais,
   PAYMENT_METHOD_LABEL,
   saldoAPagar,
   splitPayment,
@@ -38,8 +37,8 @@ import { useAuth } from "@/lib/auth";
 import { CorrigirDadosReserva } from "@/components/CorrigirDadosReserva";
 import { CancelarReserva } from "@/components/credito/CancelarReserva";
 import { AplicarCredito } from "@/components/credito/AplicarCredito";
+import { useFormato } from "@/lib/privacidade";
 
-const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /** Item que não cabe na data de destino, com a conta que a operação precisa ver. */
 interface ConflitoDeData {
@@ -92,6 +91,7 @@ export function AcoesDaReserva({
   festaJaChegou?: boolean;
   onDepoisDeExcluir?: () => void;
 }) {
+  const { brl, formatarReais } = useFormato();
   const jaCancelada = status === "CANCELLED" || status === "REJECTED";
   const { user } = useAuth();
   const [, navegar] = useLocation();

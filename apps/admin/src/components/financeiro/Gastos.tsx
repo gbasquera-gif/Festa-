@@ -11,7 +11,8 @@ import {
 import { api } from "@/lib/api";
 import { FormularioDeGasto, type Gasto } from "./FormularioDeGasto";
 import { Indicador, Natureza, Rotulo } from "./pecas";
-import { brl, dia, nomeDoMes, numero } from "./formato";
+import { dia, nomeDoMes } from "./formato";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * Despesas e Aportes são esta mesma tela, com filtro diferente.
@@ -33,6 +34,7 @@ export function Gastos({
   titulo: string;
   explicacao: string;
 }) {
+  const { brl, numero } = useFormato();
   const [emEdicao, setEmEdicao] = useState<Gasto | null>(null);
   const [formAberto, setFormAberto] = useState(false);
   const [aExcluir, setAExcluir] = useState<Gasto | null>(null);

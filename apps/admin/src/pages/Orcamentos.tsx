@@ -11,8 +11,9 @@ import {
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { MESES, anosDisponiveis, brl, nomeDoMes } from "@/components/financeiro/formato";
+import { MESES, anosDisponiveis, nomeDoMes } from "@/components/financeiro/formato";
 import { PanoramaDeOrcamentos } from "@/components/orcamento/PanoramaDeOrcamentos";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A carteira de propostas.
@@ -83,6 +84,7 @@ const COR: Record<StatusDoOrcamento, string> = {
 };
 
 export default function Orcamentos() {
+  const { brl } = useFormato();
   const [aba, setAba] = useFiltroNaUrl<Aba>("situacao", "TODOS", ABAS);
   const [busca, setBusca] = useFiltroNaUrl<string>("busca", "");
   /**

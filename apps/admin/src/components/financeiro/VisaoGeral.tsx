@@ -4,10 +4,12 @@ import { FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { api, baixarArquivo } from "@/lib/api";
 import { Barra, Indicador, NumeroEscuro, Rotulo } from "./pecas";
-import { brl, nomeDoMes, numero, pct } from "./formato";
+// pctDoCalendario: quanto do mês já passou é calendário, não dinheiro — fica à vista.
+import { nomeDoMes, pct as pctDoCalendario } from "./formato";
 import { DetalheDoIndicador, type TipoDeDetalhe } from "./DetalheDoIndicador";
 import type { Panorama } from "./panorama";
 import { SaldoDisponivel } from "./SaldoDisponivel";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A leitura executiva do mês.
@@ -22,6 +24,7 @@ import { SaldoDisponivel } from "./SaldoDisponivel";
  * pró-labore nem depreciação nesta conta.
  */
 export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
+  const { brl, pct } = useFormato();
   const [detalhe, setDetalhe] = useState<{ tipo: TipoDeDetalhe; escopo: "MES" | "ANO" } | null>(null);
   const { data, isLoading, error } = useQuery<Panorama>({
     queryKey: ["financeiro", "panorama", ano, mes],
@@ -92,7 +95,7 @@ export function VisaoGeral({ ano, mes }: { ano: number; mes: string }) {
                style={{ color: "var(--fin-muted)" }}>
             <span>
               <strong style={{ color: "var(--fin-navy-ink)" }}>{pct(meta.percentual)}</strong> da meta
-              {" · "}o mês está {pct(meta.percentualDoMes)} completo
+              {" · "}o mês está {pctDoCalendario(meta.percentualDoMes)} completo
             </span>
             <span>
               {meta.gap > 0
@@ -250,6 +253,7 @@ function BotaoDoRelatorio({ ano, mes }: { ano: number; mes: string }) {
  * dinheiro?" ter resposta numa tela só.
  */
 function FluxoDeCaixaDoMes({ data, mes }: { data: Panorama; mes: string }) {
+  const { brl, numero } = useFormato();
   if (!data.fluxoDeCaixa) return null;
   const { mes: m, ano: a } = data.fluxoDeCaixa;
   // Agrupado pela natureza da saída. Pró-labore (remuneração) e distribuição

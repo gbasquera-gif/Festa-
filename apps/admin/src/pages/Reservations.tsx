@@ -18,7 +18,6 @@ import {
   RESERVATION_STATUSES,
   formatarDataDaFesta,
   formatarDiaDoMomento,
-  formatarReais,
   frasesDoTratamento,
   mensagemDePagamentoTardio,
   mensagemDeReembolsoPendente,
@@ -41,6 +40,7 @@ import { AcoesDaReserva } from "@/components/AcoesDaReserva";
 import { TratarPagamentoTardio } from "@/components/credito/CancelarReserva";
 import { RegistrarReembolsoRealizado } from "@/components/credito/RegistrarReembolso";
 import { useAuth } from "@/lib/auth";
+import { useFormato } from "@/lib/privacidade";
 
 interface ProductRef {
   id: string;
@@ -145,8 +145,6 @@ const STATUS_LABEL: Record<ReservationStatus, string> = {
 };
 
 
-const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const money = (value: string | number) => BRL.format(Number(value));
 
 /** Só dígitos: o WhatsApp recusa o link se vier com parênteses e traço. */
 function whatsappLink(phone: string, message: string) {
@@ -327,6 +325,7 @@ function Reembolso({
   realizado: ReembolsoRealizadoRow | null;
   pendenteDesde: string;
 }) {
+  const { formatarReais } = useFormato();
   const queryClient = useQueryClient();
   const [registrando, setRegistrando] = useState(false);
   const ehAdmin = useAuth().user?.role === "ADMIN";
@@ -396,6 +395,7 @@ function Reembolso({
  * guardado que possa ter ficado diferente.
  */
 function Cancelamento({ row }: { row: ReservationRow }) {
+  const { formatarReais } = useFormato();
   const [, navegar] = useLocation();
   const queryClient = useQueryClient();
   const [tratando, setTratando] = useState(false);
@@ -529,6 +529,7 @@ function Cancelamento({ row }: { row: ReservationRow }) {
 }
 
 function Detail({ row }: { row: ReservationRow }) {
+  const { brl } = useFormato();
   const { event } = row.order;
   const payment = paymentSummary(row);
   const items = packingList(row);
@@ -578,7 +579,7 @@ function Detail({ row }: { row: ReservationRow }) {
             label="Entrega"
             value={
               isDelivery ? (
-                <span className="text-emerald-700">Entrega — {money(row.order.deliveryFee)}</span>
+                <span className="text-emerald-700">Entrega — {brl(row.order.deliveryFee)}</span>
               ) : (
                 "Retirada na Festaê"
               )
@@ -599,7 +600,7 @@ function Detail({ row }: { row: ReservationRow }) {
             value={
               row.order.assembly ? (
                 <span className="font-bold text-emerald-700">
-                  SIM — {money(row.order.assemblyFee)}
+                  SIM — {brl(row.order.assemblyFee)}
                 </span>
               ) : (
                 "Não"
@@ -644,19 +645,19 @@ function Detail({ row }: { row: ReservationRow }) {
         <dl className="space-y-1.5 text-sm">
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="min-w-0 text-muted-foreground">Produtos</dt>
-            <dd>{money(Number(row.order.subtotalKit) + Number(row.order.subtotalExtras))}</dd>
+            <dd>{brl(Number(row.order.subtotalKit) + Number(row.order.subtotalExtras))}</dd>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="min-w-0 text-muted-foreground">Taxa de entrega</dt>
-            <dd>{money(row.order.deliveryFee)}</dd>
+            <dd>{brl(row.order.deliveryFee)}</dd>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="min-w-0 text-muted-foreground">Taxa de montagem</dt>
-            <dd>{money(row.order.assemblyFee)}</dd>
+            <dd>{brl(row.order.assemblyFee)}</dd>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2 border-t pt-1.5 font-bold text-navy">
             <dt>Total</dt>
-            <dd>{money(payment.total)}</dd>
+            <dd>{brl(payment.total)}</dd>
           </div>
           {/* O sinal projetado só aparece enquanto for cobrança a fazer. Com
               dinheiro recebido, a linha passa a dizer quanto entrou — venha
@@ -667,7 +668,7 @@ function Detail({ row }: { row: ReservationRow }) {
               {payment.mostrarSinalProjetado ? `Sinal ${PERCENTUAL_DO_SINAL}` : "Recebido"}
             </dt>
             <dd className={payment.recebeuAlgo ? "text-emerald-700" : "text-amber-700"}>
-              {money(payment.mostrarSinalProjetado ? payment.deposit : payment.received)}
+              {brl(payment.mostrarSinalProjetado ? payment.deposit : payment.received)}
             </dd>
             <p className={`w-full text-xs ${payment.recebeuAlgo ? "text-emerald-700" : "text-amber-700"}`}>
               {payment.mostrarSinalProjetado
@@ -682,14 +683,14 @@ function Detail({ row }: { row: ReservationRow }) {
           {payment.credito > 0 && (
             <div className="flex flex-wrap justify-between gap-x-2">
               <dt className="text-muted-foreground">Crédito Festaê utilizado</dt>
-              <dd className="text-emerald-700">− {money(payment.credito)}</dd>
+              <dd className="text-emerald-700">− {brl(payment.credito)}</dd>
               <p className="w-full text-xs text-muted-foreground">abate o saldo; não é pagamento</p>
             </div>
           )}
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="text-muted-foreground">Restante</dt>
             <dd className={payment.quitado ? "text-emerald-700" : ""}>
-              {cancelada ? "—" : money(payment.balance)}
+              {cancelada ? "—" : brl(payment.balance)}
             </dd>
             <p className="w-full text-xs text-muted-foreground">
               {cancelada ? "reserva cancelada: nada a cobrar" : payment.quitado ? "nada a pagar" : "na retirada ou entrega"}
@@ -697,11 +698,11 @@ function Detail({ row }: { row: ReservationRow }) {
           </div>
           <div className="flex flex-wrap justify-between gap-x-2 border-t pt-1.5">
             <dt className="font-bold text-navy">Já recebido</dt>
-            <dd className="font-bold text-navy">{money(payment.received)}</dd>
+            <dd className="font-bold text-navy">{brl(payment.received)}</dd>
           </div>
           <div className="flex flex-wrap justify-between gap-x-2">
             <dt className="font-bold text-navy">Falta receber</dt>
-            <dd className="font-bold text-navy">{cancelada ? "—" : money(payment.pending)}</dd>
+            <dd className="font-bold text-navy">{cancelada ? "—" : brl(payment.pending)}</dd>
           </div>
         </dl>
         {(row.status === "CANCELLED" || row.status === "REJECTED") && <Cancelamento row={row} />}
@@ -795,6 +796,7 @@ function CartaoDeReserva({
   /** Histórico: fica presente, sem disputar atenção com o que pede ação. */
   compacto?: boolean;
 }) {
+  const { brl } = useFormato();
   const payment = paymentSummary(row);
   const { event } = row.order;
   const entrega = row.order.fulfillment === "DELIVERY";
@@ -816,7 +818,7 @@ function CartaoDeReserva({
             </p>
           </div>
           <span className="shrink-0 tabular-nums font-bold text-navy">
-            {money(row.order.total)}
+            {brl(row.order.total)}
           </span>
         </div>
 
@@ -900,6 +902,7 @@ function Pendencia({ row, agora }: { row: ReservationRow; agora: Date }) {
 }
 
 export default function Reservations() {
+  const { brl } = useFormato();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [aba, setAba] = useFiltroNaUrl<AbaDeReserva>("aba", "ATIVAS", ABAS_DE_RESERVA);
@@ -1192,7 +1195,7 @@ export default function Reservations() {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="tabular-nums">{money(row.order.total)}</TableCell>
+                      <TableCell className="tabular-nums">{brl(row.order.total)}</TableCell>
                       <TableCell className={`text-sm font-medium ${payment.tone}`}>
                         {payment.label}
                       </TableCell>

@@ -6,8 +6,10 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Rotulo } from "@/components/financeiro/pecas";
-import { MESES, anosDisponiveis, brl, dia, nomeDoMes, pct } from "@/components/financeiro/formato";
+// Percentuais daqui são de operação e de conversão, não de dinheiro: ficam à vista.
+import { MESES, anosDisponiveis, dia, nomeDoMes, pct } from "@/components/financeiro/formato";
 import { DetalhePainel, type Detalhamento } from "@/components/financeiro/DetalheDoIndicador";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A Visão Geral Comercial: o que foi vendido, para quando, e como.
@@ -110,6 +112,7 @@ export function VisaoGeralComercial() {
 }
 
 function Painel() {
+  const { brl } = useFormato();
   const hojeEmChapeco = mesEmChapeco(new Date());
   const [ano, setAno] = useState(Number(hojeEmChapeco.slice(0, 4)));
   const [mesNumero, setMesNumero] = useState(hojeEmChapeco.slice(5, 7));
@@ -327,6 +330,7 @@ function Barras({
   /** Distribuições com ordem fixa trazem as chaves com zero; sem festa, mostram o vazio. */
   semBase?: boolean;
 }) {
+  const { brl } = useFormato();
   if (fatias.length === 0 || semBase) {
     return <p className="text-sm" style={{ color: "var(--fin-muted)" }}>{vazio}</p>;
   }
@@ -403,6 +407,7 @@ function Funil({ funil }: { funil: Visao["funil"] }) {
 }
 
 function CarteiraFutura({ carteira, aoAbrir }: { carteira: Visao["carteiraFutura"]; aoAbrir: () => void }) {
+  const { brl } = useFormato();
   if (carteira.festas === 0) {
     return (
       <p className="text-sm" style={{ color: "var(--fin-muted)" }}>
@@ -439,6 +444,7 @@ function CarteiraFutura({ carteira, aoAbrir }: { carteira: Visao["carteiraFutura
 
 /** Uma linha por mês. Barra = festas; o valor contratado vai escrito ao lado, sem segundo eixo. */
 function Sazonalidade({ meses }: { meses: Visao["sazonalidade"] }) {
+  const { brl } = useFormato();
   if (meses.every((m) => m.festas === 0)) {
     return <p className="text-sm" style={{ color: "var(--fin-muted)" }}>Nenhuma festa nos últimos doze meses.</p>;
   }
@@ -462,6 +468,7 @@ function Sazonalidade({ meses }: { meses: Visao["sazonalidade"] }) {
 }
 
 function Ajustes({ ajustes }: { ajustes: Visao["ajustes"] }) {
+  const { brl } = useFormato();
   if (ajustes.base === 0) {
     return <p className="text-sm" style={{ color: "var(--fin-muted)" }}>Nenhuma proposta enviada no período.</p>;
   }
@@ -580,6 +587,7 @@ function DetalheDasPropostas({
   rotuloDoPeriodo: string;
   aoFechar: () => void;
 }) {
+  const { brl } = useFormato();
   const { data, isLoading, error } = useQuery<{ propostas: PropostaDaCoorte[]; confere: boolean }>({
     queryKey: ["comercial", "detalhe", "PROPOSTAS", ano, mes],
     queryFn: () => api(`/comercial/detalhe?tipo=PROPOSTAS&ano=${ano}&mes=${mes}`),

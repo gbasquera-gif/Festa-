@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Rotulo } from "./pecas";
-import { brl, nomeDoMes, numero, pct } from "./formato";
+import { nomeDoMes } from "./formato";
 import { GraficoAcumulado, GraficoDoAno, Legenda } from "./graficos";
 import type { Panorama } from "./panorama";
+import { useFormato } from "@/lib/privacidade";
 
 /**
  * A trajetória do ano.
@@ -18,6 +19,7 @@ import type { Panorama } from "./panorama";
  * existiu.
  */
 export function Evolucao({ ano, mes }: { ano: number; mes: string }) {
+  const { brl, numero, pct } = useFormato();
   const { data, isLoading, error } = useQuery<Panorama>({
     queryKey: ["financeiro", "panorama", ano, mes],
     queryFn: () => api(`/financeiro/panorama?ano=${ano}&mes=${mes}`),

@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useFormato } from "@/lib/privacidade";
 
 export type PagamentoDaReserva = {
   id: string;
@@ -41,7 +42,6 @@ export type AlteracaoDePagamento = {
   usuario: { name: string } | null;
 };
 
-const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dia = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "sem data");
 
 /**
@@ -62,6 +62,7 @@ export function PagamentosDaReserva({
   alteracoes: AlteracaoDePagamento[];
   cancelada: boolean;
 }) {
+  const { brl } = useFormato();
   const { user } = useAuth();
   const ehAdmin = user?.role === "ADMIN";
   const [corrigindo, setCorrigindo] = useState<PagamentoDaReserva | null>(null);
@@ -134,6 +135,7 @@ function CorrecaoDePagamento({
   pagamento: PagamentoDaReserva | null;
   aoFechar: () => void;
 }) {
+  const { brl } = useFormato();
   const queryClient = useQueryClient();
   const [acao, setAcao] = useState<"CORRIGIR" | "ANULAR">("CORRIGIR");
   const [valor, setValor] = useState("");

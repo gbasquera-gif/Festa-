@@ -20,9 +20,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, baixarArquivo } from "@/lib/api";
 import { Indicador, Rotulo } from "./pecas";
-import { brl, dia, nomeDoMes, numero } from "./formato";
+import { dia, nomeDoMes } from "./formato";
 import { useSaldoDeCaixa } from "./SaldoDisponivel";
 import type { Panorama } from "./panorama";
+import { useFormato } from "@/lib/privacidade";
 
 type Socio = { id: string; nome: string; ativo: boolean };
 type Retirada = {
@@ -56,7 +57,7 @@ const RESUMO_DA_CATEGORIA: Record<CategoriaDaRetirada, string> = {
 };
 
 /** "distribuição R$ 1.000 · devolução R$ 300" — só o que não é zero. */
-function porCategoria(t: TotalPorCategoria): string {
+function porCategoria(t: TotalPorCategoria, brl: (v: number) => string): string {
   const partes = CATEGORIAS_DA_RETIRADA.filter((c) => t[c] > 0).map((c) => `${CATEGORIA_DA_RETIRADA_LABEL[c].toLowerCase()} ${brl(t[c])}`);
   return partes.length > 0 ? partes.join(" · ") : "nenhuma retirada";
 }
@@ -70,6 +71,7 @@ function porCategoria(t: TotalPorCategoria): string {
  * e os do fluxo vêm das mesmas funções.
  */
 export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
+  const { brl, numero } = useFormato();
   const queryClient = useQueryClient();
   const [socioId, setSocioId] = useState("");
   const [categoria, setCategoria] = useState("");
@@ -246,7 +248,7 @@ export function Retiradas({ ano, mes }: { ano: number; mes: string | null }) {
                   <td style={{ color: "var(--fin-navy-ink)" }}>
                     {s.socio}
                     <span className="block text-xs" style={{ color: "var(--fin-muted)" }}>
-                      {porCategoria(s.porCategoria)}
+                      {porCategoria(s.porCategoria, brl)}
                     </span>
                   </td>
                   <td className="num">{mes ? numero(s.mes) : "—"}</td>
@@ -416,6 +418,7 @@ function FormularioDeRetirada({
   aoSalvar: () => void;
   aoPedirSocio: () => void;
 }) {
+  const { brl } = useFormato();
   const editando = retirada !== null;
   const hoje = diaEmChapeco(new Date());
   const [chave, setChave] = useState("");
@@ -629,6 +632,7 @@ function FormularioDeRetirada({
 }
 
 function EstornoDeRetirada({ retirada, aoFechar, aoSalvar }: { retirada: Retirada | null; aoFechar: () => void; aoSalvar: () => void }) {
+  const { brl } = useFormato();
   const [motivo, setMotivo] = useState("");
   useEffect(() => setMotivo(""), [retirada]);
   const estornar = useMutation({
@@ -670,6 +674,7 @@ function EstornoDeRetirada({ retirada, aoFechar, aoSalvar }: { retirada: Retirad
 }
 
 function HistoricoDaRetirada({ retirada, aoFechar }: { retirada: Retirada | null; aoFechar: () => void }) {
+  const { brl } = useFormato();
   const { data = [], isLoading } = useQuery<
     { acao: string; antes: Record<string, unknown>; depois: Record<string, unknown>; justificativa: string; usuario: string | null; criadoEm: string }[]
   >({
