@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { Rotulo } from "./pecas";
-import { brl, dia } from "./formato";
+import { dia } from "./formato";
+import { useFormato } from "@/lib/privacidade";
 
 type Situacao =
   | "CONFERE"
@@ -131,6 +132,7 @@ function Etiqueta({ situacao }: { situacao: Situacao }) {
  * aparecem para alguém decidir.
  */
 export function ConciliacaoMercadoPago() {
+  const { brl } = useFormato();
   const queryClient = useQueryClient();
   const [dias, setDias] = useState(30);
   const [pedida, setPedida] = useState(false);
