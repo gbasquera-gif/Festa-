@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { toCentsInt } from "./pricing";
 import {
   mensagemDeReembolsoPendente,
   reembolsoPendente,
@@ -14,6 +15,7 @@ import {
   motivoDeRecusaDaAplicacao,
   motivoDeRecusaDaDistribuicao,
   numeroDoCredito,
+  resumoDoExtrato,
   saldoDeCredito,
   textoDoVoucher,
   type MovimentoDeCredito,
@@ -278,5 +280,44 @@ describe("reembolso a realizar", () => {
   });
   it("crédito + retenção + reembolso pendente fecham com o pago", () => {
     expect(motivoDeRecusaDaDistribuicao(450, { credito: 100, reembolso: 300, retencao: 50 })).toBeNull();
+  });
+});
+
+describe("resumo do extrato", () => {
+  const mov = (tipo: MovimentoDeCredito["tipo"], valor: number) => ({ tipo, valor });
+
+  it("crédito de R$ 200 usado inteiro numa festa de R$ 350: sobra zero", () => {
+    expect(resumoDoExtrato([mov("CREDITO_GERADO_CANCELAMENTO", 200), mov("CREDITO_UTILIZADO", -200)])).toEqual({
+      concedido: 200,
+      utilizado: 200,
+      devolvido: 0,
+      saldo: 0,
+    });
+  });
+
+  it("crédito de R$ 200 usado em parte (R$ 100): sobram R$ 100", () => {
+    expect(resumoDoExtrato([mov("CREDITO_GERADO_CANCELAMENTO", 200), mov("CREDITO_UTILIZADO", -100)])).toEqual({
+      concedido: 200,
+      utilizado: 100,
+      devolvido: 0,
+      saldo: 100,
+    });
+  });
+
+  it("uso estornado e uso devolvido por cancelamento voltam ao saldo, e a conta fecha", () => {
+    const r = resumoDoExtrato([
+      mov("CREDITO_GERADO_CANCELAMENTO", 300),
+      mov("CREDITO_UTILIZADO", -120.5),
+      mov("CREDITO_ESTORNADO", 120.5),
+      mov("CREDITO_UTILIZADO", -80),
+      mov("ESTORNO_CREDITO_POR_CANCELAMENTO", 80),
+      mov("CREDITO_UTILIZADO", -0.1),
+    ]);
+    expect(r).toEqual({ concedido: 300, utilizado: 200.6, devolvido: 200.5, saldo: 299.9 });
+    expect(toCentsInt(r.concedido) - toCentsInt(r.utilizado) + toCentsInt(r.devolvido)).toBe(toCentsInt(r.saldo));
+  });
+
+  it("extrato vazio: tudo zero", () => {
+    expect(resumoDoExtrato([])).toEqual({ concedido: 0, utilizado: 0, devolvido: 0, saldo: 0 });
   });
 });

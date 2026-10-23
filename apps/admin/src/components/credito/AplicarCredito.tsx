@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { novaChave } from "@/lib/chave";
 
 /**
  * Usar o crédito Festaê da cliente numa festa já registrada.
@@ -45,6 +46,11 @@ export function AplicarCredito({
   const faltaPagar = Math.max(0, total - jaPago - creditoAplicado);
   const [valor, setValor] = useState(maximo > 0 ? maximo.toFixed(2) : "");
   const [recusa, setRecusa] = useState<string | null>(null);
+  // Uma chave por abertura do diálogo: o mesmo pedido enviado de novo (clique
+  // duplo, rede que caiu) não gasta o crédito duas vezes.
+  const [chaveDeIdempotencia] = useState(() => novaChave());
+  const valorDigitado = Number(valor) || 0;
+  const sobra = Math.max(0, Math.round((saldoDaCliente - valorDigitado) * 100) / 100);
 
   const problema = motivoDeRecusaDaAplicacao({ valor: Number(valor) || 0, saldoDaCliente, faltaPagar });
 
@@ -52,7 +58,7 @@ export function AplicarCredito({
     mutationFn: () =>
       api<{ saldoDaCliente: number; faltaPagar: number; reservaConfirmada: boolean }>(
         `/reservations/${reservaId}/creditos`,
-        { method: "POST", body: JSON.stringify({ valor: Number(valor) }) },
+        { method: "POST", body: JSON.stringify({ valor: Number(valor), chaveDeIdempotencia }) },
       ),
     onSuccess: (r) => {
       toast.success(
@@ -90,6 +96,10 @@ export function AplicarCredito({
             )}
             <dt className="font-medium text-navy">Falta pagar</dt>
             <dd className="text-right font-medium text-navy">{formatarReais(faltaPagar)}</dd>
+            <dt className="text-muted-foreground">Crédito disponível</dt>
+            <dd className="text-right">{formatarReais(saldoDaCliente)}</dd>
+            <dt className="text-muted-foreground">Limite nesta festa</dt>
+            <dd className="text-right">{formatarReais(maximo)}</dd>
           </dl>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="valor-do-credito">Quanto usar nesta festa</Label>
@@ -109,6 +119,12 @@ export function AplicarCredito({
             <p className="text-xs text-muted-foreground">
               Até {formatarReais(maximo)}. O crédito abate o que falta pagar; o valor da festa não muda.
             </p>
+            {!problema && (
+              <p className="text-xs text-navy" data-credito-que-sobra>
+                Depois de aplicar: falta pagar {formatarReais(Math.max(0, faltaPagar - valorDigitado))} · crédito que sobra{" "}
+                {formatarReais(sobra)}.
+              </p>
+            )}
           </div>
           {(recusa || (valor !== "" && problema)) && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">

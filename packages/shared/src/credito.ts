@@ -74,6 +74,36 @@ export function saldoDeCredito(movimentos: readonly { valor: number }[]): number
   return somar(movimentos.map((m) => m.valor));
 }
 
+/** O extrato em quatro números, para ler de relance. */
+export type ResumoDoExtrato = {
+  /** Gerado em cancelamentos: o dinheiro que a cliente tem na Festaê. */
+  concedido: number;
+  /** Usado em festas (já descontado o que voltou). */
+  utilizado: number;
+  /** Voltou ao saldo: festa cancelada depois do uso, ou uso estornado. */
+  devolvido: number;
+  /** O que resta. Igual à soma do extrato — `concedido − usado + devolvido`. */
+  saldo: number;
+};
+
+/**
+ * O resumo do extrato, tirado da mesma lista que dá o saldo.
+ *
+ * Utilizado é bruto (cada uso na hora em que aconteceu) e devolvido mostra o
+ * que voltou: assim a conta fecha à vista, `concedido − utilizado + devolvido`
+ * é o saldo, e nenhum número sai de outra fonte.
+ */
+export function resumoDoExtrato(movimentos: readonly Pick<MovimentoDeCredito, "tipo" | "valor">[]): ResumoDoExtrato {
+  const por = (tipos: MovimentoDeCredito["tipo"][]) => somar(movimentos.filter((m) => tipos.includes(m.tipo)).map((m) => m.valor));
+  return {
+    concedido: por(["CREDITO_GERADO_CANCELAMENTO"]),
+    // `|| 0`: sem uso, −0 viraria "-R$ 0,00" na tela.
+    utilizado: fromCentsInt(-toCentsInt(por(["CREDITO_UTILIZADO"])) || 0),
+    devolvido: por(["ESTORNO_CREDITO_POR_CANCELAMENTO", "CREDITO_ESTORNADO"]),
+    saldo: saldoDeCredito(movimentos),
+  };
+}
+
 /**
  * Quanto crédito está abatendo uma reserva agora.
  *

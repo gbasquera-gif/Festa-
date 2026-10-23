@@ -39,12 +39,21 @@ export class CreditosController {
 
   @ApiOperation({
     summary: "Crédito disponível da ficha que a venda manual vai usar",
-    description: "Mesma regra de reaproveitamento do cadastro: e-mail, ou telefone na falta dele.",
+    description:
+      "A mesma decisão de ficha que a venda toma ao salvar. Contato que bate com mais de uma ficha devolve as opções, com o contato mascarado.",
   })
   @Roles("ADMIN", "OPS")
   @Get("creditos/por-contato")
-  porContato(@Query("telefone") telefone = "", @Query("email") email?: string) {
-    return this.creditos.porContato(telefone, email || undefined);
+  porContato(
+    @Query("telefone") telefone = "",
+    @Query("email") email?: string,
+    @Query("fichaId") fichaId?: string,
+  ) {
+    return this.creditos.porContato(
+      typeof telefone === "string" ? telefone : "",
+      typeof email === "string" && email ? email : undefined,
+      typeof fichaId === "string" && fichaId ? fichaId : undefined,
+    );
   }
 
   @ApiOperation({ summary: "Aplica crédito Festaê da cliente numa reserva" })
@@ -55,7 +64,7 @@ export class CreditosController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(aplicarCreditoSchema)) body: AplicarCreditoInput,
   ) {
-    return this.creditos.aplicar(id, body.valor, body.observacao, user.userId);
+    return this.creditos.aplicar(id, body.valor, body.observacao, user.userId, body.chaveDeIdempotencia);
   }
 
   /**

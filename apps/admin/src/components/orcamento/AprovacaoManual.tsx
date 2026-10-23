@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { novaChave } from "@/lib/chave";
 import { brl } from "@/components/financeiro/formato";
 import { mensagemDeConflito } from "./conflito";
 
@@ -75,7 +76,7 @@ export function AprovacaoManual({
   // Cada abertura é um envio novo: chave nova, data de hoje, nada marcado.
   useEffect(() => {
     if (!aberto) return;
-    setChave(crypto.randomUUID());
+    setChave(novaChave());
     setOpcaoId(
       aprovadaPeloLink
         ? (proposta.opcaoAprovadaId ?? proposta.opcoes[0]?.id ?? "")

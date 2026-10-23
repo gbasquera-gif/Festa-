@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, baixarArquivo } from "@/lib/api";
+import { novaChave } from "@/lib/chave";
 import { Indicador, Rotulo } from "./pecas";
 import { dia, nomeDoMes } from "./formato";
 import { useSaldoDeCaixa } from "./SaldoDisponivel";
@@ -435,7 +436,7 @@ function FormularioDeRetirada({
 
   useEffect(() => {
     if (!aberto) return;
-    setChave(crypto.randomUUID());
+    setChave(novaChave());
     setForm(
       retirada
         ? {

@@ -15,7 +15,6 @@ import {
   pendenteDeTratamento,
   podeAguardarDevolucao,
   reembolsoPendente,
-  formatarReais,
   fromCentsInt,
   motivoDeRecusaDaDistribuicao,
   normalizarDataDaFesta,
@@ -505,7 +504,7 @@ export class ReservationsService {
     });
 
     this.logger.log(
-      `Pagamento de R$ ${dados.valor.toFixed(2)} (${dados.tipo}) registrado por ${usuarioId} ` +
+      `Pagamento (${dados.tipo}) registrado por ${usuarioId} ` +
         `na reserva ${id}${confirmaAReserva ? " — reserva confirmada" : ""}.`,
     );
 
@@ -770,12 +769,8 @@ export class ReservationsService {
     );
 
     this.logger.log(
-      `Reserva ${id} cancelada por ${usuarioId}: recebido ${formatarReais(resultado.recebido)}, ` +
-        `crédito ${formatarReais(input.credito)}, reembolso ${formatarReais(input.reembolso)}, ` +
-        `retenção ${formatarReais(input.retencao)}` +
-        (resultado.creditoDevolvido > 0
-          ? `, crédito usado devolvido ${formatarReais(resultado.creditoDevolvido)}.`
-          : "."),
+      `Reserva ${id} cancelada por ${usuarioId}: ${tratamentoNoLog(input)}` +
+        (resultado.creditoDevolvido > 0 ? "; crédito usado devolvido ao saldo." : "."),
     );
 
     // Depois de gravado, e só então, as cobranças que ficaram vivas são
@@ -918,8 +913,7 @@ export class ReservationsService {
     );
 
     this.logger.log(
-      `Pagamento após o cancelamento da reserva ${id} tratado por ${usuarioId}: ${formatarReais(resultado.valorTratado)} ` +
-        `(crédito ${formatarReais(input.credito)}, reembolso ${formatarReais(input.reembolso)}, retenção ${formatarReais(input.retencao)}).`,
+      `Pagamento após o cancelamento da reserva ${id} tratado por ${usuarioId}.`,
     );
     return { tratado: true, clienteId: userId, ...resultado };
   }
@@ -996,8 +990,7 @@ export class ReservationsService {
     );
 
     this.logger.log(
-      `Reembolso de ${formatarReais(Number(registro.valor))} da reserva ${id} registrado como realizado ` +
-        `em ${input.realizadoEm} por ${usuarioId}.`,
+      `Reembolso da reserva ${id} registrado como realizado em ${input.realizadoEm} por ${usuarioId}.`,
     );
     return { registrado: true, valor: Number(registro.valor), realizadoEm: registro.realizadoEm.toISOString() };
   }
@@ -1330,4 +1323,17 @@ export class ReservationsService {
     this.logger.log(`Devolução da reserva ${id} confirmada por ${usuarioId}; reserva concluída.`);
     return concluida;
   }
+}
+
+/**
+ * As partes do tratamento de um cancelamento, sem valores, para o log: o
+ * tratamento gravado guarda cada parte com autor e data.
+ */
+export function tratamentoNoLog(partes: { credito: number; reembolso: number; retencao: number }): string {
+  const nomes = [
+    partes.credito > 0 && "crédito",
+    partes.reembolso > 0 && "reembolso",
+    partes.retencao > 0 && "retenção",
+  ].filter(Boolean);
+  return nomes.length > 0 ? `tratamento ${nomes.join(" + ")}` : "sem valores a tratar";
 }

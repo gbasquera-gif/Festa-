@@ -31,10 +31,20 @@ export const cancelarReservaSchema = z.object({
 });
 export type CancelarReservaInput = z.infer<typeof cancelarReservaSchema>;
 
+/**
+ * A chave que o painel gera para cada operação de crédito.
+ *
+ * O mesmo pedido enviado de novo (clique duplo, rede que caiu e voltou) chega
+ * com a mesma chave e encontra o movimento já gravado, em vez de gastar o
+ * crédito duas vezes. Opcional só para o painel que ainda não a manda.
+ */
+export const chaveDeIdempotenciaSchema = z.string().uuid("Chave da operação inválida.");
+
 /** Usar parte do crédito Festaê da cliente numa reserva. */
 export const aplicarCreditoSchema = z.object({
   valor: z.coerce.number().positive("Informe o valor do crédito."),
   observacao: z.string().trim().max(500).optional(),
+  chaveDeIdempotencia: chaveDeIdempotenciaSchema.optional(),
 });
 export type AplicarCreditoInput = z.infer<typeof aplicarCreditoSchema>;
 

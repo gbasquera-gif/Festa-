@@ -17,6 +17,7 @@ import { ManualReservationService } from "../reservations/manual-reservation.ser
 import {
   creditoAplicadoEmCentavos,
   pagoEmCentavos,
+  repeticaoDoPedido,
   saldoEmCentavos,
   travarCredito,
   travarPedido,
@@ -152,15 +153,50 @@ export class CreditosService {
   /**
    * A ficha que a venda manual vai usar, e o crédito dela.
    *
-   * Mesma regra de reaproveitamento do cadastro da venda manual (e-mail; na
-   * falta, telefone): a tela só pode oferecer o crédito da ficha que a venda
-   * vai de fato usar.
+   * A mesma decisão que a venda vai tomar ao salvar (`decidirFicha`): a tela
+   * só oferece o crédito da ficha que a venda vai de fato usar. Quando o
+   * contato bate com mais de uma ficha, devolve as opções para a operação
+   * escolher — com o contato mascarado: o suficiente para reconhecer a
+   * cliente, sem expor telefone e e-mail completos de quem não foi digitado.
    */
-  async porContato(telefone: string, email?: string) {
-    const cliente = await this.manualReservations.clienteExistente({ telefone, email });
-    if (!cliente) return { cliente: null, saldo: 0 };
-    const saldo = fromCentsInt(await saldoEmCentavos(prisma, cliente.id));
-    return { cliente: { id: cliente.id, nome: cliente.name }, saldo };
+  async porContato(telefone: string, email?: string, fichaId?: string) {
+    const decisao = await this.manualReservations.decidirFichaDoContato({ telefone, email, fichaId });
+    if (decisao.tipo === "EXISTENTE") {
+      const cliente = await prisma.user.findUniqueOrThrow({ where: { id: decisao.id }, select: { id: true, name: true } });
+      const saldo = fromCentsInt(await saldoEmCentavos(prisma, cliente.id));
+      return { situacao: "UNICA" as const, cliente: { id: cliente.id, nome: cliente.name }, saldo, candidatas: [] };
+    }
+    if (decisao.tipo === "AMBIGUA") {
+      const ids = decisao.candidatas.map((c) => c.id);
+      const [saldoDe, festas] = await Promise.all([
+        this.saldosPorCliente(ids),
+        prisma.event.groupBy({ by: ["userId"], where: { userId: { in: ids } }, _count: { _all: true } }),
+      ]);
+      const festasDe = new Map(festas.map((g) => [g.userId, g._count._all]));
+      return {
+        situacao: "AMBIGUA" as const,
+        cliente: null,
+        saldo: 0,
+        podeCriarNova: decisao.podeCriarNova,
+        candidatas: decisao.candidatas.map((c) => ({
+          id: c.id,
+          nome: c.nome,
+          telefone: mascararTelefone(c.telefone),
+          email: mascararEmail(c.email),
+          porEmail: c.porEmail,
+          porTelefone: c.porTelefone,
+          desde: c.criadaEm.toISOString(),
+          festas: festasDe.get(c.id) ?? 0,
+          saldo: saldoDe.get(c.id) ?? 0,
+        })),
+      };
+    }
+    return {
+      situacao: decisao.tipo === "NOVA" ? ("NOVA" as const) : ("ESCOLHA_INVALIDA" as const),
+      cliente: null,
+      saldo: 0,
+      candidatas: [],
+    };
   }
 
   /**
@@ -172,7 +208,13 @@ export class CreditosService {
    * nem antes nem com menos. Sem isso, a limpeza de reservas sem sinal
    * cancelaria uma festa que tem crédito aplicado.
    */
-  async aplicar(reservationId: string, valor: number, observacao: string | undefined, usuarioId: string) {
+  async aplicar(
+    reservationId: string,
+    valor: number,
+    observacao: string | undefined,
+    usuarioId: string,
+    chaveDeIdempotencia?: string,
+  ) {
     const reserva = await prisma.reservation.findUnique({
       where: { id: reservationId },
       select: { id: true, status: true, orderId: true, contractSeq: true, order: { select: { event: { select: { userId: true } } } } },
@@ -192,6 +234,34 @@ export class CreditosService {
           where: { id: reservationId },
           select: { status: true, order: { select: { total: true } } },
         });
+        // O mesmo pedido repetido (clique duplo, rede que caiu) encontra o
+        // movimento já gravado — sob a mesma trava, então dois envios juntos
+        // não passam os dois por aqui sem se ver.
+        if (chaveDeIdempotencia) {
+          const gravado = await tx.creditoClienteMovimento.findUnique({
+            where: { chaveDeIdempotencia },
+            select: { id: true, tipo: true, valor: true, reservationDestinoId: true },
+          });
+          if (gravado) {
+            if (repeticaoDoPedido({ ...gravado, valor: Number(gravado.valor) }, { reservationId, valor }) !== "MESMO_PEDIDO") {
+              throw new ConflictException({
+                message: "Esta operação de crédito já foi usada para outro lançamento. Recarregue a tela e tente de novo.",
+                codigo: "CHAVE_DE_OUTRA_OPERACAO",
+              });
+            }
+            const aplicado = await creditoAplicadoEmCentavos(tx, reservationId);
+            const pago = await pagoEmCentavos(tx, reserva.orderId);
+            return {
+              movimentoId: gravado.id,
+              aplicado: fromCentsInt(toCentsInt(valor)),
+              creditoAplicadoNaReserva: fromCentsInt(aplicado),
+              saldoDaCliente: fromCentsInt(await saldoEmCentavos(tx, userId)),
+              faltaPagar: fromCentsInt(Math.max(0, toCentsInt(Number(atual.order.total)) - pago - aplicado)),
+              reservaConfirmada: false,
+              repetido: true,
+            };
+          }
+        }
         if (MORTAS.includes(atual.status)) {
           throw new BadRequestException("Reserva cancelada não recebe crédito.");
         }
@@ -204,6 +274,7 @@ export class CreditosService {
           valor,
           createdById: usuarioId,
           observacao,
+          chaveDeIdempotencia,
         });
 
         // Crédito liquida como o sinal liquidaria: confirma nas mesmas
@@ -227,13 +298,17 @@ export class CreditosService {
           saldoDaCliente: fromCentsInt(saldo),
           faltaPagar: fromCentsInt(Math.max(0, toCentsInt(Number(atual.order.total)) - pago - aplicado)),
           reservaConfirmada: confirma,
+          repetido: false,
         };
       },
       { timeout: 15_000 },
     );
 
+    // Sem valores no log: o extrato guarda o quanto, com autor e data.
     this.logger.log(
-      `Crédito de R$ ${resultado.aplicado.toFixed(2)} aplicado na reserva ${reservationId} por ${usuarioId}.`,
+      resultado.repetido
+        ? `Pedido repetido de crédito na reserva ${reservationId}: nada novo gravado (movimento ${resultado.movimentoId}).`
+        : `Crédito aplicado na reserva ${reservationId} por ${usuarioId} (movimento ${resultado.movimentoId}).`,
     );
     return resultado;
   }
@@ -364,12 +439,27 @@ export class CreditosService {
     };
   }
 
-  /** Saldo por cliente, para a lista de clientes. Só quem tem extrato. */
-  async saldosPorCliente(): Promise<Map<string, number>> {
+  /** Saldo por cliente (todas, ou só as `ids`). Só quem tem extrato. */
+  async saldosPorCliente(ids?: string[]): Promise<Map<string, number>> {
     const grupos = await prisma.creditoClienteMovimento.groupBy({
       by: ["userId"],
+      ...(ids ? { where: { userId: { in: ids } } } : {}),
       _sum: { valor: true },
     });
     return new Map(grupos.map((g) => [g.userId, Number(g._sum.valor ?? 0)]));
   }
+}
+
+/** "(49) •••••-1234": o final, para reconhecer; o resto, escondido. */
+export function mascararTelefone(telefone: string | null): string | null {
+  const digitos = (telefone ?? "").replace(/\D/g, "");
+  return digitos.length >= 4 ? `••••${digitos.slice(-4)}` : null;
+}
+
+/** "an•••@exemplo.com": o começo e o domínio. */
+export function mascararEmail(email: string | null): string | null {
+  if (!email) return null;
+  const [nome, dominio] = email.split("@");
+  if (!dominio) return null;
+  return `${nome.slice(0, 2)}•••@${dominio}`;
 }

@@ -29,6 +29,7 @@ import {
   type DadosDaReserva,
 } from "@/components/FormularioDeReserva";
 import { ApiError, api } from "@/lib/api";
+import { novaChave } from "@/lib/chave";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -90,7 +91,7 @@ export default function NovaReservaManual() {
     return () => clearTimeout(t);
   }, [dados.telefone, dados.email]);
   const contatoCompleto = contato.telefone.replace(/\D/g, "").length >= 10 || /\S+@\S+\.\S+/.test(contato.email);
-  const { data: creditoDaFicha } = useQuery<{ cliente: { id: string; nome: string } | null; saldo: number }>({
+  const { data: consultaDaFicha, refetch: reconsultarFicha } = useQuery<ConsultaDaFicha>({
     queryKey: ["credito-por-contato", contato.telefone, contato.email],
     queryFn: () =>
       api(
@@ -99,8 +100,29 @@ export default function NovaReservaManual() {
       ),
     enabled: contatoCompleto,
   });
-  const saldoDeCredito = creditoDaFicha?.cliente ? creditoDaFicha.saldo : 0;
-  const fichaComCredito = saldoDeCredito > 0 ? creditoDaFicha!.cliente : null;
+  /**
+   * A ficha escolhida quando o contato bate com mais de uma (ou "nova").
+   * Contato novo desfaz a escolha: ela era sobre outras fichas.
+   */
+  const [fichaEscolhida, setFichaEscolhida] = useState<string | null>(null);
+  useEffect(() => setFichaEscolhida(null), [contato.telefone, contato.email]);
+  const ambigua = consultaDaFicha?.situacao === "AMBIGUA";
+  const candidataEscolhida =
+    ambigua && fichaEscolhida && fichaEscolhida !== "nova"
+      ? (consultaDaFicha.candidatas.find((c) => c.id === fichaEscolhida) ?? null)
+      : null;
+  const ficha =
+    consultaDaFicha?.situacao === "UNICA" && consultaDaFicha.cliente
+      ? { ...consultaDaFicha.cliente, saldo: consultaDaFicha.saldo }
+      : candidataEscolhida;
+  // Sem escolha, a venda não pode ser salva: decidir de quem ela é não cabe
+  // ao sistema quando o contato bate com mais de uma pessoa.
+  const fichaPendente = ambigua && !fichaEscolhida;
+  const saldoDeCredito = ficha ? ficha.saldo : 0;
+  const fichaComCredito = saldoDeCredito > 0 ? ficha : null;
+  // Uma chave por venda digitada: o mesmo envio repetido não cria outra festa
+  // nem gasta o crédito de novo.
+  const [chaveDaVenda] = useState(() => novaChave());
 
   /** Aplicar é escolha de quem vende: nunca automático, e pode ser parcial. */
   const [usarCredito, setUsarCredito] = useState(false);
@@ -159,7 +181,7 @@ export default function NovaReservaManual() {
   // registrando outra.
   const integralSemTotal = situacao === "INTEGRAL" && total <= 0;
   const pagamentoIncompleto =
-    faltaEscolher || sinalSemValor || sinalMaiorQueTotal || integralSemTotal || Boolean(recusaDoCredito);
+    faltaEscolher || sinalSemValor || sinalMaiorQueTotal || integralSemTotal || Boolean(recusaDoCredito) || fichaPendente;
 
   const dataNoPassado = dados.data !== "" && dados.data < hojeISO();
 
@@ -169,6 +191,9 @@ export default function NovaReservaManual() {
         method: "POST",
         body: JSON.stringify({
           ...corpoDaReserva(dados),
+          ...(ambigua && fichaEscolhida
+            ? { cliente: { ...corpoDaReserva(dados).cliente, fichaId: fichaEscolhida } }
+            : {}),
           financeiro: {
             valorProdutos: Number(dados.valorProdutos) || 0,
             entrega: Number(dados.entrega) || 0,
@@ -180,7 +205,7 @@ export default function NovaReservaManual() {
           },
           origem,
           ...(creditoUsado > 0 && fichaComCredito
-            ? { credito: { clienteId: fichaComCredito.id, valor: creditoUsado } }
+            ? { credito: { clienteId: fichaComCredito.id, valor: creditoUsado, chaveDeIdempotencia: chaveDaVenda } }
             : {}),
         }),
       }),
@@ -199,6 +224,14 @@ export default function NovaReservaManual() {
     },
     onError: (erro) => {
       setConflitos(null);
+      // A ficha mudou entre a consulta e o envio (outra venda criou uma
+      // parecida): a tela pergunta de novo, com as opções atuais.
+      if (erro instanceof ApiError && (erro.detalhes?.codigo === "FICHA_AMBIGUA" || erro.detalhes?.codigo === "FICHA_INVALIDA")) {
+        setFichaEscolhida(null);
+        void reconsultarFicha();
+        toast.error(erro.message);
+        return;
+      }
       if (erro instanceof ApiError && erro.detalhes?.conflitos) {
         setConflitos(erro.detalhes.conflitos as ConflitoDetalhado[]);
         toast.error("Falta material para esta data.");
@@ -237,6 +270,15 @@ export default function NovaReservaManual() {
 
       <div className="space-y-6">
         <BlocosDaReserva valor={dados} mudar={mudar} />
+
+        {ambigua && (
+          <EscolhaDaFicha
+            candidatas={consultaDaFicha.candidatas}
+            podeCriarNova={Boolean(consultaDaFicha.podeCriarNova)}
+            escolhida={fichaEscolhida}
+            escolher={setFichaEscolhida}
+          />
+        )}
 
         <Card>
           <CardHeader className="pb-3">
@@ -295,6 +337,12 @@ export default function NovaReservaManual() {
                     <p className="w-full text-xs">
                       Pode ser parcial. O crédito abate o que a cliente tem a pagar; o valor da festa não muda.
                     </p>
+                    {!recusaDoCredito && creditoUsado > 0 && (
+                      <p className="w-full text-xs font-medium" data-credito-que-sobra>
+                        Crédito que sobra para a cliente:{" "}
+                        {formatarReais(Math.max(0, Math.round((saldoDeCredito - creditoUsado) * 100) / 100))}.
+                      </p>
+                    )}
                   </div>
                 )}
                 {recusaDoCredito && <p className="text-sm text-destructive">{recusaDoCredito}</p>}
@@ -455,5 +503,95 @@ export default function NovaReservaManual() {
         </Button>
       </div>
     </form>
+  );
+}
+
+type CandidataDeFicha = {
+  id: string;
+  nome: string;
+  /** Mascarados pelo servidor: o final do telefone, o começo do e-mail. */
+  telefone: string | null;
+  email: string | null;
+  porEmail: boolean;
+  porTelefone: boolean;
+  desde: string;
+  festas: number;
+  saldo: number;
+};
+
+type ConsultaDaFicha = {
+  situacao: "UNICA" | "AMBIGUA" | "NOVA" | "ESCOLHA_INVALIDA";
+  cliente: { id: string; nome: string } | null;
+  saldo: number;
+  podeCriarNova?: boolean;
+  candidatas: CandidataDeFicha[];
+};
+
+/**
+ * Qual ficha é esta cliente, quando o telefone ou o e-mail bate com mais de
+ * uma. A venda só salva depois da escolha — e o crédito oferecido é o da
+ * ficha escolhida, nunca o de outra pessoa com o mesmo telefone.
+ */
+function EscolhaDaFicha({
+  candidatas,
+  podeCriarNova,
+  escolhida,
+  escolher,
+}: {
+  candidatas: CandidataDeFicha[];
+  podeCriarNova: boolean;
+  escolhida: string | null;
+  escolher: (id: string) => void;
+}) {
+  const opcoes = [
+    ...candidatas.map((c) => ({
+      id: c.id,
+      titulo: c.nome,
+      detalhe: [
+        c.telefone && `tel. ${c.telefone}`,
+        c.email,
+        `${c.festas} festa${c.festas === 1 ? "" : "s"}`,
+        c.saldo > 0 ? `crédito ${formatarReais(c.saldo)}` : null,
+        `desde ${new Date(c.desde).toLocaleDateString("pt-BR", { timeZone: "UTC" })}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      bate: [c.porTelefone && "telefone", c.porEmail && "e-mail"].filter(Boolean).join(" e "),
+    })),
+    ...(podeCriarNova ? [{ id: "nova", titulo: "Nenhuma destas: criar ficha nova", detalhe: "", bate: "" }] : []),
+  ];
+  return (
+    <Card data-escolha-da-ficha>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Qual ficha é esta cliente? *</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          O telefone ou o e-mail digitado bate com mais de uma ficha. Escolha a certa: a venda e o crédito Festaê
+          ficam nela.
+        </p>
+        <div role="radiogroup" aria-label="Ficha da cliente" className="grid gap-2">
+          {opcoes.map((o) => {
+            const marcada = escolhida === o.id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={marcada}
+                onClick={() => escolher(o.id)}
+                className={`min-h-11 rounded-md border p-3 text-left text-sm transition-colors ${
+                  marcada ? "border-navy bg-navy/5 ring-1 ring-navy" : "hover:bg-muted/50"
+                }`}
+              >
+                <span className="block font-medium text-navy [overflow-wrap:anywhere]">{o.titulo}</span>
+                {o.detalhe && <span className="block text-xs text-muted-foreground [overflow-wrap:anywhere]">{o.detalhe}</span>}
+                {o.bate && <span className="block text-xs text-muted-foreground">bate pelo {o.bate}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

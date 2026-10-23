@@ -2,6 +2,7 @@ import { z } from "zod";
 import { EVENT_TYPES, PAYMENT_METHODS } from "../enums";
 import { MANUAL_SALE_CHANNELS, SALE_CHANNELS } from "../sale-channels";
 import { dataDaFestaSchema } from "../data-da-festa";
+import { chaveDeIdempotenciaSchema } from "./credito";
 
 /**
  * Uma venda fechada fora da loja, digitada no painel.
@@ -27,6 +28,12 @@ export const manualReservationSchema = z.object({
     telefone: z.string().min(8, "Telefone é obrigatório.").max(30),
     whatsapp: z.string().max(30).optional(),
     email: z.string().email("E-mail inválido.").max(160).optional().or(z.literal("")),
+    /**
+     * A ficha que a operação escolheu quando o contato bate com mais de uma
+     * (ou "nova"). Só vale se for uma das fichas possíveis para este
+     * telefone e e-mail: o servidor confere.
+     */
+    fichaId: z.string().min(1).max(40).optional(),
   }),
 
   evento: z.object({
@@ -100,6 +107,7 @@ export const manualReservationSchema = z.object({
     .object({
       clienteId: z.string().min(1),
       valor: z.coerce.number().positive("Informe o valor do crédito."),
+      chaveDeIdempotencia: chaveDeIdempotenciaSchema.optional(),
     })
     .optional(),
 });

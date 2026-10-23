@@ -587,8 +587,9 @@ enum TipoDeMovimentoDeCredito {
 /// acuse — o defeito que o painel antigo tinha com o sinal. Aqui só existe o
 /// extrato, e o saldo é sempre a conta dele.
 ///
-/// Nada aqui é editado ou apagado. Utilização lançada por engano se desfaz
-/// com um movimento contrário que aponta para ela, e o extrato mostra as duas
+/// Nada aqui é editado ou apagado — e o banco garante: um gatilho recusa
+/// UPDATE e DELETE nesta tabela. Utilização lançada por engano se desfaz com
+/// um movimento contrário que aponta para ela, e o extrato mostra as duas
 /// linhas — quem ler daqui a um ano vê o que foi feito e o que foi desfeito.
 ///
 /// Crédito não é dinheiro novo nem desconto: o dinheiro já entrou (e já está
@@ -620,6 +621,11 @@ model CreditoClienteMovimento {
   movimentoReferenciaId String? @unique
 
   observacao String?
+
+  /// A chave de quem pediu a operação. O mesmo pedido repetido (clique duplo,
+  /// rede que caiu e voltou) encontra o movimento já gravado em vez de gravar
+  /// outro. Nula nos movimentos antigos e nos que o sistema gera sozinho.
+  chaveDeIdempotencia String? @unique
 
   createdById String
   createdAt   DateTime @default(now())
