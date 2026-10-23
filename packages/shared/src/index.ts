@@ -527,7 +527,9 @@ export {
   ateRealizado,
   diaDoVencimento,
   grafiaMaisUsada,
-  mesesNoIntervalo,
+  MESES_NO_AGRUPAMENTO,
+  mesesDoIntervalo,
+  mesesEquivalentes,
   selecionarDespesas,
 } from "./analise-de-despesas";
 export type {

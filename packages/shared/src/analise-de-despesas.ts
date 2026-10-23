@@ -97,7 +97,9 @@ export function selecionarDespesas(despesas: readonly DespesaParaAnalise[], reco
   // A pagar olha o período inteiro: o que vence até o fim dele, inclusive depois de hoje.
   const aPagar = linhas.filter((l) => !l.paga && l.dia !== null && l.dia >= recorte.de && l.dia <= recorte.ate);
   const aPagarSemVencimento = linhas.filter((l) => !l.paga && l.dia === null);
-  const vencidasAntesDoPeriodo = linhas.filter((l) => !l.paga && l.dia !== null && l.dia < recorte.de);
+  // Só o que já venceu é dívida: a conta que vence antes do período mas depois
+  // de hoje (período futuro) não está vencida e não pertence ao período.
+  const vencidasAntesDoPeriodo = linhas.filter((l) => l.vencida && l.dia! < recorte.de);
 
   const principais =
     recorte.situacao === "PAGO"
@@ -125,13 +127,43 @@ const subtotal = (linhas: readonly DespesaAnalisada[]): Subtotal => ({
   quantidade: linhas.length,
 });
 
-/** Meses do calendário entre dois dias, contando os dois: 01/08 a 21/10 são 3. */
-export function mesesNoIntervalo(de: string, ate: string): number {
-  if (ate < de) return 0;
-  const [a1, m1] = de.split("-").map(Number);
-  const [a2, m2] = ate.split("-").map(Number);
-  return (a2 - a1) * 12 + (m2 - m1) + 1;
+/** Os meses "AAAA-MM" do calendário entre dois dias, em ordem. */
+export function mesesDoIntervalo(de: string, ate: string): string[] {
+  const saida: string[] = [];
+  if (ate < de) return saida;
+  let [ano, mes] = de.split("-").map(Number);
+  const fim = ate.slice(0, 7);
+  for (;;) {
+    const chave = `${ano}-${String(mes).padStart(2, "0")}`;
+    saida.push(chave);
+    if (chave >= fim) return saida;
+    mes += 1;
+    if (mes > 12) {
+      mes = 1;
+      ano += 1;
+    }
+  }
 }
+
+/**
+ * Quantos meses o intervalo vale: cada mês conta a fração dos dias cobertos.
+ * 01/08 a 21/10 = 1 + 1 + 21/31 ≈ 2,68; 25/09 a 05/10 = 6/30 + 5/31 ≈ 0,36;
+ * julho a setembro inteiros = 3.
+ */
+export function mesesEquivalentes(de: string, ate: string): number {
+  let total = 0;
+  for (const mes of mesesDoIntervalo(de, ate)) {
+    const [ano, m] = mes.split("-").map(Number);
+    const dias = new Date(Date.UTC(ano, m, 0)).getUTCDate();
+    const inicio = de.startsWith(mes) ? Number(de.slice(8, 10)) : 1;
+    const fim = ate.startsWith(mes) ? Number(ate.slice(8, 10)) : dias;
+    total += (fim - inicio + 1) / dias;
+  }
+  return total;
+}
+
+/** Até quantos meses o agrupamento por mês lista um a um; os mais antigos viram "outros". */
+export const MESES_NO_AGRUPAMENTO = 24;
 
 export type AnaliseDeDespesas = {
   agregado: Agregado<DespesaAnalisada>;
@@ -140,8 +172,16 @@ export type AnaliseDeDespesas = {
   despesaOperacional: Subtotal;
   porSituacao: { pago: Subtotal; vencido: Subtotal; aVencer: Subtotal };
   agrupado: ReturnType<typeof agrupar<DespesaAnalisada>> | null;
-  /** Meses do período com valor realizado possível (o mês em andamento conta). */
-  meses: number;
+  /**
+   * Quanto o período realizado vale em meses (fração de dias de cada mês):
+   * do início até o fim do período ou até hoje, o que vier antes. Só para PAGO.
+   */
+  mesesEquivalentes: number;
+  /**
+   * Média mensal do que foi pago: total ÷ meses equivalentes. Nula fora de
+   * PAGO (a pagar e vencido não são ritmo de gasto) e em período menor que um
+   * mês (seria extrapolar poucos dias para um mês inteiro).
+   */
   mediaMensalCentavos: number | null;
   foraDoTotal: { pagasComDataFutura: Subtotal; aPagarSemVencimento: Subtotal; vencidasAntesDoPeriodo: Subtotal };
   linhas: DespesaAnalisada[];
@@ -180,6 +220,34 @@ export function grafiaMaisUsada(linhas: readonly DespesaAnalisada[], por: "FORNE
   return saida;
 }
 
+/**
+ * Agrupamento por mês: em ordem de calendário, todos os meses do intervalo —
+ * inclusive os sem lançamento, com zero —, sem ranking por valor. Acima de
+ * MESES_NO_AGRUPAMENTO meses, os mais antigos somam num "outros".
+ */
+function agruparPorMes(linhas: readonly DespesaAnalisada[], de: string, ate: string): ReturnType<typeof agrupar<DespesaAnalisada>> {
+  const meses = mesesDoIntervalo(de, ate);
+  const mapa = new Map<string, Grupo>(meses.map((m) => [m, { chave: m, totalCentavos: 0, quantidade: 0 }]));
+  for (const l of linhas) {
+    const g = l.dia ? mapa.get(l.dia.slice(0, 7)) : undefined;
+    if (!g) continue;
+    g.totalCentavos += l.centavos;
+    g.quantidade += 1;
+  }
+  const todos = [...mapa.values()];
+  const antigos = todos.slice(0, Math.max(0, todos.length - MESES_NO_AGRUPAMENTO));
+  return {
+    grupos: todos.slice(antigos.length),
+    outros: antigos.length
+      ? {
+          totalCentavos: antigos.reduce((s, g) => s + g.totalCentavos, 0),
+          quantidade: antigos.reduce((s, g) => s + g.quantidade, 0),
+          grupos: antigos.length,
+        }
+      : null,
+  };
+}
+
 export function analisarDespesas(
   despesas: readonly DespesaParaAnalise[],
   recorte: RecorteDeDespesas,
@@ -191,8 +259,14 @@ export function analisarDespesas(
   const porNatureza = agrupar(linhas, (l) => l.natureza, 10).grupos;
   const operacionais = linhas.filter((l) => NATUREZAS_DE_DESPESA.includes(l.natureza));
 
-  const fimDasContas = recorte.situacao === "PAGO" ? ateRealizado(recorte) : recorte.ate;
-  const meses = mesesNoIntervalo(recorte.de, fimDasContas);
+  // O pago e o vencido param em hoje (nada é pago nem vence no futuro); o a pagar vai até o fim do período.
+  const fimDasContas = recorte.situacao === "PAGO" || recorte.situacao === "VENCIDO" ? ateRealizado(recorte) : recorte.ate;
+  const meses = recorte.situacao === "PAGO" ? mesesEquivalentes(recorte.de, fimDasContas) : 0;
+  const agrupado = !opcoes.agruparPor
+    ? null
+    : opcoes.agruparPor === "MES"
+      ? agruparPorMes(linhas, recorte.de, fimDasContas)
+      : agrupar(linhas, chaveDoAgrupamento(opcoes.agruparPor), opcoes.limite ?? 5);
 
   return {
     agregado,
@@ -203,9 +277,9 @@ export function analisarDespesas(
       vencido: subtotal(linhas.filter((l) => l.vencida)),
       aVencer: subtotal(linhas.filter((l) => !l.paga && !l.vencida)),
     },
-    agrupado: opcoes.agruparPor ? agrupar(linhas, chaveDoAgrupamento(opcoes.agruparPor), opcoes.limite ?? 5) : null,
-    meses,
-    mediaMensalCentavos: meses > 0 && linhas.length ? dividirCentavos(agregado.totalCentavos, meses) : null,
+    agrupado,
+    mesesEquivalentes: meses,
+    mediaMensalCentavos: meses >= 1 && linhas.length ? dividirCentavos(agregado.totalCentavos, meses) : null,
     foraDoTotal: {
       pagasComDataFutura: subtotal(selecao.pagasComDataFutura),
       aPagarSemVencimento: subtotal(selecao.aPagarSemVencimento),

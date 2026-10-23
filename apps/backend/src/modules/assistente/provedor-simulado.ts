@@ -113,9 +113,18 @@ function filtrosDeDespesa(t: string): Record<string, unknown> {
   return args;
 }
 
+/** Palavras de despesa da Festaê. Sem nenhuma delas, "vencido"/"a pagar" de festa ou cliente é situação de pagamento da festa. */
+const FALA_DE_DESPESA = /gast|despes|pagamos|fornecedor|custeio|consumo|lancamentos de/;
+
+/** Assunto de outra ferramenta: uma continuação "e …" que fala disso não é mais de despesas. */
+const OUTRO_ASSUNTO =
+  /\b(festas?|reservas?|eventos?|propostas?|orcamentos?|fatur\w*|cancel\w*|quantos produtos|produtos cadastrad\w*|itens cadastrad\w*|disponib\w*|devolucao|saldo|carteira|retirad\w*|socios?|caixa|a receber|recebemos|recebid\w*|conversao|lucro|resultado)\b/;
+
 /** Pergunta de despesa que pede recorte: vai para consultarDespesas, não para o total do Financeiro. */
 function despesaComRecorte(t: string): Consulta | null {
   if (!/gast|despes|pagamos|a pagar|vencid|fornecedor|lancamentos de|custeio|consumo/.test(t)) return null;
+  // "Festas com pagamento vencido", "reservas a pagar": é a situação de pagamento das festas.
+  if (/\b(festas?|reservas?|eventos?|clientes?)\b/.test(t) && !FALA_DE_DESPESA.test(t)) return null;
   if (!/fornecedor|categoria|\bcom (?!(?:o |a )?(?:consumo|custeio|acervo|investimento|pro.?labore)\b)[a-z0-9]|a pagar|vencid|registr|lancamos|media|medio|maior|menor|compar|\bou\b|variac|aument|diminu|ultimos|ultimas|trimestre|ate agora|ate hoje|em relacao|\d{1,2}\/\d{1,2}(?:\/\d{2,4})? (?:a|ate|e) \d{1,2}\//.test(t)) return null;
   const args: Record<string, unknown> = { ...filtrosDeDespesa(t) };
   const meses = [...t.matchAll(/\b(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/g)].map((m) => m[1]);
@@ -130,13 +139,34 @@ function despesaComRecorte(t: string): Consulta | null {
   return { nome: "consultarDespesas", args };
 }
 
-/** "E no mês passado?", "e quanto disso já foi pago?", "e em custeio?": a última consulta, trocando só o que mudou. */
+/**
+ * "E no mês passado?", "e quanto disso já foi pago?", "e em custeio?", "e com
+ * a Loja X?", "e comparando com setembro?": a última consulta, trocando só o que mudou.
+ */
 function continuacaoDeDespesas(t: string, anterior: Consulta): Consulta {
   const args: Record<string, unknown> = { ...anterior.args };
   const periodo = periodoAnalitico(t);
-  if (periodo) {
+  if (/mesmo periodo do ano (anterior|passado)/.test(t)) {
+    args.compararCom = "mesmo periodo do ano anterior";
+  } else if (periodo && /\bcompar\w*|em relacao|frente a/.test(t)) {
+    args.compararCom = periodo;
+  } else if (periodo) {
     args.periodo = periodo;
     delete args.compararCom;
+  }
+  const novos = filtrosDeDespesa(t);
+  // "com setembro", "com o mês passado": é período, não fornecedor. E só troca
+  // o fornecedor quem pede isso logo no começo ("e com a Loja X?") ou diz
+  // "fornecedor": "e quanto disso foi pago com pix?" não muda o filtro.
+  if (typeof novos.fornecedor === "string" && encontrarPeriodoNoTexto(novos.fornecedor)) delete novos.fornecedor;
+  if (!/^e (com|do|da)\b|fornecedor/.test(t)) delete novos.fornecedor;
+  if (novos.fornecedor) {
+    args.fornecedor = novos.fornecedor;
+    delete args.fornecedoresConfirmados;
+  }
+  if (novos.categoria) {
+    args.categoria = novos.categoria;
+    delete args.categoriasConfirmadas;
   }
   if (/(ja|foi|foram|esta|estao) pag|disso.*pag/.test(t)) args.situacao = "TODOS";
   else if (/\ba pagar\b/.test(t)) args.situacao = "A_PAGAR";
@@ -153,9 +183,11 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
 
   const periodo = encontrarPeriodoNoTexto(texto);
   const anterior = ultimaConsulta(mensagens);
-  if (anterior?.nome === "consultarDespesas" && /^e /.test(t)) return continuacaoDeDespesas(t, anterior);
+  const retomaDespesas = /^e /.test(t) || /\b(delas|dessas|deles|desses|destas|destes|disso|desse total)\b/.test(t);
+  if (anterior?.nome === "consultarDespesas" && retomaDespesas && !OUTRO_ASSUNTO.test(t)) return continuacaoDeDespesas(t, anterior);
   const continuacao = !periodo && (/\b(delas|dessas|deles|desses|destas|nelas|nesse periodo)\b/.test(t) || /^e /.test(t));
-  if (continuacao && anterior) {
+  // Depois de uma despesa, o "e …" sobre outro assunto vai para o assunto novo, não repete a despesa.
+  if (continuacao && anterior && anterior.nome !== "consultarDespesas") {
     const situacao = situacaoPedida(t);
     if (anterior.nome === "consultarFestas") {
       return { nome: "consultarFestas", args: { periodo: anterior.args.periodo, ...(situacao ? { situacaoDePagamento: situacao } : {}) } };
@@ -189,7 +221,10 @@ function decidir(texto: string, mensagens: MensagemDoModelo[]): Consulta | { esc
   if (/sem utiliza|sem uso|parad/.test(t)) return { nome: "consultarUsoDoAcervo", args: {} };
   if (/(produtos|itens) cadastrad|quantos produtos/.test(t)) return { nome: "contarProdutos", args: {} };
   // Quanto cada cliente gastou não é despesa da Festaê, e ranking de clientes não é consultável.
-  if (/\bclientes?\b/.test(t) && /gast|comprou|pagou/.test(t)) return null;
+  // Só quando a cliente é quem gasta: "brindes para clientes" é despesa da Festaê.
+  if (/\bclientes?\b(?: \S+){0,2} (gast|comprou|compraram|pagou|pagaram)/.test(t) || /\b(gast\w*|comprou|pagou) (cada|qual|quais|que|a|o) clientes?\b/.test(t)) {
+    return null;
+  }
   const recorte = despesaComRecorte(t);
   if (recorte) return recorte;
   if (/fatur|contratad|recebemos|recebid|pagamentos|caixa|a receber|resultado|lucro|margem|gast|despes|custeio|consumo|investi|acervo|credito/.test(t)) {
@@ -292,15 +327,12 @@ function redigirResultado(nome: string, d: Dados, t: string): string {
     case "consultarFinanceiro":
       return redigirFinanceiro(d, t);
     case "consultarDespesas": {
-      // O resumo é montado pelo servidor; aqui só se acrescenta o detalhe pedido.
+      // O resumo do servidor já traz grupos, média mensal, maior/menor, o que
+      // fica fora do total e a comparação; aqui só a média por lançamento, se pedida.
       const r = d.resultado;
-      const extras: string[] = [];
-      if (r && /\bmaior\b/.test(t) && r.maior) extras.push(`Maior: ${r.maior.valor} em ${r.maior.dia} (${r.maior.descricao}).`);
-      if (r && /\bmenor\b/.test(t) && r.menor) extras.push(`Menor: ${r.menor.valor} em ${r.menor.dia} (${r.menor.descricao}).`);
-      if (r && /media|medio/.test(t)) extras.push(r.mediaMensal ? `Média mensal: ${r.mediaMensal.valor} (${r.mediaMensal.meses} meses).` : r.mediaPorLancamento ? `Média por lançamento: ${r.mediaPorLancamento}.` : "");
-      if (r?.grupos?.length) extras.push(r.grupos.map((g: Dados, i: number) => `${i + 1}. ${g.nome}: ${g.total} (${g.lancamentos})`).join("; ") + ".");
-      if (d.tambemNaDescricao) extras.push(`Há também ${d.tambemNaDescricao.lancamentos} lançamento(s) sem fornecedor que citam o nome na descrição (${d.tambemNaDescricao.total}), fora do total.`);
-      return [d.resumo, ...extras.filter(Boolean)].join(" ") + obs(d);
+      const porLancamento = r && /media|medio/.test(t) && !r.mediaMensal && r.mediaPorLancamento ? ` Média por lançamento: ${r.mediaPorLancamento}.` : "";
+      // A observação do período já está no resumo.
+      return `${d.resumo}${porLancamento}`;
     }
     case "consultarRetiradasDosSocios": {
       const n = d.noPeriodo;

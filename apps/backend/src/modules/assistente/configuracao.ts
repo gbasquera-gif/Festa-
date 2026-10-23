@@ -84,7 +84,6 @@ export function lerConfiguracao(env: NodeJS.ProcessEnv = process.env): Configura
   else if (pedido) modo = "DESLIGADO";
   else modo = chave ? "OPENAI" : producao ? "DESLIGADO" : "SIMULADO";
 
-  const saidaPedida = env.ASSISTENTE_IA_SAIDA_DE_VOZ?.trim().toLowerCase();
   return {
     modo,
     openai: {
@@ -97,7 +96,10 @@ export function lerConfiguracao(env: NodeJS.ProcessEnv = process.env): Configura
       maxTokensDeSaida: numero(env, "ASSISTENTE_IA_MAX_TOKENS", 1200),
       esforcoDeRaciocinio: env.ASSISTENTE_IA_ESFORCO?.trim() || null,
     },
-    saidaDeVoz: modo === "OPENAI" && saidaPedida === "openai" ? "OPENAI" : "NAVEGADOR",
+    // Voz gerada na OpenAI bloqueada: a resposta que ela leria já tem os nomes
+    // reais (clientes, sócios, fornecedores), que a minimização não deixa sair.
+    // Volta só quando a fala usar o mesmo texto com códigos. ASSISTENTE_IA_SAIDA_DE_VOZ é ignorada.
+    saidaDeVoz: "NAVEGADOR",
     transcricaoSimulada: env.ASSISTENTE_IA_TRANSCRICAO_SIMULADA?.trim() || "Quantas festas temos em novembro?",
     limites: {
       caracteresPorMensagem: 500,

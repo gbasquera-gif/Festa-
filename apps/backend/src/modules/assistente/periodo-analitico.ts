@@ -67,10 +67,30 @@ function nomeDoMes(mes: number): string {
   return NOMES_DOS_MESES[mes - 1];
 }
 
+/** `anos` anos antes, no mesmo dia; 29/02 vira 28/02. */
+export function anosAntes(dia: string, anos: number): string {
+  const [a, m, d] = dia.split("-").map(Number);
+  return `${a - anos}-${doisDigitos(m)}-${doisDigitos(Math.min(d, ultimoDia(a - anos, m)))}`;
+}
+
 /** Um ano antes, no mesmo dia; 29/02 vira 28/02. */
 export function umAnoAntes(dia: string): string {
-  const [a, m, d] = dia.split("-").map(Number);
-  return `${a - 1}-${doisDigitos(m)}-${doisDigitos(Math.min(d, ultimoDia(a - 1, m)))}`;
+  return anosAntes(dia, 1);
+}
+
+/** O ano escrito na expressão: "outubro de 2025", "15/10/2025", "15/10/25". */
+function anoEscrito(texto: string): number | null {
+  const longo = texto.match(/\b(\d{4})\b/);
+  if (longo) return Number(longo[1]);
+  const curto = texto.match(/^\d{1,2}\/\d{1,2}\/(\d{2})$/);
+  return curto ? 2000 + Number(curto[1]) : null;
+}
+
+/** A mesma ponta de intervalo com o ano da outra ponta: "agosto" → "agosto de 2025"; "01/09" → "01/09/2025". */
+function comAno(texto: string, ano: number): string | null {
+  if (/^\d{1,2}\/\d{1,2}$/.test(texto)) return `${texto}/${ano}`;
+  if (NOMES_DOS_MESES.map((n) => normalizar(n)).includes(texto)) return `${texto} de ${ano}`;
+  return null;
 }
 
 function numero(texto: string): number | null {
@@ -121,6 +141,11 @@ export function interpretarPeriodoDeAnalise(expressao: string, agora: Date = new
     ateHoje = true;
   }
 
+  // "Último mês até hoje" não tem leitura segura: o mês passado esticado até
+  // hoje seriam quase dois meses; o mês atual seria outra pergunta. Pergunta.
+  if (ateHoje && !desde && /^(o )?ultimo mes\b/.test(t)) {
+    return { ok: false, erro: `"${expressao}" pode ser o mês atual até hoje, o mês passado ou os últimos 30 dias: diga "este mês até hoje", "mês passado" ou "últimos 30 dias".` };
+  }
   const r = interpretarSemCorte(t, expressao, hoje, anoAtual, mesAtual);
   if (!r.ok || !ateHoje) return r;
   // "X até hoje" / "desde X": do começo de X até hoje.
@@ -131,10 +156,15 @@ export function interpretarPeriodoDeAnalise(expressao: string, agora: Date = new
 }
 
 function interpretarSemCorte(t: string, original: string, hoje: string, anoAtual: number, mesAtual: number): ResultadoDoPeriodoDeAnalise {
+  // "Último mês" é o mês passado completo, como em `interpretarPeriodo` e em
+  // "último trimestre": o mesmo texto não pode dar períodos diferentes
+  // conforme a ferramenta.
+  if (/^ultimo mes( completo| fechado| cheio)?$/.test(t)) return interpretarSemCorte("mes passado", original, hoje, anoAtual, mesAtual);
+
   // Últimos N meses (com o atual) e últimos N meses completos (sem o atual).
-  let m = t.match(/^(?:ultimos|ultimas) (\S+) meses( completos| fechados| cheios)?$/) ?? t.match(/^(?:ultimo) (mes)( completo| fechado)?$/);
+  let m = t.match(/^(?:ultimos|ultimas) (\S+) meses( completos| fechados| cheios)?$/);
   if (m) {
-    const n = m[1] === "mes" ? 1 : numero(m[1]);
+    const n = numero(m[1]);
     if (!n || n < 1 || n > 36) return { ok: false, erro: `Número de meses inválido em "${original}" (use de 1 a 36).` };
     if (m[2]) {
       const [ai, mi] = mesDeslocado(anoAtual, mesAtual, -n);
@@ -193,9 +223,28 @@ function interpretarSemCorte(t: string, original: string, hoje: string, anoAtual
   // Intervalo: "de 01/09 a 15/10", "entre setembro e novembro", "setembro até hoje".
   m = t.match(/^(?:de |entre |desde )?(.+?) (?:a|ate|e) (.+)$/);
   if (m) {
-    const inicio = interpretarSemCorte(m[1], m[1], hoje, anoAtual, mesAtual);
+    const ler = (texto: string) => interpretarSemCorte(texto, texto, hoje, anoAtual, mesAtual);
     const fimTexto = /^(agora|hoje)$/.test(m[2]) ? "hoje" : m[2];
-    const fim = interpretarSemCorte(fimTexto, m[2], hoje, anoAtual, mesAtual);
+    let inicio = ler(m[1]);
+    let fim = ler(fimTexto);
+    // O ano escrito numa só ponta vale para as duas: "agosto a outubro de
+    // 2025" é agosto de 2025. Se assim o início passar do fim ("novembro a
+    // fevereiro de 2026"), o início é do ano anterior; o simétrico para o fim.
+    const anoDoInicio = anoEscrito(m[1]);
+    const anoDoFim = fimTexto === "hoje" ? null : anoEscrito(fimTexto);
+    if (anoDoFim !== null && anoDoInicio === null) {
+      const mesmoAno = comAno(m[1], anoDoFim);
+      if (mesmoAno) {
+        inicio = ler(mesmoAno);
+        if (inicio.ok && fim.ok && inicio.periodo.de > fim.periodo.ate) inicio = ler(comAno(m[1], anoDoFim - 1)!);
+      }
+    } else if (anoDoInicio !== null && anoDoFim === null && fimTexto !== "hoje") {
+      const mesmoAno = comAno(fimTexto, anoDoInicio);
+      if (mesmoAno) {
+        fim = ler(mesmoAno);
+        if (inicio.ok && fim.ok && fim.periodo.ate < inicio.periodo.de) fim = ler(comAno(fimTexto, anoDoInicio + 1)!);
+      }
+    }
     if (inicio.ok && fim.ok) {
       if (fim.periodo.ate < inicio.periodo.de) return { ok: false, erro: `Em "${original}" o fim vem antes do início.` };
       return {
@@ -226,12 +275,26 @@ export function interpretarComparacao(
   expressao: string,
   principal: PeriodoDeAnalise,
   agora: Date = new Date(),
+  /** O fim do período como foi pedido (antes do corte em hoje): é o ano dele que conta em "mesmo período de AAAA". */
+  fimPedido: string = principal.ate,
 ): ResultadoDoPeriodoDeAnalise {
-  const t = normalizar(expressao).replace(/^(com o|com a|com|o|a|em|no|na)\s+/, "");
-  if (/^(mesmo periodo (do|no) ano (anterior|passado)|mesmo periodo de \d{4}|ano anterior|ano passado no mesmo periodo)$/.test(t)) {
-    const de = umAnoAntes(principal.de);
-    const ate = umAnoAntes(principal.ate);
-    return { ok: true, periodo: { de, ate, rotulo: `mesmo período de ${de.slice(0, 4)} (${dataCurta(de)} a ${dataCurta(ate)})` } };
+  const PREFIXO = /^(com o|com a|com|o|a|em|no|na)\s+/i;
+  const t = normalizar(expressao).replace(PREFIXO, "");
+  // "Mesmo período de 2024": o ano escrito decide quantos anos voltar. Conta
+  // pelo ano em que o período principal termina: dez/2025–jan/2026 "de 2025"
+  // é dez/2024–jan/2025.
+  const comAnoEscrito = t.match(/^mesmo periodo (?:de|do ano de|em) (\d{4})$/);
+  const anos = comAnoEscrito
+    ? Number(fimPedido.slice(0, 4)) - Number(comAnoEscrito[1])
+    : /^(mesmo periodo (do|no) ano (anterior|passado)|ano anterior|ano passado no mesmo periodo)$/.test(t)
+      ? 1
+      : null;
+  if (anos !== null) {
+    if (anos < 1) return { ok: false, erro: `O ano de comparação (${comAnoEscrito![1]}) precisa ser anterior ao período principal.` };
+    const de = anosAntes(principal.de, anos);
+    const ate = anosAntes(principal.ate, anos);
+    const anoDoRotulo = de.slice(0, 4) === ate.slice(0, 4) ? de.slice(0, 4) : `${de.slice(0, 4)}/${ate.slice(0, 4)}`;
+    return { ok: true, periodo: { de, ate, rotulo: `mesmo período de ${anoDoRotulo} (${dataCurta(de)} a ${dataCurta(ate)})` } };
   }
   if (/^(periodo anterior|mes anterior)$/.test(t)) {
     const [a, m] = principal.de.split("-").map(Number);
@@ -250,5 +313,6 @@ export function interpretarComparacao(
     const de = somarDias(ate, -(dias - 1));
     return { ok: true, periodo: { de, ate, rotulo: `os ${dias} dias anteriores (${dataCurta(de)} a ${dataCurta(ate)})` } };
   }
-  return interpretarPeriodoDeAnalise(expressao, agora);
+  // Qualquer outro período, sem o "com o"/"com" do começo ("com o mês passado", "com setembro").
+  return interpretarPeriodoDeAnalise(expressao.trim().replace(PREFIXO, ""), agora);
 }

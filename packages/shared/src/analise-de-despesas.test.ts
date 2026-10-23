@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { agregar, agrupar, dividirCentavos, normalizarParaBusca } from "./analise";
 import {
   analisarDespesas,
-  mesesNoIntervalo,
+  MESES_NO_AGRUPAMENTO,
+  mesesDoIntervalo,
+  mesesEquivalentes,
   selecionarDespesas,
   type DespesaParaAnalise,
   type RecorteDeDespesas,
@@ -135,19 +137,79 @@ describe("seleção de despesas", () => {
     expect(soma).toBe(a.agregado.totalCentavos);
   });
 
-  it("média mensal conta os meses do período até hoje", () => {
-    expect(mesesNoIntervalo("2026-08-01", "2026-10-21")).toBe(3);
-    expect(mesesNoIntervalo("2026-12-01", "2027-01-31")).toBe(2);
+  it("meses do calendário de um intervalo", () => {
+    expect(mesesDoIntervalo("2026-08-01", "2026-10-21")).toEqual(["2026-08", "2026-09", "2026-10"]);
+    expect(mesesDoIntervalo("2026-12-01", "2027-01-31")).toEqual(["2026-12", "2027-01"]);
+    expect(mesesDoIntervalo("2026-11-15", "2027-02-01")).toEqual(["2026-11", "2026-12", "2027-01", "2027-02"]);
+    expect(mesesDoIntervalo("2026-10-02", "2026-10-01")).toEqual([]);
+  });
+
+  // Achado #7: a média dividia por todo mês tocado (11 dias ÷ 2; 90 dias ÷ 4).
+  it("média mensal: total ÷ meses equivalentes (fração de dias de cada mês), só em PAGO", () => {
+    expect(mesesEquivalentes("2026-07-01", "2026-09-30")).toBe(3);
+    expect(mesesEquivalentes("2026-08-01", "2026-10-21")).toBeCloseTo(2 + 21 / 31, 12);
+    expect(mesesEquivalentes("2026-09-25", "2026-10-05")).toBeCloseTo(6 / 30 + 5 / 31, 12);
+    // "últimos 90 dias" em 21/10 (24/07 a 21/10): perto de 3 meses, não 4.
+    expect(mesesEquivalentes("2026-07-24", "2026-10-21")).toBeCloseTo(8 / 31 + 2 + 21 / 31, 12);
+    expect(mesesEquivalentes("2026-10-02", "2026-10-01")).toBe(0);
+
     const a = analisarDespesas(base, { de: "2026-08-01", ate: "2026-10-31", hoje: HOJE, situacao: "PAGO", naturezas: ["CONSUMO"] });
-    expect(a.meses).toBe(3);
-    expect(a.mediaMensalCentavos).toBe(Math.round((4550 + 30000) / 3));
+    expect(a.mesesEquivalentes).toBeCloseTo(2 + 21 / 31, 12);
+    expect(a.mediaMensalCentavos).toBe(Math.round((4550 + 30000) / (2 + 21 / 31)));
+  });
+
+  it("média mensal: nula em período menor que um mês e fora de PAGO", () => {
+    const curto = analisarDespesas(base, { de: "2026-09-25", ate: "2026-10-05", hoje: HOJE, situacao: "PAGO", naturezas: null });
+    expect(curto.agregado.quantidade).toBeGreaterThan(0);
+    expect(curto.mediaMensalCentavos).toBeNull();
+    // Vencido "este trimestre" em outubro: o vencido para em hoje; não há ritmo mensal a dividir.
+    const vencido = analisarDespesas(base, { de: "2026-10-01", ate: "2026-12-31", hoje: HOJE, situacao: "VENCIDO", naturezas: null });
+    expect(vencido.agregado.quantidade).toBe(1);
+    expect(vencido.mesesEquivalentes).toBe(0);
+    expect(vencido.mediaMensalCentavos).toBeNull();
   });
 
   it("período futuro: nada realizado", () => {
     const a = analisarDespesas(base, { de: "2026-11-01", ate: "2026-11-30", hoje: HOJE, situacao: "PAGO", naturezas: null });
     expect(a.agregado.quantidade).toBe(0);
-    expect(a.meses).toBe(0);
+    expect(a.mesesEquivalentes).toBe(0);
     expect(a.mediaMensalCentavos).toBeNull();
+  });
+
+  // Achado #2: conta que vence antes do período, mas depois de hoje, não é dívida vencida.
+  it("período futuro a pagar: só o que já venceu aparece como vencido antes do período", () => {
+    const s = selecionarDespesas(base, { de: "2026-11-01", ate: "2026-11-30", hoje: HOJE, situacao: "A_PAGAR", naturezas: null });
+    expect(s.principais.map((l) => l.valor)).toEqual([65]);
+    // 50 (venceu 20/10) e 30 (venceu 28/09) estão vencidas; 60 vence 28/10, depois de hoje: não entra.
+    expect(s.vencidasAntesDoPeriodo.map((l) => l.valor).sort((a, b) => a - b)).toEqual([30, 50]);
+    expect(s.vencidasAntesDoPeriodo.every((l) => l.vencida)).toBe(true);
+  });
+
+  // Achado extra (revisão): o agrupamento por mês reusava o ranking por valor.
+  it("agrupamento por mês: ordem do calendário, todos os meses (com zero), sem 'outros' por valor", () => {
+    const a = analisarDespesas(base, { de: "2026-08-01", ate: "2026-10-31", hoje: HOJE, situacao: "PAGO", naturezas: null }, { agruparPor: "MES", limite: 1 });
+    expect(a.agrupado!.grupos.map((g) => g.chave)).toEqual(["2026-08", "2026-09", "2026-10"]);
+    expect(a.agrupado!.grupos[0]).toEqual({ chave: "2026-08", totalCentavos: 0, quantidade: 0 });
+    expect(a.agrupado!.grupos[1]).toEqual({ chave: "2026-09", totalCentavos: 4550, quantidade: 1 });
+    expect(a.agrupado!.outros).toBeNull();
+    expect(a.agrupado!.grupos.reduce((s, g) => s + g.totalCentavos, 0)).toBe(a.agregado.totalCentavos);
+  });
+
+  // Revisão 2: vencido por mês não lista meses futuros, que não podem ter vencido.
+  it("agrupamento por mês do vencido para no mês de hoje", () => {
+    const a = analisarDespesas(base, { de: "2026-10-01", ate: "2026-12-31", hoje: HOJE, situacao: "VENCIDO", naturezas: null }, { agruparPor: "MES" });
+    expect(a.agrupado!.grupos).toEqual([{ chave: "2026-10", totalCentavos: 5000, quantidade: 1 }]);
+    const aPagar = analisarDespesas(base, { de: "2026-10-01", ate: "2026-12-31", hoje: HOJE, situacao: "A_PAGAR", naturezas: null }, { agruparPor: "MES" });
+    expect(aPagar.agrupado!.grupos.map((g) => g.chave)).toEqual(["2026-10", "2026-11", "2026-12"]);
+  });
+
+  it("agrupamento por mês acima do teto: os meses mais antigos somam em 'outros' e tudo fecha com o total", () => {
+    const a = analisarDespesas(base, { de: "2024-05-01", ate: "2026-10-31", hoje: HOJE, situacao: "PAGO", naturezas: null }, { agruparPor: "MES" });
+    expect(a.agrupado!.grupos).toHaveLength(MESES_NO_AGRUPAMENTO);
+    expect(a.agrupado!.grupos[0].chave).toBe("2024-11");
+    expect(a.agrupado!.grupos.at(-1)!.chave).toBe("2026-10");
+    expect(a.agrupado!.outros).toEqual({ totalCentavos: 0, quantidade: 0, grupos: 6 });
+    expect(a.agrupado!.grupos.reduce((s, g) => s + g.totalCentavos, 0) + a.agrupado!.outros!.totalCentavos).toBe(a.agregado.totalCentavos);
   });
 });
 

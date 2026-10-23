@@ -166,9 +166,9 @@ describe("configuração", () => {
     expect(lerConfiguracao({ NODE_ENV: "development", ASSISTENTE_IA_PROVEDOR: "simulado" } as NodeJS.ProcessEnv).modo).toBe("SIMULADO");
   });
 
-  it("voz do aparelho é o padrão; a do servidor só quando pedida e com OpenAI", () => {
+  it("voz sempre do aparelho: a do servidor (OpenAI) está bloqueada até cumprir a minimização, mesmo pedida", () => {
     expect(lerConfiguracao({ OPENAI_API_KEY: "k" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
-    expect(lerConfiguracao({ OPENAI_API_KEY: "k", ASSISTENTE_IA_SAIDA_DE_VOZ: "openai" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("OPENAI");
+    expect(lerConfiguracao({ OPENAI_API_KEY: "k", ASSISTENTE_IA_SAIDA_DE_VOZ: "openai" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
     expect(lerConfiguracao({ ASSISTENTE_IA_SAIDA_DE_VOZ: "openai" } as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
     expect(lerConfiguracao({} as NodeJS.ProcessEnv).saidaDeVoz).toBe("NAVEGADOR");
   });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   diaEmChapeco,
   formatarReais,
+  normalizarTelefone,
   fromCentsInt,
   mesEmChapeco,
   numeroDoContrato,
@@ -29,6 +30,7 @@ import {
 } from "./contrato";
 import { interpretarPeriodo, normalizar, rotuloDoDia, situacaoDoPeriodo, type Periodo } from "./periodo";
 import { consultarDespesas } from "./ferramentas-despesas";
+import { tabelaDeCodigos, type Pseudonimos } from "./pseudonimos";
 
 /**
  * O catálogo de ferramentas do Assistente IA.
@@ -61,7 +63,10 @@ export type ContextoDaFerramenta = {
   papel: PapelAutorizado;
   agora: Date;
   servicos: ServicosDoAssistente;
+  /** Os códigos de nomes da conversa. Sem ele, a ferramenta usa uma tabela só dela: nome nunca sai em claro. */
+  pseudonimos?: Pseudonimos;
 };
+
 
 /**
  * Uma frase que o servidor acrescenta à resposta quando o modelo citou um
@@ -111,14 +116,26 @@ function somaDe(valores: readonly number[]): number {
 }
 
 /**
- * Só o primeiro nome da cliente vai para a IA externa.
- *
- * É o suficiente para a gestora reconhecer a festa ("a da Renata, sábado") e
- * é o mínimo de dado pessoal fora de casa. Telefone, e-mail e endereço nunca
- * saem.
+ * O primeiro nome da cliente: o que a gestora vê na resposta ("a da Renata,
+ * sábado"). Para a IA externa vai só um código ([C1]); o nome volta na tela.
+ * Telefone, e-mail e endereço nunca saem.
  */
 export function primeiroNome(nome: string): string {
   return nome.trim().split(/\s+/)[0] ?? "";
+}
+
+/**
+ * O código da cliente, mostrada pelo primeiro nome. A chave (só local, nunca
+ * sai) é o nome completo mais o contato normalizado — o mesmo telefone escrito
+ * de jeitos diferentes é a mesma pessoa. Sem contato, a chave inclui o
+ * contrato: duas clientes de mesmo nome nunca viram uma só (o preço é a mesma
+ * pessoa sem contato poder ganhar um código por festa).
+ */
+function codigoDaCliente(tabela: Pseudonimos, cliente: { nome: string; telefone: string | null; email: string | null }, contrato: number): string {
+  // Telefone curto demais para ser real não identifica ninguém: vale o e-mail ou o contrato.
+  const telefone = normalizarTelefone(cliente.telefone);
+  const contato = (telefone.length >= 10 ? telefone : "") || cliente.email?.trim().toLowerCase() || `contrato ${contrato}`;
+  return tabela.codigo(primeiroNome(cliente.nome), { tipo: "C", chave: `${cliente.nome}|${contato}` });
 }
 
 const ETAPA_LABEL: Record<string, string> = {
@@ -175,13 +192,13 @@ function linkDaReserva(numero: number): FonteDaResposta {
   return { rotulo: numeroDoContrato(numero), caminho: `/reservas?aba=TODAS&busca=${numero}` };
 }
 
-/** Uma festa como a IA a recebe: o mínimo para reconhecer e responder. */
-function festaParaIA(l: LinhaDaCarteira) {
+/** Uma festa como a IA a recebe: o mínimo para reconhecer e responder; a cliente, como código. */
+function festaParaIA(l: LinhaDaCarteira, tabela: Pseudonimos) {
   const c = l.comercial;
   return {
     contrato: numeroDoContrato(c.numero),
     data: dataCurta(c.festaEm),
-    cliente: primeiroNome(c.cliente.nome),
+    cliente: codigoDaCliente(tabela, c.cliente, c.numero),
     etapa: ETAPA_LABEL[c.status] ?? c.status,
     pagamento: SITUACAO_DE_PAGAMENTO_LABEL[c.situacao],
     valor: brl(c.valor),
@@ -411,18 +428,22 @@ function totaisDaRetirada(t: TotalPorCategoria) {
 const consultarRetiradasDosSocios: Ferramenta<z.ZodObject<{ periodo: z.ZodOptional<typeof periodoParam> }>> = {
   nome: "consultarRetiradasDosSocios",
   descricao:
-    "Retiradas dos sócios (distribuição de lucros e devolução de aporte) de um MÊS-CALENDÁRIO ou ANO, ou de todo o histórico quando não houver período: total, por categoria e por sócio (primeiro nome), iguais aos da aba Retiradas dos sócios do Financeiro. Use para \"quanto os sócios retiraram\", \"distribuição de lucros do ano\". Pró-labore não é retirada: é despesa — use consultarFinanceiro.",
+    "Retiradas dos sócios (distribuição de lucros e devolução de aporte) de um MÊS-CALENDÁRIO ou ANO, ou de todo o histórico quando não houver período: total, por categoria e por sócio (código [S1]), iguais aos da aba Retiradas dos sócios do Financeiro. Use para \"quanto os sócios retiraram\", \"distribuição de lucros do ano\". Pró-labore não é retirada: é despesa — use consultarFinanceiro.",
   natureza: "LEITURA",
   papeis: ["ADMIN"],
   parametros: z.object({ periodo: periodoParam.optional() }),
-  async executar({ periodo: expressao }, { agora, servicos }) {
+  async executar({ periodo: expressao }, ctx) {
+    const { agora, servicos } = ctx;
+    const tabela = tabelaDeCodigos(ctx);
+    // O sócio vai como código; a tela mostra o nome curto (o mínimo que distingue um do outro).
+    const socio = (x: { socioId: string; curto: string }) => tabela.codigo(x.curto, { tipo: "S", chave: x.socioId });
     if (!expressao) {
       const r = await servicos.retiradas.listar({ incluirEstornadas: "nao" }, agora);
       return {
         dados: {
           periodo: { rotulo: "todo o histórico" },
           noPeriodo: totaisDaRetirada(r.indicadores.historico),
-          porSocio: nomesDosSocios(r.porSocio).map((x) => ({ socio: x.curto, noPeriodo: brl(x.historico) })),
+          porSocio: nomesDosSocios(r.porSocio).map((x) => ({ socio: socio(x), noPeriodo: brl(x.historico) })),
           criterios: CRITERIOS_DAS_RETIRADAS,
         },
         fontes: [{ rotulo: "Retiradas dos sócios", caminho: `/financeiro?aba=retiradas&ano=${r.recorte.ano}&mes=todos` }],
@@ -447,7 +468,7 @@ const consultarRetiradasDosSocios: Ferramenta<z.ZodObject<{ periodo: z.ZodOption
           historico: totaisDaRetirada(lista.indicadores.historico),
           porSocio: nomesDosSocios(lista.porSocio)
             .filter((x) => x.ano > 0)
-            .map((x) => ({ socio: x.curto, noPeriodo: brl(x.ano), historico: brl(x.historico) })),
+            .map((x) => ({ socio: socio(x), noPeriodo: brl(x.ano), historico: brl(x.historico) })),
           criterios: CRITERIOS_DAS_RETIRADAS,
         },
         fontes: [{ rotulo: `Retiradas dos sócios · ${ano}`, caminho: `/financeiro?aba=retiradas&ano=${ano}&mes=todos` }],
@@ -472,7 +493,7 @@ const consultarRetiradasDosSocios: Ferramenta<z.ZodObject<{ periodo: z.ZodOption
         historico: totaisDaRetirada(lista.indicadores.historico),
         porSocio: nomesDosSocios(lista.porSocio)
           .filter((x) => x.mes > 0)
-          .map((x) => ({ socio: x.curto, noPeriodo: brl(x.mes), noAno: brl(x.ano) })),
+          .map((x) => ({ socio: socio(x), noPeriodo: brl(x.mes), noAno: brl(x.ano) })),
         criterios: CRITERIOS_DAS_RETIRADAS,
       },
       fontes: [{ rotulo: `Retiradas dos sócios · ${descricao.rotulo}`, caminho: `/financeiro?aba=retiradas&ano=${ano}&mes=${mes.slice(5)}` }],
@@ -517,7 +538,7 @@ const consultarFestas: Ferramenta<
 > = {
   nome: "consultarFestas",
   descricao:
-    "Festas (reservas vigentes) com data num período: quantidade, quantas estão quitadas, com sinal, aguardando pagamento ou vencidas, as etapas, e a lista com contrato, data, primeiro nome da cliente, etapa e situação de pagamento. Use para \"quantas festas em novembro\", \"temos festa dia 14/11\", \"festas de amanhã\", \"quantas já estão pagas\". Canceladas não entram (para elas use consultarCancelamentos).",
+    "Festas (reservas vigentes) com data num período: quantidade, quantas estão quitadas, com sinal, aguardando pagamento ou vencidas, as etapas, e a lista com contrato, data, cliente (código [C1]), etapa e situação de pagamento. Use para \"quantas festas em novembro\", \"temos festa dia 14/11\", \"festas de amanhã\", \"quantas já estão pagas\". Canceladas não entram (para elas use consultarCancelamentos).",
   natureza: "LEITURA",
   papeis: ["ADMIN", "OPS"],
   parametros: z.object({
@@ -527,7 +548,9 @@ const consultarFestas: Ferramenta<
       .optional()
       .describe("Filtra a lista: QUITADO (pagas), PARCIAL (sinal recebido), AGUARDANDO (nada pago), VENCIDO, EM_ABERTO (qualquer saldo)."),
   }),
-  async executar({ periodo: expressao, situacaoDePagamento }, { agora, papel, servicos }) {
+  async executar({ periodo: expressao, situacaoDePagamento }, ctx) {
+    const { agora, papel, servicos } = ctx;
+    const tabela = tabelaDeCodigos(ctx);
     const r = periodoOuErro(expressao, agora, ALTERNATIVAS_DE_DATAS);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
@@ -560,7 +583,7 @@ const consultarFestas: Ferramenta<
         porEtapa: contar(doPeriodo, (l) => ETAPA_LABEL[l.comercial.status] ?? l.comercial.status),
         ...(papel === "ADMIN" ? { valorContratadoDasFestas: brl(somaDe(doPeriodo.map((l) => l.comercial.valor))) } : {}),
         ...(situacaoDePagamento ? { filtro: situacaoDePagamento, festasNoFiltro: filtrada.length } : {}),
-        lista: filtrada.slice(0, LIMITE_DA_LISTA).map(festaParaIA),
+        lista: filtrada.slice(0, LIMITE_DA_LISTA).map((l) => festaParaIA(l, tabela)),
         ...(filtrada.length > LIMITE_DA_LISTA ? { listaCortada: `Mostrando ${LIMITE_DA_LISTA} de ${filtrada.length}.` } : {}),
         criterios: [
           "Festas vigentes: solicitação, confirmada, em preparação, pronta, aguardando devolução e concluída. Canceladas e recusadas não entram.",
@@ -579,7 +602,9 @@ const consultarCancelamentos: Ferramenta<z.ZodObject<{ periodo: typeof periodoPa
   natureza: "LEITURA",
   papeis: ["ADMIN", "OPS"],
   parametros: z.object({ periodo: periodoParam }),
-  async executar({ periodo: expressao }, { agora, servicos }) {
+  async executar({ periodo: expressao }, ctx) {
+    const { agora, servicos } = ctx;
+    const tabela = tabelaDeCodigos(ctx);
     const r = periodoOuErro(expressao, agora, ALTERNATIVAS_DE_DATAS);
     if ("erro" in r) return r.erro;
     const p = r.periodo;
@@ -600,7 +625,7 @@ const consultarCancelamentos: Ferramenta<z.ZodObject<{ periodo: typeof periodoPa
         comFestaNoProprioPeriodo: comFestaNoPeriodo.length,
         lista: noPeriodo.slice(0, LIMITE_DA_LISTA).map((x) => ({
           contrato: numeroDoContrato(x.linha.comercial.numero),
-          cliente: primeiroNome(x.linha.comercial.cliente.nome),
+          cliente: codigoDaCliente(tabela, x.linha.comercial.cliente, x.linha.comercial.numero),
           dataDaFesta: dataCurta(x.linha.comercial.festaEm),
           canceladaEm: x.canceladaEm ? dataCurta(diaEmChapeco(x.canceladaEm)) : null,
           etapa: ETAPA_LABEL[x.linha.comercial.status],
@@ -622,7 +647,9 @@ const consultarPendencias: Ferramenta<z.ZodObject<{ tipo: z.ZodEnum<{ AGUARDANDO
   natureza: "LEITURA",
   papeis: ["ADMIN", "OPS"],
   parametros: z.object({ tipo: z.enum(["AGUARDANDO_DEVOLUCAO", "SALDO_EM_ABERTO"]) }),
-  async executar({ tipo }, { agora, papel, servicos }) {
+  async executar({ tipo }, ctx) {
+    const { agora, papel, servicos } = ctx;
+    const tabela = tabelaDeCodigos(ctx);
     const carteira = (await servicos.carteira(agora)).map((x) => x.linha).filter((l) => l.comercial.vigente);
     const porData = (a: LinhaDaCarteira, b: LinhaDaCarteira) => a.comercial.festaEm.localeCompare(b.comercial.festaEm);
 
@@ -632,7 +659,7 @@ const consultarPendencias: Ferramenta<z.ZodObject<{ tipo: z.ZodEnum<{ AGUARDANDO
         dados: {
           posicaoEm: dataCurta(diaEmChapeco(agora)),
           aguardandoDevolucao: lista.length,
-          lista: lista.slice(0, LIMITE_DA_LISTA).map(festaParaIA),
+          lista: lista.slice(0, LIMITE_DA_LISTA).map((l) => festaParaIA(l, tabela)),
           criterios: ["Reservas na etapa \"Aguardando devolução\": a festa aconteceu e o material ainda não voltou."],
         },
         fontes: [{ rotulo: "Aguardando devolução", caminho: "/reservas?aba=DEVOLUCAO" }],
@@ -655,7 +682,7 @@ const consultarPendencias: Ferramenta<z.ZodObject<{ tipo: z.ZodEnum<{ AGUARDANDO
               valorVencido: brl(totalAReceber(vencidas.map((l) => l.apurado))),
             }
           : {}),
-        lista: emAberto.slice(0, LIMITE_DA_LISTA).map(festaParaIA),
+        lista: emAberto.slice(0, LIMITE_DA_LISTA).map((l) => festaParaIA(l, tabela)),
         ...(emAberto.length > LIMITE_DA_LISTA ? { listaCortada: `Mostrando ${LIMITE_DA_LISTA} de ${emAberto.length}.` } : {}),
         criterios: [
           "Saldo em aberto: reservas vigentes que ainda não estão quitadas. Vencida é a que já passou da data da festa; antes disso o saldo está no prazo.",

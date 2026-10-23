@@ -9,7 +9,8 @@ import {
   type RespostaDoAssistente,
 } from "./contrato";
 import type { ConfiguracaoDoAssistente } from "./configuracao";
-import { ConversasEmMemoria, LimitesDeUso, MetricasDoAssistente, type ConsultaFeita, type ControleDeUso, type Recusa } from "./controle";
+import { conferirResposta } from "./conferencia";
+import { ConversasEmMemoria, LimitesDeUso, MetricasDoAssistente, type ConsultaFeita, type ControleDeUso, type EventoDeUso, type Recusa } from "./controle";
 import {
   areasForaDoPapel,
   esquemaDaFerramenta,
@@ -21,6 +22,7 @@ import {
 import { rotuloDoDia } from "./periodo";
 import { FalhaDoProvedor, type MensagemDoModelo, type ProvedorDeIA, type UsoDoModelo } from "./provedor";
 import { pareceOperacao, PREFIXO_DO_CONTEXTO } from "./provedor-simulado";
+import type { Pseudonimos } from "./pseudonimos";
 
 /** Erro que o canal transforma em resposta HTTP (ou mensagem, no WhatsApp). */
 export class RecusaDoAssistente extends Error {
@@ -145,7 +147,7 @@ export class NucleoDoAssistente {
     const ferramentasUsadas: string[] = [];
     let passos = 0;
     try {
-      const conversa = this.conversas.abrir(identidade.usuarioId, entrada.conversaId);
+      const conversa = this.conversas.abrir(identidade.usuarioId, entrada.conversaId, Date.now(), identidade.papel);
       const agora = this.relogio();
       const permitidas = ferramentasDoPapel(identidade.papel);
       const esquemas = permitidas.map(esquemaDaFerramenta);
@@ -157,8 +159,10 @@ export class NucleoDoAssistente {
       let texto: string | null = null;
       let chamouOperacao = false;
       const complementos: ComplementoDaResposta[] = [];
-      /** Resultados de consultarDespesas: a resposta só pode citar valores que vieram deles. */
-      const conferiveis: Record<string, unknown>[] = [];
+      /** Todos os resultados do turno: os fatos contra os quais os valores da resposta são conferidos. */
+      const resultadosDoTurno: ResultadoDoTurno[] = [];
+      /** Os textos que o modelo mandou nos argumentos: o servidor pode repeti-los, e eles não viram fato. */
+      const ecos: string[] = [];
       const controle = new AbortController();
       const prazo = setTimeout(() => controle.abort(), this.cfg.limites.tempoPorPerguntaMs);
 
@@ -184,21 +188,34 @@ export class NucleoDoAssistente {
               mensagens.push({ papel: "ferramenta", chamadaId: chamada.id, nome: chamada.nome, conteudo: JSON.stringify(CONSULTA_NAO_E_OPERACAO) });
               continue;
             }
-            const resultado = await this.executar(chamada.nome, chamada.argumentos, identidade, agora);
+            const resultado = await this.executar(chamada.nome, chamada.argumentos, identidade, agora, conversa.pseudonimos);
             ferramentasUsadas.push(chamada.nome);
-            if (chamada.nome === "consultarDespesas") conferiveis.push(resultado.dados);
+            const args = argsSeguros(chamada.argumentos);
+            for (const t of textosDe(args)) ecos.push(t, conversa.pseudonimos.revelar(t));
+            // O que a pessoa (ou o modelo) usou como filtro de nome nesta consulta de despesas.
+            const reais = (...valores: unknown[]) => textosDe(valores).map((t) => conversa.pseudonimos.revelar(t));
+            resultadosDoTurno.push(
+              chamada.nome === "consultarDespesas"
+                ? {
+                    nome: chamada.nome,
+                    dados: resultado.dados,
+                    termos: reais(args.fornecedor, args.fornecedoresConfirmados),
+                    termosDeCategoria: reais(args.categoria, args.categoriasConfirmadas),
+                  }
+                : { nome: chamada.nome, dados: resultado.dados },
+            );
             if (resultado.complemento) complementos.push(resultado.complemento);
             if (resultado.tipo === "RECUSA") recusou = true;
             if (resultado.tipo === "LIMITACAO" && tipo === "RESPOSTA") tipo = "LIMITACAO";
             for (const f of resultado.fontes) if (!fontes.some((x) => x.caminho === f.caminho)) fontes.push(f);
             if (!resultado.tipo || resultado.tipo === "LIMITACAO") {
-              consultas.push({ nome: chamada.nome, args: argsSeguros(chamada.argumentos), periodo: periodoDoResultado(resultado) });
+              consultas.push({ nome: chamada.nome, args, periodo: periodoDoResultado(resultado) });
             }
             mensagens.push({
               papel: "ferramenta",
               chamadaId: chamada.id,
               nome: chamada.nome,
-              conteudo: JSON.stringify(resultado.dados).slice(0, this.cfg.limites.caracteresPorResultado),
+              conteudo: conteudoParaModelo(resultado.dados, this.cfg.limites.caracteresPorResultado),
             });
           }
           // Recusa de operação: a frase é sempre a mesma, sem gastar outra
@@ -227,16 +244,37 @@ export class NucleoDoAssistente {
       else if (texto.includes(MENSAGEM_DE_CONSULTA_FORA_DO_PERFIL)) tipo = "LIMITACAO";
       if (ferramentasUsadas.length === 0 && tipo === "RESPOSTA") tipo = "LIMITACAO";
       if (tipo === "RESPOSTA") texto = completar(texto, complementos);
-      // Rede de segurança das análises: todo valor (R$ ou %) da resposta tem
-      // de ter vindo da ferramenta. Conta feita pelo modelo, ou número de
-      // outra origem, troca a resposta pelo resumo montado no servidor.
-      let conferencia: "SUBSTITUIDA" | undefined;
-      if (conferiveis.length && tipo !== "RECUSA" && !valoresConferem(texto, conferiveis)) {
-        texto = conferiveis.map((d) => String(d.resumo ?? d.limitacao ?? "")).filter(Boolean).join("\n\n") || texto;
-        conferencia = "SUBSTITUIDA";
+      // Rede de segurança das análises de despesa: cada valor da resposta
+      // (dinheiro, percentual, quantidade de lançamentos, com a direção) tem
+      // de ser igual a um fato devolvido pelas ferramentas DESTE turno — de
+      // qualquer uma delas, e das frases que o próprio servidor acrescentou —,
+      // e a resposta não pode afirmar alta onde a comparação deu queda (nem o
+      // contrário), com ou sem número. Se algo não confere, a resposta vira a
+      // que o servidor monta: os resumos das despesas, mais as frases do
+      // modelo que trazem valores conferidos de outras ferramentas. Sem nada
+      // conferível para mostrar, a resposta diz que não pôde conferir e não
+      // traz número nenhum.
+      // A recusa de operação também passa pela conferência quando o modelo pôs
+      // mais alguma coisa junto da frase de recusa: um número de despesa ao
+      // lado dela não escapa por isso. Só a recusa pura (a frase fixa) fica de fora.
+      let conferencia: EventoDeUso["conferencia"];
+      const recusaPura = texto.trim() === MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA;
+      if (!recusaPura && resultadosDoTurno.some((r) => r.nome === "consultarDespesas")) {
+        const conferida = conferirResposta(texto, resultadosDoTurno, { frasesDoServidor: complementos.map((c) => c.frase), ecos });
+        if (conferida.confere) {
+          conferencia = "CONFERIDA";
+        } else {
+          const doServidor = respostaDoServidor(resultadosDoTurno, conferida.preservadas);
+          texto = tipo === "RECUSA" ? `${doServidor.texto}\n\n${MENSAGEM_DE_OPERACAO_NAO_AUTORIZADA}` : doServidor.texto;
+          conferencia = doServidor.mostraValores ? "SUBSTITUIDA" : "BLOQUEADA";
+          if (tipo !== "RECUSA" && (!doServidor.mostraValores || doServidor.comFalha)) tipo = "LIMITACAO";
+        }
       }
 
+      // A IA vê os códigos de fornecedor; a pessoa vê os nomes. O histórico
+      // guarda a versão da IA, para os nomes não irem para ela na pergunta seguinte.
       this.conversas.registrar(conversa, { pergunta: mensagem, resposta: texto, consultas });
+      texto = conversa.pseudonimos.revelar(texto);
       const custo = this.metricas.registrar({
         tipo: "PERGUNTA",
         canal: entrada.canal,
@@ -389,7 +427,13 @@ export class NucleoDoAssistente {
    * entrada não confiável: o nome precisa estar no catálogo DO PAPEL, e os
    * argumentos passam pela validação da ferramenta.
    */
-  private async executar(nome: string, argumentos: string, identidade: IdentidadeAutenticada, agora: Date): Promise<ResultadoDaFerramenta> {
+  private async executar(
+    nome: string,
+    argumentos: string,
+    identidade: IdentidadeAutenticada,
+    agora: Date,
+    pseudonimos: Pseudonimos,
+  ): Promise<ResultadoDaFerramenta> {
     const ferramenta = ferramentasDoPapel(identidade.papel).find((f) => f.nome === nome);
     if (!ferramenta) {
       return { tipo: "LIMITACAO", dados: { erro: "Consulta não disponível para este perfil de acesso." }, fontes: [] };
@@ -397,6 +441,19 @@ export class NucleoDoAssistente {
     let bruto: unknown;
     try {
       bruto = argumentos ? JSON.parse(argumentos) : {};
+      // Os códigos de fornecedor que a IA devolve ("[F2]") voltam a ser nomes
+      // antes da validação — só nos campos de fornecedor da ferramenta que os
+      // usa. Em qualquer outro campo (período, categoria), um código continua
+      // código: o servidor repete esses textos para a IA e o nome não pode ir junto.
+      // E só o código do próprio tipo: [C1] (cliente) ou [S1] (sócio) no campo
+      // de fornecedor continua código — não vira busca pelo nome da pessoa.
+      if (nome === "consultarDespesas" && bruto && typeof bruto === "object") {
+        const campos = bruto as Record<string, unknown>;
+        const tipos: Record<string, ("F" | "K")[]> = { fornecedor: ["F"], fornecedoresConfirmados: ["F"], categoria: ["K"], categoriasConfirmadas: ["K"] };
+        for (const [campo, aceitos] of Object.entries(tipos)) {
+          if (campo in campos) campos[campo] = pseudonimos.revelarEmValores(campos[campo], aceitos);
+        }
+      }
     } catch {
       return { tipo: "LIMITACAO", dados: { erro: "Parâmetros ilegíveis." }, fontes: [] };
     }
@@ -405,7 +462,7 @@ export class NucleoDoAssistente {
       return { tipo: "LIMITACAO", dados: { erro: "Parâmetros inválidos para a consulta.", detalhes: validados.error.issues.map((i) => i.message).slice(0, 3) }, fontes: [] };
     }
     try {
-      return await ferramenta.executar(validados.data, { papel: identidade.papel, agora, servicos: this.servicos });
+      return await ferramenta.executar(validados.data, { papel: identidade.papel, agora, servicos: this.servicos, pseudonimos });
     } catch {
       // O detalhe do erro interno não vai para a IA externa.
       return { tipo: "LIMITACAO", dados: { erro: "Não consegui ler esses dados agora." }, fontes: [] };
@@ -456,21 +513,121 @@ function completar(texto: string, complementos: readonly ComplementoDaResposta[]
   return saida;
 }
 
-/** Um valor em reais ou percentual como chave de comparação: "R$ 1.234,5" e "R$1234,50" são o mesmo. */
-function chaveDoValor(bruto: string): string {
-  const percentual = bruto.includes("%");
-  const numero = bruto.replace(/R\$|%|\s|[+\-−]/g, "");
-  const [inteiro, decimal = ""] = numero.split(",");
-  const limpo = inteiro.replace(/\./g, "").replace(/^0+(?=\d)/, "");
-  return percentual ? `${limpo},${decimal.replace(/0+$/, "")}%` : `${limpo},${decimal.padEnd(2, "0").slice(0, 2)}`;
+type ResultadoDoTurno = { nome: string; dados: Record<string, unknown>; termos?: string[]; termosDeCategoria?: string[] };
+type LancamentoDaLista = { dia: string; valor: string; fornecedor: string | null; situacao: string };
+
+/**
+ * A mesma conferência que roda em produção (`conferirResposta`), para
+ * resultados que são todos de consultarDespesas.
+ */
+export function valoresConferem(texto: string, resultados: readonly Record<string, unknown>[]): boolean {
+  return conferirResposta(
+    texto,
+    resultados.map((dados) => ({ nome: "consultarDespesas", dados })),
+  ).confere;
 }
 
-const VALORES_NO_TEXTO = /[+\-−]?\s?R\$\s?\d[\d.]*(?:,\d+)?|[+\-−]?\d+(?:,\d+)?\s?%/g;
+/** Todos os textos de um valor (os argumentos de uma chamada), em qualquer profundidade. */
+function textosDe(valor: unknown): string[] {
+  if (typeof valor === "string") return [valor];
+  if (Array.isArray(valor)) return valor.flatMap(textosDe);
+  if (valor && typeof valor === "object") return Object.values(valor).flatMap(textosDe);
+  return [];
+}
 
-/** Todo R$ e todo % do texto aparecem nos resultados das ferramentas (sinal à parte). */
-export function valoresConferem(texto: string, resultados: readonly Record<string, unknown>[]): boolean {
-  const disponiveis = new Set((JSON.stringify(resultados).match(VALORES_NO_TEXTO) ?? []).map(chaveDoValor));
-  return (texto.match(VALORES_NO_TEXTO) ?? []).every((v) => disponiveis.has(chaveDoValor(v)));
+const semPontoFinal = (t: string) => t.trim().replace(/[.]+$/, "");
+const minuscula = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
+/**
+ * A resposta que o servidor monta quando a do modelo não confere: as frases
+ * conferidas de outras ferramentas e os resumos calculados aqui. O que não é
+ * conferível fica de fora, e a resposta diz isso — melhor uma lacuna dita do
+ * que um número sem origem.
+ */
+export function respostaDoServidor(
+  resultados: readonly ResultadoDoTurno[],
+  preservadas: readonly string[] = [],
+): { texto: string; mostraValores: boolean; comFalha: boolean } {
+  const resumos: string[] = [];
+  const falhas: string[] = [];
+  let outras = false;
+  for (const r of resultados) {
+    const { resumo, erro } = r.dados as { resumo?: unknown; erro?: unknown };
+    if (r.nome === "consultarDespesas" && typeof resumo === "string" && resumo.trim()) {
+      resumos.push(resumo.trim());
+      // A lista pedida não some na troca: vai como o servidor a montou.
+      const lista = (r.dados.resultado as { listaDeLancamentos?: LancamentoDaLista[] } | undefined)?.listaDeLancamentos;
+      if (lista?.length) {
+        resumos.push(`Lançamentos considerados, os mais recentes: ${lista.map((l) => `${l.dia} · ${l.valor}${l.fornecedor ? ` · ${l.fornecedor}` : ""} (${l.situacao})`).join("; ")}.`);
+      }
+    } else if (typeof erro === "string") falhas.push(minuscula(semPontoFinal(erro)));
+    else outras = true;
+  }
+  const unicos = [...new Set(resumos)];
+  if (!unicos.length && !preservadas.length) {
+    return {
+      texto:
+        `Não consegui conferir os valores desta resposta${falhas.length ? ` (${falhas.join("; ")})` : ""}. ` +
+        "Para não mostrar um número possivelmente errado, não trago valores agora. Tente perguntar de novo em instantes.",
+      mostraValores: false,
+      comFalha: falhas.length > 0,
+    };
+  }
+  const avisos = [
+    ...(falhas.length ? [`Parte da consulta não pôde ser feita (${falhas.join("; ")}).`] : []),
+    ...(preservadas.length
+      ? ["Retirei da resposta os trechos com valores que não conferem com o sistema; os valores acima são os calculados pelo servidor."]
+      : outras
+        ? ["Os valores das outras consultas desta pergunta não puderam ser conferidos e ficaram de fora: pergunte por eles separadamente."]
+        : []),
+  ];
+  return {
+    texto: [...(preservadas.length ? [preservadas.join(" ")] : []), ...unicos, ...avisos].join("\n\n"),
+    mostraValores: true,
+    comFalha: falhas.length > 0,
+  };
+}
+
+/** O detalhe que sai primeiro quando o resultado não cabe no limite: listas, depois quebras. */
+const DETALHES_DISPENSAVEIS: readonly (readonly string[])[] = [
+  // A nota da amostra sai junto com a lista: não se fala de uma lista que o modelo não vê.
+  ["listaDeLancamentos", "lista", "listaCortada"],
+  ["grupos", "outros", "porNatureza", "nomesConsiderados", "maior", "menor", "tambemNaDescricao", "opcoes"],
+];
+const AVISO_DE_DETALHES_OMITIDOS =
+  "Parte dos detalhes não coube no limite e foi omitida. Responda só com o que veio; se pedirem a lista ou o ranking, diga que precisa de um recorte menor.";
+
+function semChaves(valor: unknown, chaves: ReadonlySet<string>): unknown {
+  if (Array.isArray(valor)) return valor.map((v) => semChaves(v, chaves));
+  if (valor && typeof valor === "object") {
+    return Object.fromEntries(Object.entries(valor).filter(([k]) => !chaves.has(k)).map(([k, v]) => [k, semChaves(v, chaves)]));
+  }
+  return valor;
+}
+
+/**
+ * O resultado como vai para o modelo: JSON inteiro e válido, nunca cortado no
+ * meio. Se não couber no limite, tira o detalhe aos poucos (listas, depois
+ * quebras); no fim, só o essencial — resumo, período, critérios.
+ */
+export function conteudoParaModelo(dados: Record<string, unknown>, limite: number): string {
+  const inteiro = JSON.stringify(dados);
+  if (inteiro.length <= limite) return inteiro;
+  const removidas = new Set<string>();
+  for (const grupo of DETALHES_DISPENSAVEIS) {
+    for (const chave of grupo) removidas.add(chave);
+    const reduzido = JSON.stringify({ ...(semChaves(dados, removidas) as object), detalhesOmitidos: AVISO_DE_DETALHES_OMITIDOS });
+    if (reduzido.length <= limite) return reduzido;
+  }
+  for (const chaves of [
+    ["resumo", "limitacao", "erro", "periodo", "criterios"],
+    ["resumo", "limitacao", "erro"],
+  ]) {
+    const essencial = Object.fromEntries(chaves.filter((k) => k in dados).map((k) => [k, dados[k]]));
+    const curto = JSON.stringify({ ...essencial, detalhesOmitidos: AVISO_DE_DETALHES_OMITIDOS });
+    if (curto.length <= limite) return curto;
+  }
+  return JSON.stringify({ limitacao: "O resultado é grande demais para esta resposta. Peça um recorte menor (período, fornecedor ou categoria)." });
 }
 
 function argsSeguros(argumentos: string): Record<string, unknown> {
@@ -490,8 +647,10 @@ function periodoDoResultado(r: ResultadoDaFerramenta): ConsultaFeita["periodo"] 
 /** Só para quem tem consultarDespesas (ADMIN). */
 const REGRAS_DAS_DESPESAS = [
   "11. Despesa com recorte — fornecedor, categoria, situação (pago, a pagar, vencido), média, maior/menor, ranking, comparação, ou períodos como \"últimos 3 meses\", \"este trimestre\", \"até agora\": use consultarDespesas com os filtros que a pessoa disse. Nunca responda uma pergunta com fornecedor ou categoria com um total geral.",
-  "12. consultarDespesas: natureza só se a pessoa disser; situação: gastamos/pagamos = PAGO, a pagar = A_PAGAR, vencido = VENCIDO, registramos/lançamos = TODOS. \"precisaConfirmar\": mostre as opções e pergunte, sem somar. \"semCorrespondencia\": diga que não há lançamentos e ofereça só o que vier nele. Diga o período considerado, os filtros, o critério e a quantidade de lançamentos. Não faça contas: use só os valores e percentuais que vierem.",
+  "12. consultarDespesas: natureza só se a pessoa disser; situação: gastamos/pagamos = PAGO, a pagar = A_PAGAR, vencido = VENCIDO, registramos/lançamos = TODOS. \"precisaConfirmar\": mostre as opções e pergunte, sem somar; depois chame com os códigos escolhidos. \"semCorrespondencia\": diga que não há lançamentos e ofereça só o que vier nele. Diga o período considerado, os filtros, o critério e a quantidade de lançamentos (o campo lancamentos; listaDeLancamentos é só uma amostra). Se vier \"atencao\", diga-a.",
   "13. Continuação de consultarDespesas (\"e no mês passado?\", \"e quanto disso já foi pago?\" = situação TODOS, \"e em custeio?\"): repita a última chamada trocando só o que a pessoa mudou.",
+  "14. Para consultar um fornecedor ou uma categoria que vieram como código, passe o código ([F2], [K1]) em fornecedor/fornecedoresConfirmados ou categoria/categoriasConfirmadas.",
+  "15. Valores: copie exatamente como vieram, com centavos e sinal (R$ 1.234,56; +12,3%; \"a mais\"/\"a menos\"). Não arredonde, não some, não subtraia, não escreva \"cerca de\". Cada valor da resposta é conferido com o que as ferramentas devolveram; se algum não conferir, a resposta é trocada pelo resumo do servidor.",
 ];
 
 /** As instruções do modelo. Curtas: cada token aqui é pago em toda pergunta. */
@@ -513,7 +672,7 @@ export function instrucoes(papel: IdentidadeAutenticada["papel"], agora: Date): 
       : "7. O perfil tem acesso a todas as consultas do catálogo.",
     "8. Português do Brasil, objetivo, até 5 frases curtas. Use os valores exatamente como vieram (R$ já formatado). Sem tabelas; listas curtas com • só para poucas festas. Não cite links: a tela mostra as fontes.",
     "9. Se a pergunta for ambígua, diga o critério que usou ou pergunte. Se não houver ferramenta para a pergunta, diga claramente que ainda não é possível consultar isso. Se a ferramenta devolver \"limitacao\", explique-a em uma frase e ofereça só o que vier em \"alternativasDisponiveis\"; nunca sugira outro formato de período ou de consulta.",
-    "10. Não repita dados pessoais além do primeiro nome que a ferramenta trouxer.",
+    "10. Clientes, sócios, fornecedores e categorias de despesa vêm como códigos entre colchetes ([C1], [S1], [F1], [K1]). Escreva o código exatamente assim, com os colchetes: a tela mostra o nome. Nunca troque o código por um nome nem tente adivinhá-lo. Não repita outros dados pessoais.",
     ...(papel === "ADMIN" ? REGRAS_DAS_DESPESAS : []),
   ].join("\n");
 }
