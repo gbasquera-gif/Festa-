@@ -518,6 +518,14 @@ model Reservation {
   /// que já entrou em vez de criar uma segunda festa no mesmo dia.
   referenciaExterna String? @unique
 
+  /// Chave do envio da venda manual — a tela gera uma por venda digitada — e
+  /// a impressão (hash) do pedido que ela gravou. O mesmo envio repetido
+  /// (clique duplo, rede que caiu) devolve esta reserva em vez de criar outra
+  /// festa; a mesma chave com qualquer dado diferente é recusada, em vez de a
+  /// correção sumir em silêncio.
+  chaveDeIdempotencia String? @unique
+  impressaoDoPedido   String?
+
   order       Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
   cancelledBy User?              @relation("ReservasCanceladas", fields: [cancelledById], references: [id], onDelete: SetNull)
   orcamento   Orcamento?

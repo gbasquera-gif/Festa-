@@ -56,11 +56,18 @@ export function AplicarCredito({
 
   const aplicar = useMutation({
     mutationFn: () =>
-      api<{ saldoDaCliente: number; faltaPagar: number; reservaConfirmada: boolean }>(
+      api<{ saldoDaCliente: number; faltaPagar: number; reservaConfirmada: boolean; repetido?: boolean }>(
         `/reservations/${reservaId}/creditos`,
         { method: "POST", body: JSON.stringify({ valor: Number(valor), chaveDeIdempotencia }) },
       ),
     onSuccess: (r) => {
+      // Envio repetido (a primeira resposta se perdeu): nada novo foi gravado.
+      if (r.repetido) {
+        toast.success("Este crédito já tinha sido aplicado. Nada novo foi gravado.");
+        aoAplicar();
+        aoFechar();
+        return;
+      }
       toast.success(
         `Crédito de ${formatarReais(Number(valor))} aplicado. ` +
           (r.faltaPagar > 0 ? `Falta pagar ${formatarReais(r.faltaPagar)}.` : "A festa está coberta.") +

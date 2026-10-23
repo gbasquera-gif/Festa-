@@ -96,6 +96,13 @@ export const manualReservationSchema = z.object({
   origem: z.enum(MANUAL_SALE_CHANNELS as unknown as [string, ...string[]]),
 
   /**
+   * Chave deste envio, gerada pela tela (uma por venda digitada). Repetido
+   * com os mesmos dados, devolve a reserva já criada; com dados diferentes, é
+   * recusado. Vale com ou sem crédito.
+   */
+  chaveDeIdempotencia: chaveDeIdempotenciaSchema.optional(),
+
+  /**
    * Crédito Festaê aplicado nesta festa, quando a operação escolheu aplicar.
    *
    * Nunca automático: só vem quando alguém apertou "Aplicar crédito nesta
@@ -107,7 +114,6 @@ export const manualReservationSchema = z.object({
     .object({
       clienteId: z.string().min(1),
       valor: z.coerce.number().positive("Informe o valor do crédito."),
-      chaveDeIdempotencia: chaveDeIdempotenciaSchema.optional(),
     })
     .optional(),
 });

@@ -17,14 +17,9 @@ import {
   type EditarReservaInput,
   type ManualReservationInput,
 } from "@festae/shared";
-import {
-  creditoAplicadoEmCentavos,
-  pagoEmCentavos,
-  repeticaoDaVenda,
-  travarPedido,
-  utilizarCredito,
-} from "../creditos/ledger";
+import { creditoAplicadoEmCentavos, pagoEmCentavos, travarPedido, utilizarCredito } from "../creditos/ledger";
 import { decidirFicha, type DecisaoDaFicha, type FichaCandidata } from "./ficha-da-cliente";
+import { impressaoDaVenda } from "./impressao-da-venda";
 import { AvailabilityService } from "../availability/availability.service";
 import { itensDoKitDoPedido } from "../availability/item-commitment";
 import {
@@ -131,16 +126,18 @@ export class ManualReservationService {
      * Só a aprovação manual da proposta passa estes. `clienteNaTransacao`
      * acha ou cria o cadastro da cliente dentro da transação, depois da
      * conferência de material: se a aprovação falhar, não sobra ficha órfã.
-     * A venda manual não passa e segue como sempre foi.
+     * A venda manual também decide a ficha dentro da transação, sem precisar
+     * deste parâmetro.
      */
     extra: { pagamentoInicial?: PagamentoInicial; naMesmaTransacao?: NaMesmaTransacao; clienteNaTransacao?: boolean } = {},
   ) {
-    // Venda com crédito repetida (clique duplo, rede que caiu): a chave já
-    // tem movimento gravado, e a resposta é a reserva que ele criou — sem
-    // criar outra festa nem gastar o crédito de novo.
-    const chaveDoCredito = input.credito?.chaveDeIdempotencia;
-    if (chaveDoCredito) {
-      const ja = await this.vendaJaRegistrada(chaveDoCredito, input);
+    // Venda repetida (clique duplo, rede que caiu): a chave do envio já tem
+    // reserva, e a resposta é ela — sem criar outra festa nem gastar crédito
+    // de novo. A mesma chave com outros dados é recusada.
+    const chave = input.chaveDeIdempotencia;
+    const impressao = chave ? impressaoDaVenda(input) : null;
+    if (chave && impressao) {
+      const ja = await this.vendaJaRegistrada(chave, impressao);
       if (ja) return ja;
     }
 
@@ -227,7 +224,9 @@ export class ManualReservationService {
       }
       return achado;
     };
-    const clienteDeFora = extra.clienteNaTransacao ? null : await resolverCliente(prisma);
+    // Na venda manual a ficha é decidida dentro da transação: se a venda não
+    // nascer (envio repetido, material, crédito), não sobra ficha nova órfã.
+    const clienteDeFora = extra.clienteNaTransacao || contexto.tipo === "VENDA_MANUAL" ? null : await resolverCliente(prisma);
 
     // O recebimento inicial não passa do total da venda: é sobrepagamento.
     if (extra.pagamentoInicial && toCentsInt(extra.pagamentoInicial.valor) > toCentsInt(total)) {
@@ -334,6 +333,8 @@ export class ManualReservationService {
           status: "CONFIRMED",
           confirmedAt: new Date(),
           notes: input.evento.observacoes || undefined,
+          chaveDeIdempotencia: chave,
+          impressaoDoPedido: impressao,
         },
       });
 
@@ -349,7 +350,6 @@ export class ManualReservationService {
           valor: input.credito.valor,
           createdById: criadoPorId,
           observacao: "Aplicado na venda",
-          chaveDeIdempotencia: chaveDoCredito,
         });
       }
 
@@ -357,14 +357,13 @@ export class ManualReservationService {
 
       return criada;
     }, { timeout: 15_000 }).catch(async (erro: unknown) => {
-      // Dois envios juntos com a mesma chave: o segundo espera a trava do
-      // crédito e, quando o primeiro grava, ou esbarra no índice único da
-      // chave ou já não acha saldo. Nos dois casos a transação inteira dele é
-      // desfeita (nenhuma festa a mais); se a chave já tem venda gravada, a
-      // resposta é ela — não um "saldo insuficiente" para uma venda que deu
-      // certo.
-      if (chaveDoCredito) {
-        const ja = await this.vendaJaRegistrada(chaveDoCredito, input);
+      // Dois envios juntos com a mesma chave: o segundo esbarra no índice
+      // único da reserva (ou, antes dele, na trava do crédito, já sem saldo).
+      // A transação inteira dele é desfeita — nenhuma festa nem ficha a mais —
+      // e, se a chave já tem venda gravada, a resposta é ela, não um erro
+      // para uma venda que deu certo.
+      if (chave && impressao) {
+        const ja = await this.vendaJaRegistrada(chave, impressao);
         if (ja) return ja;
       }
       throw erro;
@@ -616,31 +615,14 @@ export class ManualReservationService {
   }
 
   /**
-   * A reserva criada pela venda que gravou o crédito com esta chave — se o
-   * pedido for a mesma venda. Chave de outra venda é recusada.
+   * A reserva que este envio já criou — se o pedido for o mesmo. A mesma chave
+   * com outros dados é recusada: nada novo é gravado, e a venda antiga
+   * continua lá para ser conferida.
    */
-  private async vendaJaRegistrada(chave: string, input: ManualReservationInput) {
-    const movimento = await prisma.creditoClienteMovimento.findUnique({
-      where: { chaveDeIdempotencia: chave },
-      select: { tipo: true, userId: true, valor: true, reservationDestinoId: true },
-    });
-    if (!movimento?.reservationDestinoId || !input.credito) return null;
-    const gravada = await prisma.reservation.findUnique({
-      where: { id: movimento.reservationDestinoId },
-      include: { order: { select: { total: true } } },
-    });
-    if (!gravada) return null;
-    const { order, ...reserva } = gravada;
-    const repeticao = repeticaoDaVenda(
-      { movimento: { ...movimento, valor: Number(movimento.valor) }, dataDaFesta: reserva.eventDate, total: Number(order.total) },
-      {
-        clienteId: input.credito.clienteId,
-        valorDoCredito: input.credito.valor,
-        dataDaFesta: input.evento.data,
-        total: totalDaVendaManual(input.financeiro),
-      },
-    );
-    if (repeticao === "CHAVE_DE_OUTRA_OPERACAO") {
+  private async vendaJaRegistrada(chave: string, impressao: string) {
+    const reserva = await prisma.reservation.findUnique({ where: { chaveDeIdempotencia: chave } });
+    if (!reserva) return null;
+    if (reserva.impressaoDoPedido !== impressao) {
       throw new ConflictException({
         message:
           "Esta venda já tinha sido registrada, com outros dados. Nada novo foi gravado: confira a reserva em Reservas e corrija por lá.",
