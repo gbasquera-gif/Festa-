@@ -168,10 +168,9 @@ export class CreditosService {
     }
     if (decisao.tipo === "AMBIGUA") {
       const ids = decisao.candidatas.map((c) => c.id);
-      const [saldoDe, festas] = await Promise.all([
-        this.saldosPorCliente(ids),
-        prisma.event.groupBy({ by: ["userId"], where: { userId: { in: ids } }, _count: { _all: true } }),
-      ]);
+      // Sem o saldo de cada ficha: o suficiente para reconhecer a cliente. O
+      // crédito aparece depois que a operação escolhe a ficha.
+      const festas = await prisma.event.groupBy({ by: ["userId"], where: { userId: { in: ids } }, _count: { _all: true } });
       const festasDe = new Map(festas.map((g) => [g.userId, g._count._all]));
       return {
         situacao: "AMBIGUA" as const,
@@ -187,7 +186,6 @@ export class CreditosService {
           porTelefone: c.porTelefone,
           desde: c.criadaEm.toISOString(),
           festas: festasDe.get(c.id) ?? 0,
-          saldo: saldoDe.get(c.id) ?? 0,
         })),
       };
     }
@@ -220,9 +218,9 @@ export class CreditosService {
       select: { id: true, status: true, orderId: true, contractSeq: true, order: { select: { event: { select: { userId: true } } } } },
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
-    if (MORTAS.includes(reserva.status)) {
-      throw new BadRequestException("Reserva cancelada não recebe crédito.");
-    }
+    // Reserva cancelada é recusada sob a trava, depois de olhar a chave: um
+    // pedido que já tinha sido gravado devolve o que foi gravado, mesmo que a
+    // reserva tenha sido cancelada depois.
     const userId = reserva.order.event.userId;
 
     const resultado = await prisma.$transaction(
@@ -439,11 +437,10 @@ export class CreditosService {
     };
   }
 
-  /** Saldo por cliente (todas, ou só as `ids`). Só quem tem extrato. */
-  async saldosPorCliente(ids?: string[]): Promise<Map<string, number>> {
+  /** Saldo por cliente, para a lista de clientes. Só quem tem extrato. */
+  async saldosPorCliente(): Promise<Map<string, number>> {
     const grupos = await prisma.creditoClienteMovimento.groupBy({
       by: ["userId"],
-      ...(ids ? { where: { userId: { in: ids } } } : {}),
       _sum: { valor: true },
     });
     return new Map(grupos.map((g) => [g.userId, Number(g._sum.valor ?? 0)]));
@@ -456,10 +453,10 @@ export function mascararTelefone(telefone: string | null): string | null {
   return digitos.length >= 4 ? `••••${digitos.slice(-4)}` : null;
 }
 
-/** "an•••@exemplo.com": o começo e o domínio. */
+/** "an•••@exemplo.com": o começo e o domínio. Nome curto mostra uma letra só, nunca o nome inteiro. */
 export function mascararEmail(email: string | null): string | null {
   if (!email) return null;
   const [nome, dominio] = email.split("@");
   if (!dominio) return null;
-  return `${nome.slice(0, 2)}•••@${dominio}`;
+  return `${nome.slice(0, nome.length <= 3 ? 1 : 2)}•••@${dominio}`;
 }

@@ -39,15 +39,16 @@ const MES_DA_FESTA = new Date(Date.now() + 40 * 86_400_000).toISOString().slice(
 const MES_ATUAL = new Date().toISOString().slice(0, 7);
 const diaDoMes = (d) => `${MES_DA_FESTA}-${String(d).padStart(2, "0")}`;
 
-async function venda({ tel, nome = `Cliente M13 ${suf}-${seq}`, email, total, sinal = 0, pago = false, data = diaDoMes(20), credito, fichaId, token = ADMIN }) {
+async function venda({ tel, nome = `Cliente M13 ${suf}-${seq}`, email, total, sinal = 0, pago = false, data = diaDoMes(20), credito, fichaId, chave, obs, token = ADMIN }) {
   const corpo = {
     cliente: { nome, telefone: tel, ...(email ? { email } : {}), ...(fichaId ? { fichaId } : {}) },
-    evento: { data, tipo: "ANIVERSARIO" },
+    evento: { data, tipo: "ANIVERSARIO", ...(obs ? { observacoes: obs } : {}) },
     produtos: { itens: [] },
     logistica: { fulfillment: "PICKUP", assembly: false },
     financeiro: { valorProdutos: total, entrega: 0, montagem: 0, desconto: 0, sinal, formaPagamento: "PIX", statusPagamento: pago ? "PAID" : "PENDING" },
     origem: "WHATSAPP",
     ...(credito ? { credito } : {}),
+    ...(chave ? { chaveDeIdempotencia: chave } : {}),
   };
   return req("POST", "/reservations/manual", corpo, token);
 }
@@ -164,6 +165,14 @@ console.log("Estorno e permissões");
   const e2 = await req("POST", `/creditos/${porOps.json.movimentoId}/estorno`, { motivo: "Lançado por engano" });
   conferir("ADMIN estorna uma vez; a segunda é recusada", e1.status === 201 && e2.status === 409, { e1: e1.status, e2: e2.status });
   conferir("estorno devolve ao saldo", (await saldo(c.userId)) === 150);
+  // Pedido de crédito gravado, resposta perdida, festa cancelada depois: o reenvio devolve o que foi gravado.
+  const festa2 = (await venda({ tel: c.tel, total: 100 })).json.id;
+  const chave = randomUUID();
+  const primeiro = await aplicar(festa2, 40, chave);
+  await req("PATCH", `/reservations/${festa2}/cancelar`, { motivo: "Desistência" });
+  const reenvio = await aplicar(festa2, 40, chave);
+  conferir("reenvio depois do cancelamento: devolve o movimento gravado, não erro", primeiro.status === 201 && reenvio.status === 201 && reenvio.json.repetido === true && reenvio.json.movimentoId === primeiro.json.movimentoId, { primeiro: primeiro.json, reenvio: reenvio.json });
+  conferir("pedido novo em festa cancelada continua recusado", (await aplicar(festa2, 10)).status === 400);
 }
 
 console.log("Extrato imutável (gatilho no banco)");
@@ -178,14 +187,14 @@ console.log("Venda manual com crédito: transação e idempotência");
 {
   const c = await clienteComCredito(200);
   const chave = randomUUID();
-  const credito = { clienteId: c.userId, valor: 120, chaveDeIdempotencia: chave };
-  const v1 = await venda({ tel: c.tel, total: 350, credito });
-  const v2 = await venda({ tel: c.tel, total: 350, credito });
+  const credito = { clienteId: c.userId, valor: 120 };
+  const v1 = await venda({ tel: c.tel, total: 350, credito, chave });
+  const v2 = await venda({ tel: c.tel, total: 350, credito, chave });
   conferir("venda com crédito criada", v1.status === 201, v1.json);
   conferir("reenvio devolve a mesma reserva", v2.status === 201 && v2.json.id === v1.json.id, { v1: v1.json?.id, v2: v2.json?.id });
   const antes = (await t(`/__credito/reservas-da-cliente?userId=${c.userId}`)).total;
   const chave2 = randomUUID();
-  const juntos = await Promise.all([1, 2].map(() => venda({ tel: c.tel, total: 200, credito: { clienteId: c.userId, valor: 30, chaveDeIdempotencia: chave2 } })));
+  const juntos = await Promise.all([1, 2].map(() => venda({ tel: c.tel, total: 200, credito: { clienteId: c.userId, valor: 30 }, chave: chave2 })));
   const depois = (await t(`/__credito/reservas-da-cliente?userId=${c.userId}`)).total;
   conferir("dois envios simultâneos: uma festa a mais, não duas", depois - antes === 1 && juntos.every((x) => x.status === 201) && juntos[0].json.id === juntos[1].json.id, { antes, depois, s: juntos.map((x) => x.status) });
   conferir("crédito gasto uma vez em cada venda", (await saldo(c.userId)) === 50);
@@ -199,22 +208,45 @@ console.log("Venda manual: reenvio com saldo para uma só, e reenvio corrigido")
 {
   const c = await clienteComCredito(100);
   const chave = randomUUID();
-  const credito = { clienteId: c.userId, valor: 100, chaveDeIdempotencia: chave };
+  const credito = { clienteId: c.userId, valor: 100 };
   const antes = (await t(`/__credito/reservas-da-cliente?userId=${c.userId}`)).total;
-  const juntos = await Promise.all([1, 2, 3].map(() => venda({ tel: c.tel, total: 300, credito })));
+  const juntos = await Promise.all([1, 2, 3].map(() => venda({ tel: c.tel, total: 300, credito, chave })));
   const depois = (await t(`/__credito/reservas-da-cliente?userId=${c.userId}`)).total;
   conferir(
     "três envios simultâneos usando todo o saldo: todos recebem a mesma festa (nenhum 'saldo insuficiente')",
     juntos.every((x) => x.status === 201 && x.json.id === juntos[0].json.id),
     juntos.map((x) => [x.status, x.json?.codigo ?? x.json?.id]),
   );
-  conferir("uma festa a mais, um movimento só", depois - antes === 1 && (await t(`/__credito/movimentos?userId=${c.userId}`)).filter((m) => m.chave === chave).length === 1);
+  conferir("uma festa a mais, um uso de crédito só", depois - antes === 1 && (await t(`/__credito/movimentos?userId=${c.userId}`)).filter((m) => m.tipo === "CREDITO_UTILIZADO").length === 1);
   conferir("saldo zerado uma vez", (await saldo(c.userId)) === 0);
-  const outraData = await venda({ tel: c.tel, total: 300, credito, data: diaDoMes(22) });
+  const outraData = await venda({ tel: c.tel, total: 300, credito, chave, data: diaDoMes(22) });
   conferir("mesma chave com a data corrigida: recusada, sem gravar nada", outraData.status === 409 && outraData.json?.codigo === "CHAVE_DE_OUTRA_OPERACAO" && outraData.json?.reservaId === juntos[0].json.id, outraData.json);
-  const outroTotal = await venda({ tel: c.tel, total: 320, credito });
+  const outroTotal = await venda({ tel: c.tel, total: 320, credito, chave });
   conferir("mesma chave com o total corrigido: recusada", outroTotal.status === 409 && outroTotal.json?.codigo === "CHAVE_DE_OUTRA_OPERACAO", outroTotal.json);
   conferir("nenhuma festa nova depois das recusas", (await t(`/__credito/reservas-da-cliente?userId=${c.userId}`)).total === depois);
+}
+
+console.log("Venda manual sem crédito: reenvio e correção");
+{
+  const tel = telefone();
+  const chave = randomUUID();
+  const v1 = await venda({ tel, total: 150, chave });
+  const v2 = await venda({ tel, total: 150, chave });
+  conferir("sem crédito, o reenvio também devolve a mesma reserva", v1.status === 201 && v2.status === 201 && v2.json.id === v1.json.id, { v1: v1.json?.id, v2: v2.json?.id });
+  const userId = await clienteDoTelefone(tel);
+  const chave2 = randomUUID();
+  const juntos = await Promise.all([1, 2, 3].map(() => venda({ tel, total: 90, chave: chave2 })));
+  conferir(
+    "três envios simultâneos sem crédito: uma festa só",
+    juntos.every((x) => x.status === 201 && x.json.id === juntos[0].json.id) && (await t(`/__credito/reservas-da-cliente?userId=${userId}`)).total === 2,
+    juntos.map((x) => [x.status, x.json?.codigo ?? x.json?.id]),
+  );
+  const entradasAntes = await t("/__credito/entradas");
+  const comSinal = await venda({ tel, total: 150, chave, sinal: 100, pago: true });
+  conferir("reenvio com o sinal marcado como recebido: recusado, e nenhum pagamento gravado", comSinal.status === 409 && comSinal.json?.codigo === "CHAVE_DE_OUTRA_OPERACAO" && comSinal.json?.reservaId === v1.json.id && (await t("/__credito/entradas")).quantidade === entradasAntes.quantidade, comSinal.json);
+  const comObs = await venda({ tel, total: 150, chave, obs: "Entrega pelo portão lateral" });
+  conferir("reenvio com a observação corrigida: recusado", comObs.status === 409 && comObs.json?.codigo === "CHAVE_DE_OUTRA_OPERACAO", comObs.json);
+  conferir("nenhuma festa nova depois das recusas", (await t(`/__credito/reservas-da-cliente?userId=${userId}`)).total === 2);
 }
 
 console.log("Identificação da cliente");
@@ -225,6 +257,7 @@ console.log("Identificação da cliente");
   const consulta = await req("GET", `/creditos/por-contato?telefone=${tel}`);
   conferir("mesmo telefone em duas fichas: ambígua, com as opções", consulta.json?.situacao === "AMBIGUA" && consulta.json.candidatas.length === 2, consulta.json);
   const c0 = consulta.json.candidatas[0];
+  conferir("as opções não trazem o saldo de cada ficha", consulta.json.candidatas.every((c) => !("saldo" in c)), consulta.json.candidatas);
   conferir("contato mascarado nas opções", c0.telefone.startsWith("••••") && !c0.telefone.includes(tel.slice(0, 6)) && (c0.email === null || c0.email.includes("•••")), c0);
   const semEscolha = await venda({ tel, total: 100 });
   conferir("venda sem escolher a ficha: recusada com as opções", semEscolha.status === 409 && semEscolha.json?.codigo === "FICHA_AMBIGUA", semEscolha.json);
@@ -233,6 +266,8 @@ console.log("Identificação da cliente");
   conferir("escolha de ficha que não bate com o contato: recusada", invalida.status === 409 && invalida.json?.codigo === "FICHA_INVALIDA", invalida.json);
   const certa = await venda({ tel, total: 100, fichaId: filha });
   conferir("com a ficha escolhida: a venda vai para ela", certa.status === 201 && (await t(`/__credito/reservas-da-cliente?userId=${filha}`)).total === 1 && (await t(`/__credito/reservas-da-cliente?userId=${mae}`)).total === 0);
+  const escolhida = await req("GET", `/creditos/por-contato?telefone=${tel}&fichaId=${filha}`);
+  conferir("o crédito é perguntado só para a ficha escolhida", escolhida.json?.situacao === "UNICA" && escolhida.json.cliente.id === filha && typeof escolhida.json.saldo === "number", escolhida.json);
 
   const tel2 = telefone();
   const ana = (await t(`/__credito/ficha?nome=Ana%20${suf}&telefone=${tel2}&email=Ana.${suf}@Exemplo.invalid`)).id;

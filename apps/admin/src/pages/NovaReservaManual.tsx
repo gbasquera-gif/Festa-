@@ -107,21 +107,33 @@ export default function NovaReservaManual() {
   const [fichaEscolhida, setFichaEscolhida] = useState<string | null>(null);
   useEffect(() => setFichaEscolhida(null), [contato.telefone, contato.email]);
   const ambigua = consultaDaFicha?.situacao === "AMBIGUA";
-  const candidataEscolhida =
-    ambigua && fichaEscolhida && fichaEscolhida !== "nova"
-      ? (consultaDaFicha.candidatas.find((c) => c.id === fichaEscolhida) ?? null)
-      : null;
+  const escolheuExistente = ambigua && Boolean(fichaEscolhida) && fichaEscolhida !== "nova";
+  // A lista de opções não traz o crédito de cada ficha: ele é perguntado só
+  // para a ficha escolhida, pela mesma regra que vai valer ao salvar.
+  const { data: consultaDaEscolhida } = useQuery<ConsultaDaFicha>({
+    queryKey: ["credito-por-contato", contato.telefone, contato.email, fichaEscolhida],
+    queryFn: () =>
+      api(
+        `/creditos/por-contato?telefone=${encodeURIComponent(contato.telefone)}` +
+          (contato.email ? `&email=${encodeURIComponent(contato.email)}` : "") +
+          `&fichaId=${encodeURIComponent(fichaEscolhida ?? "")}`,
+      ),
+    enabled: escolheuExistente,
+  });
   const ficha =
     consultaDaFicha?.situacao === "UNICA" && consultaDaFicha.cliente
       ? { ...consultaDaFicha.cliente, saldo: consultaDaFicha.saldo }
-      : candidataEscolhida;
+      : escolheuExistente && consultaDaEscolhida?.situacao === "UNICA" && consultaDaEscolhida.cliente?.id === fichaEscolhida
+        ? { ...consultaDaEscolhida.cliente, saldo: consultaDaEscolhida.saldo }
+        : null;
   // Sem escolha, a venda não pode ser salva: decidir de quem ela é não cabe
   // ao sistema quando o contato bate com mais de uma pessoa.
   const fichaPendente = ambigua && !fichaEscolhida;
   const saldoDeCredito = ficha ? ficha.saldo : 0;
   const fichaComCredito = saldoDeCredito > 0 ? ficha : null;
-  // Uma chave por venda digitada: o mesmo envio repetido não cria outra festa
-  // nem gasta o crédito de novo.
+  // Uma chave por venda digitada, com ou sem crédito: o mesmo envio repetido
+  // não cria outra festa nem gasta o crédito de novo, e o reenvio com dados
+  // corrigidos é recusado pelo servidor em vez de sumir.
   const [chaveDaVenda] = useState(() => novaChave());
 
   /** Aplicar é escolha de quem vende: nunca automático, e pode ser parcial. */
@@ -204,9 +216,8 @@ export default function NovaReservaManual() {
             statusPagamento,
           },
           origem,
-          ...(creditoUsado > 0 && fichaComCredito
-            ? { credito: { clienteId: fichaComCredito.id, valor: creditoUsado, chaveDeIdempotencia: chaveDaVenda } }
-            : {}),
+          chaveDeIdempotencia: chaveDaVenda,
+          ...(creditoUsado > 0 && fichaComCredito ? { credito: { clienteId: fichaComCredito.id, valor: creditoUsado } } : {}),
         }),
       }),
     // Com o sinal já recebido, a cliente está esperando o comprovante do
@@ -516,7 +527,6 @@ type CandidataDeFicha = {
   porTelefone: boolean;
   desde: string;
   festas: number;
-  saldo: number;
 };
 
 type ConsultaDaFicha = {
@@ -551,7 +561,6 @@ function EscolhaDaFicha({
         c.telefone && `tel. ${c.telefone}`,
         c.email,
         `${c.festas} festa${c.festas === 1 ? "" : "s"}`,
-        c.saldo > 0 ? `crédito ${formatarReais(c.saldo)}` : null,
         `desde ${new Date(c.desde).toLocaleDateString("pt-BR", { timeZone: "UTC" })}`,
       ]
         .filter(Boolean)
