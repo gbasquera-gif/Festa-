@@ -628,7 +628,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
    * Pago reenvia.
    */
   async processarNotificacao(idNoProvedor: string): Promise<void> {
-    const noProvedor = await this.gateway.consultarPagamento(idNoProvedor);
+    // Consulta rápida: o Mercado Pago espera a resposta por 22 s. Se não der
+    // tempo, a exceção vira 500 e a entrega é refeita depois.
+    const noProvedor = await this.gateway.consultarPagamento(idNoProvedor, { rapida: true });
     if (!noProvedor?.referencia) return;
 
     const cobranca = await prisma.payment.findUnique({ where: { id: noProvedor.referencia } });
@@ -642,7 +644,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async tentativasDoCartao(cobranca: Payment, notificado: PagamentoNoProvedor) {
-    const todas = await this.gateway.buscarPorReferencia(cobranca.id);
+    const todas = await this.gateway.buscarPorReferencia(cobranca.id, { rapida: true });
     return todas.some((p) => p.id === notificado.id) ? todas : [...todas, notificado];
   }
 

@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   JANELA_DA_ASSINATURA_MS,
   NotificacoesProcessadas,
+  diagnosticoDaNotificacao,
   lerNotificacao,
+  lerTentativa,
   verificarAssinatura,
 } from "./webhook-signature";
 
@@ -27,7 +29,7 @@ describe("assinatura do webhook do Mercado Pago", () => {
   it("aceita uma notificação assinada com o segredo correto e dentro da janela", () => {
     expect(
       verificarAssinatura({ xSignature: assinar(SEGREDO), xRequestId: REQUEST_ID, dataId: DATA_ID }, emProducao),
-    ).toEqual({ valida: true, conferida: true });
+    ).toEqual({ valida: true, conferida: true, idadeS: 0 });
   });
 
   it("recusa assinatura feita com outro segredo", () => {
@@ -36,7 +38,7 @@ describe("assinatura do webhook do Mercado Pago", () => {
         { xSignature: assinar("segredo-errado"), xRequestId: REQUEST_ID, dataId: DATA_ID },
         emProducao,
       ),
-    ).toEqual({ valida: false, motivo: "NAO_CONFERE" });
+    ).toMatchObject({ valida: false, motivo: "NAO_CONFERE" });
   });
 
   it("recusa quando o id do pagamento foi trocado depois de assinar", () => {
@@ -47,13 +49,13 @@ describe("assinatura do webhook do Mercado Pago", () => {
         { xSignature: assinar(SEGREDO), xRequestId: REQUEST_ID, dataId: "9999999999" },
         emProducao,
       ),
-    ).toEqual({ valida: false, motivo: "NAO_CONFERE" });
+    ).toMatchObject({ valida: false, motivo: "NAO_CONFERE" });
   });
 
   it("recusa quando o id some depois de assinar (o manifesto muda)", () => {
     expect(
       verificarAssinatura({ xSignature: assinar(SEGREDO), xRequestId: REQUEST_ID }, emProducao),
-    ).toEqual({ valida: false, motivo: "NAO_CONFERE" });
+    ).toMatchObject({ valida: false, motivo: "NAO_CONFERE" });
   });
 
   it("recusa quando falta cabeçalho", () => {
@@ -105,7 +107,7 @@ describe("assinatura do webhook do Mercado Pago", () => {
           { xSignature: assinar(SEGREDO, DATA_ID, REQUEST_ID, ts), xRequestId: REQUEST_ID, dataId: DATA_ID },
           emProducao,
         ),
-      ).toEqual({ valida: false, motivo: "FORA_DA_JANELA" });
+      ).toEqual({ valida: false, motivo: "FORA_DA_JANELA", idadeS: 900 });
     });
 
     it("recusa horário no futuro além da janela", () => {
@@ -201,5 +203,61 @@ describe("notificações já processadas", () => {
     for (let i = 0; i < 1000; i++) registro.marcar(`r${i}`, AGORA);
     expect(registro.jaProcessada("r999", AGORA)).toBe(true);
     expect((registro as unknown as { vistas: Map<string, number> }).vistas.size).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("diagnóstico das notificações (P1)", () => {
+  it("informa a idade da assinatura, em segundos, para os dois lados", () => {
+    const ts = String(AGORA - 20 * 60_000);
+    expect(
+      verificarAssinatura(
+        { xSignature: assinar(SEGREDO, DATA_ID, REQUEST_ID, ts), xRequestId: REQUEST_ID, dataId: DATA_ID },
+        emProducao,
+      ),
+    ).toEqual({ valida: false, motivo: "FORA_DA_JANELA", idadeS: 1200 });
+    const futuro = String(AGORA + 30_000);
+    expect(
+      verificarAssinatura(
+        { xSignature: assinar(SEGREDO, DATA_ID, REQUEST_ID, futuro), xRequestId: REQUEST_ID, dataId: DATA_ID },
+        emProducao,
+      ),
+    ).toEqual({ valida: true, conferida: true, idadeS: -30 });
+  });
+
+  it("ts em segundos e em milissegundos dão a mesma idade", () => {
+    const emMs = String(AGORA - 60_000);
+    const emS = String(Math.floor((AGORA - 60_000) / 1000));
+    const idade = (ts: string) =>
+      verificarAssinatura(
+        { xSignature: assinar(SEGREDO, DATA_ID, REQUEST_ID, ts), xRequestId: REQUEST_ID, dataId: DATA_ID },
+        emProducao,
+      ).idadeS;
+    expect(idade(emMs)).toBe(60);
+    expect(idade(emS)).toBe(60);
+  });
+
+  it("lê a tentativa do x-retry só se for número", () => {
+    expect(lerTentativa("0")).toBe(0);
+    expect(lerTentativa(" 3 ")).toBe(3);
+    expect(lerTentativa(["2", "9"])).toBe(2);
+    for (const v of [undefined, "", "abc", "1; DROP", "-1", "123456"]) expect(lerTentativa(v)).toBeNull();
+  });
+
+  it("a linha de log tem só motivo, idade e tentativa", () => {
+    expect(diagnosticoDaNotificacao({ situacao: "recusada", motivo: "FORA_DA_JANELA", idadeS: 1200, tentativa: 2 })).toBe(
+      "Notificação do Mercado Pago recusada motivo=FORA_DA_JANELA idade=1200s tentativa=2",
+    );
+    expect(diagnosticoDaNotificacao({ situacao: "aceita", idadeS: 3, tentativa: 1 })).toBe(
+      "Notificação do Mercado Pago aceita idade=3s tentativa=1",
+    );
+    expect(diagnosticoDaNotificacao({ situacao: "recusada", motivo: "SEM_CABECALHO", tentativa: null })).toBe(
+      "Notificação do Mercado Pago recusada motivo=SEM_CABECALHO tentativa=?",
+    );
+  });
+
+  it("idade absurda vinda de quem chamou fica limitada", () => {
+    expect(diagnosticoDaNotificacao({ situacao: "recusada", motivo: "NAO_CONFERE", idadeS: -9e15, tentativa: 0 })).toContain(
+      "idade=-999999s",
+    );
   });
 });

@@ -22,6 +22,16 @@ export interface CheckoutResult {
 
 export type GatewayPaymentStatus = "PENDING" | "PAID" | "FAILED";
 
+export type OpcoesDaConsulta = {
+  /**
+   * Consulta de quem tem prazo para responder (o webhook: o Mercado Pago
+   * espera 22 s). Uma tentativa só, com tempo limite curto; a falha sobe como
+   * exceção e a entrega é refeita depois — pelo reenvio ou pela conferência
+   * periódica —, em vez de a resposta estourar o prazo.
+   */
+  rapida?: boolean;
+};
+
 // Ponto de extensão: qualquer gateway (Mercado Pago hoje; Stripe, Pagar.me
 // etc. amanhã, se fizer sentido) implementa esta interface. Nada que chama
 // PaymentsService precisa saber qual gateway está por trás.
@@ -35,14 +45,14 @@ export interface PaymentGateway {
    * que tem o valor dela (`decidirPeloProvedor` confere). `null` quando o
    * provedor não o encontra. Falha de comunicação é exceção.
    */
-  consultarPagamento(idNoProvedor: string): Promise<PagamentoNoProvedor | null>;
+  consultarPagamento(idNoProvedor: string, opcoes?: OpcoesDaConsulta): Promise<PagamentoNoProvedor | null>;
   /**
    * Os pagamentos do provedor que dizem ser desta cobrança.
    *
    * Para o cartão, cujo id no provedor só existe depois do pagamento. Mais de
    * um resultado é possível, e cada um passa pela mesma conferência.
    */
-  buscarPorReferencia(referencia: string): Promise<PagamentoNoProvedor[]>;
+  buscarPorReferencia(referencia: string, opcoes?: OpcoesDaConsulta): Promise<PagamentoNoProvedor[]>;
   /**
    * Encerra no provedor uma cobrança Pix que ainda não foi paga.
    *

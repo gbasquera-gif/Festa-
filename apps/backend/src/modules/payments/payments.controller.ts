@@ -16,7 +16,13 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { createCheckoutSchema } from "@festae/shared";
 import type { CreateCheckoutInput } from "@festae/shared";
 import { DIAS_MAXIMOS_DA_CONCILIACAO, PaymentsService, emProducao } from "./payments.service";
-import { NotificacoesProcessadas, lerNotificacao, verificarAssinatura } from "./webhook-signature";
+import {
+  NotificacoesProcessadas,
+  diagnosticoDaNotificacao,
+  lerNotificacao,
+  lerTentativa,
+  verificarAssinatura,
+} from "./webhook-signature";
 import { EventsService } from "../events/events.service";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -69,6 +75,10 @@ export class PaymentsController {
    *
    * Erro ao processar responde erro, e o Mercado Pago reenvia. O que mesmo
    * assim se perder, a conferência periódica dos Pix pendentes encontra.
+   *
+   * Recusas e reenvios aceitos vão para o log com motivo, idade da assinatura
+   * e tentativa (`x-retry`), e nada mais: é o que mostra, nos primeiros dias,
+   * se o Mercado Pago assina de novo cada reenvio.
    */
   @Post("payments/webhook/mercadopago")
   @HttpCode(200)
@@ -79,10 +89,12 @@ export class PaymentsController {
     @Query("data.id") dataIdDaUrl?: unknown,
     @Query("type") tipo?: unknown,
     @Query("topic") topico?: unknown,
+    @Headers("x-retry") xRetry?: string,
   ) {
+    const tentativa = lerTentativa(xRetry);
     const notificacao = lerNotificacao({ dataId: dataIdDaUrl, type: tipo, topic: topico }, payload);
     if (!notificacao.ok) {
-      this.logger.warn("Notificação do Mercado Pago recusada: o id da URL e o do corpo não conferem.");
+      this.logger.warn(diagnosticoDaNotificacao({ situacao: "recusada", motivo: "ID_DIVERGENTE", tentativa }));
       throw new BadRequestException("Notificação inválida.");
     }
 
@@ -97,9 +109,14 @@ export class PaymentsController {
           "MP_WEBHOOK_SECRET não configurado: notificações do Mercado Pago recusadas. A conferência periódica segue registrando os Pix pagos.",
         );
       } else {
-        this.logger.warn(`Notificação do Mercado Pago recusada: assinatura ${assinatura.motivo}.`);
+        this.logger.warn(
+          diagnosticoDaNotificacao({ situacao: "recusada", motivo: assinatura.motivo, idadeS: assinatura.idadeS, tentativa }),
+        );
       }
       throw new ForbiddenException("Assinatura inválida.");
+    }
+    if (tentativa !== null && tentativa > 0) {
+      this.logger.log(diagnosticoDaNotificacao({ situacao: "aceita", idadeS: assinatura.idadeS, tentativa }));
     }
     if (!assinatura.conferida) {
       this.logger.warn("MP_WEBHOOK_SECRET não configurado: assinatura não verificada (fora de produção).");

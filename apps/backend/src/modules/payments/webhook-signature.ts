@@ -29,9 +29,13 @@ export type MotivoDaRecusa =
   | "FORA_DA_JANELA";
 
 export type ResultadoDaAssinatura =
-  /** `conferida: false` só fora de produção, sem segredo configurado. */
-  | { valida: true; conferida: boolean }
-  | { valida: false; motivo: MotivoDaRecusa };
+  /**
+   * `conferida: false` só fora de produção, sem segredo configurado.
+   * `idadeS`: quantos segundos se passaram desde o `ts` da assinatura
+   * (negativo se o `ts` está no futuro), quando ele pôde ser lido.
+   */
+  | { valida: true; conferida: boolean; idadeS?: number }
+  | { valida: false; motivo: MotivoDaRecusa; idadeS?: number };
 
 /**
  * Confere se a notificação veio mesmo do Mercado Pago.
@@ -80,12 +84,14 @@ export function verificarAssinatura(
   const b = Buffer.from(recebida, "utf8");
   // Comparação de tempo constante: comparar hash com === vaza, pelo tempo
   // de resposta, quantos caracteres iniciais o atacante acertou.
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return { valida: false, motivo: "NAO_CONFERE" };
+  const idadeMs = contexto.agora - horarioEmMs(ts);
+  const idadeS = Math.trunc(idadeMs / 1000);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return { valida: false, motivo: "NAO_CONFERE", idadeS };
 
-  if (Math.abs(contexto.agora - horarioEmMs(ts)) > JANELA_DA_ASSINATURA_MS) {
-    return { valida: false, motivo: "FORA_DA_JANELA" };
+  if (Math.abs(idadeMs) > JANELA_DA_ASSINATURA_MS) {
+    return { valida: false, motivo: "FORA_DA_JANELA", idadeS };
   }
-  return { valida: true, conferida: true };
+  return { valida: true, conferida: true, idadeS };
 }
 
 /**
@@ -97,6 +103,35 @@ export function verificarAssinatura(
 function horarioEmMs(ts: string): number {
   const n = Number(ts);
   return n < 1e12 ? n * 1000 : n;
+}
+
+/**
+ * O número da tentativa de entrega, do cabeçalho `x-retry` (0 na primeira).
+ * Só dígitos; qualquer outra coisa vira `null`.
+ */
+export function lerTentativa(xRetry: unknown): number | null {
+  const valor = Array.isArray(xRetry) ? xRetry[0] : xRetry;
+  return typeof valor === "string" && /^\d{1,4}$/.test(valor.trim()) ? Number(valor.trim()) : null;
+}
+
+/**
+ * A linha de log de uma notificação, só com o que serve para diagnóstico:
+ * motivo, idade da assinatura e tentativa. Nunca a assinatura, o segredo,
+ * o id do pagamento ou valores — o formato é fechado aqui para isso não
+ * escapar por descuido em quem chama.
+ */
+export function diagnosticoDaNotificacao(d: {
+  situacao: "recusada" | "aceita";
+  motivo?: MotivoDaRecusa | "ID_DIVERGENTE";
+  idadeS?: number;
+  tentativa: number | null;
+}): string {
+  const partes = [`Notificação do Mercado Pago ${d.situacao}`];
+  if (d.motivo) partes.push(`motivo=${d.motivo}`);
+  // Limitado: o ts de uma assinatura que não confere vem de quem chamou.
+  if (d.idadeS !== undefined) partes.push(`idade=${Math.max(-999_999, Math.min(999_999, d.idadeS))}s`);
+  partes.push(`tentativa=${d.tentativa ?? "?"}`);
+  return partes.join(" ");
 }
 
 /**

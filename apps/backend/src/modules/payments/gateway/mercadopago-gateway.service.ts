@@ -5,10 +5,21 @@ import type {
   CheckoutResult,
   CreateCheckoutInput,
   GatewayPaymentStatus,
+  OpcoesDaConsulta,
   PaymentGateway,
   ResultadoDoCancelamentoNoProvedor,
 } from "./payment-gateway.interface";
 import type { PagamentoNoProvedor } from "../conferencia-do-provedor";
+
+/**
+ * A consulta rápida: 5 s e uma tentativa.
+ *
+ * `retries` é o total de tentativas no SDK (o padrão é 2) e não está no tipo
+ * público dele, embora o cliente HTTP o leia. Sem isto, um tempo esgotado era
+ * repetido: o erro de tempo não tem status HTTP, e o SDK só deixa de repetir
+ * erro com status abaixo de 500.
+ */
+export const CONSULTA_RAPIDA = { timeout: 5_000, retries: 1 } as const;
 
 /**
  * Integração com o Mercado Pago via Checkout Transparente.
@@ -103,10 +114,10 @@ export class MercadoPagoGateway implements PaymentGateway {
     return { externalReference: input.paymentId, checkoutUrl: result.init_point };
   }
 
-  async consultarPagamento(idNoProvedor: string): Promise<PagamentoNoProvedor | null> {
+  async consultarPagamento(idNoProvedor: string, opcoes?: OpcoesDaConsulta): Promise<PagamentoNoProvedor | null> {
     const pagamento = new MpPayment(this.client());
     try {
-      return paraConferencia(await pagamento.get({ id: idNoProvedor }));
+      return paraConferencia(await pagamento.get({ id: idNoProvedor, requestOptions: opcoesDoSdk(opcoes) }));
     } catch (error) {
       // 404 é resposta, não falha: o id não existe na conta da Festaê.
       if ((error as { status?: number })?.status === 404) return null;
@@ -114,9 +125,12 @@ export class MercadoPagoGateway implements PaymentGateway {
     }
   }
 
-  async buscarPorReferencia(referencia: string): Promise<PagamentoNoProvedor[]> {
+  async buscarPorReferencia(referencia: string, opcoes?: OpcoesDaConsulta): Promise<PagamentoNoProvedor[]> {
     const pagamento = new MpPayment(this.client());
-    const busca = await pagamento.search({ options: { external_reference: referencia, limit: 10 } });
+    const busca = await pagamento.search({
+      options: { external_reference: referencia, limit: 10 },
+      requestOptions: opcoesDoSdk(opcoes),
+    });
     return (busca.results ?? []).map(paraConferencia);
   }
 
@@ -159,6 +173,12 @@ export class MercadoPagoGateway implements PaymentGateway {
     return "NAO_CONFIRMADO";
   }
 
+}
+
+type OpcoesDoSdk = Parameters<MpPayment["get"]>[0]["requestOptions"];
+
+function opcoesDoSdk(opcoes?: OpcoesDaConsulta): OpcoesDoSdk {
+  return opcoes?.rapida ? (CONSULTA_RAPIDA as OpcoesDoSdk) : undefined;
 }
 
 /** Os campos que a conferência usa, do jeito que o SDK os devolve. */
