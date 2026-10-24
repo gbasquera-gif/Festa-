@@ -1,7 +1,8 @@
-// Homologação da VOZ com a OpenAI real: a pergunta é sintetizada pela voz do
-// servidor (/assistente/fala), enviada como áudio (/assistente/audio) e
-// conferida — transcrição de datas e valores e período interpretado.
-// Só faz sentido no modo OPENAI com ASSISTENTE_IA_SAIDA_DE_VOZ=openai.
+// Homologação da VOZ com a OpenAI real: a pergunta é sintetizada direto na
+// OpenAI, enviada como áudio (/assistente/audio, o caminho do microfone do
+// painel) e conferida — transcrição de datas e valores e período interpretado.
+// Só as quatro frases fixas abaixo vão para a síntese, sem nenhum dado do banco.
+// A voz do servidor (/assistente/fala) segue bloqueada: ela leria nomes reais.
 import { createRequire } from "node:module";
 
 const BASE = process.env.BASE ?? "http://localhost:3340";
@@ -12,10 +13,27 @@ const { diaEmChapeco } = createRequire(import.meta.url)("@festae/shared");
 const ano = diaEmChapeco(new Date()).slice(0, 4);
 const auth = { authorization: `Bearer ${ADMIN}` };
 
-const estado = await (await fetch(`${API}/assistente/estado`, { headers: auth })).json();
-if (estado.modo !== "OPENAI" || estado.saidaDeVoz !== "OPENAI") {
-  console.log(`Pulado: precisa do modo OPENAI com voz do servidor (está ${estado.modo}/${estado.saidaDeVoz}).`);
+if (!process.env.OPENAI_API_KEY) {
+  console.log("Pulado: OPENAI_API_KEY não está no ambiente.");
   process.exit(2);
+}
+const estado = await (await fetch(`${API}/assistente/estado`, { headers: auth })).json();
+if (estado.modo !== "OPENAI") {
+  console.log(`Pulado: precisa do modo OPENAI (está ${estado.modo}).`);
+  process.exit(2);
+}
+
+// Mesmos parâmetros da voz do servidor. Em erro, só o código HTTP: nunca a chave.
+async function sintetizar(texto) {
+  const modelo = process.env.ASSISTENTE_IA_MODELO_VOZ?.trim() || "gpt-4o-mini-tts";
+  const corpo = { model: modelo, voice: process.env.ASSISTENTE_IA_VOZ?.trim() || "coral", input: texto, response_format: "mp3" };
+  if (modelo.startsWith("gpt-")) corpo.instructions = "Fale em português do Brasil, com tom cordial, claro e objetivo.";
+  const r = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify(corpo),
+  });
+  return r.status === 200 ? Buffer.from(await r.arrayBuffer()) : r.status;
 }
 
 const FRASES = [
@@ -31,12 +49,11 @@ const escolhidas = FRASES.filter((_, i) => !SO || SO.has(`V${i + 1}`));
 
 let ok = 0;
 for (const f of escolhidas) {
-  const sintese = await fetch(`${API}/assistente/fala`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ texto: f.fala }) });
-  if (sintese.status !== 200) {
-    console.log(`✗ "${f.fala}" — voz do servidor falhou (${sintese.status})`);
+  const audio = await sintetizar(f.fala);
+  if (typeof audio === "number") {
+    console.log(`✗ "${f.fala}" — síntese do áudio de teste falhou (HTTP ${audio})`);
     continue;
   }
-  const audio = Buffer.from(await sintese.arrayBuffer());
   const desde = (await (await fetch(`${BASE}/__homologacao/consultas?desde=0`)).json()).length;
   const form = new FormData();
   form.append("audio", new Blob([audio], { type: "audio/mpeg" }), "pergunta.mp3");

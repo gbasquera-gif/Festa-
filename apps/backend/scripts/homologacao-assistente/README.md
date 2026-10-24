@@ -31,7 +31,7 @@ Para cada resposta, compara com as rotas que as telas do painel usam:
 
    A pergunta e as respostas do modelo podem repetir o nome que a pessoa digitou. O que vem do banco, não. O verificador tem autoteste: um vazamento de exemplo precisa ser pego antes da rodada começar.
 
-`voz.mjs` fala 4 perguntas com a voz do servidor, manda o áudio para a transcrição e confere datas, valores e o período interpretado.
+`voz.mjs` sintetiza 4 perguntas fixas direto na OpenAI (sem nenhum dado do banco), manda o áudio pelo caminho do microfone do painel (`/assistente/audio`: transcrição e resposta) e confere datas, valores e o período interpretado. A voz do servidor continua bloqueada, porque leria nomes reais.
 
 ## Pré-requisitos
 
