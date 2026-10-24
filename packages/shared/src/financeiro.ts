@@ -420,7 +420,7 @@ export function reembolsosEntre(contratos: readonly ContratoApurado[], de: strin
 }
 
 /** O dia em que uma saída foi paga — a mesma leitura de `mesDaDespesa`. */
-function diaDaDespesa(pagoEm: Date): string {
+export function diaDaDespesa(pagoEm: Date): string {
   return pagoEm.toISOString().slice(0, 10);
 }
 

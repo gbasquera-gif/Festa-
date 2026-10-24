@@ -2,6 +2,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { diaEmChapeco } from "@festae/shared";
 import type { CanalDoAssistente, PapelAutorizado } from "./contrato";
 import type { ConfiguracaoDoAssistente } from "./configuracao";
+import { Pseudonimos } from "./pseudonimos";
 
 /**
  * Limites de uso, conversas e métricas.
@@ -156,8 +157,10 @@ export function arredondar(usd: number): number {
 // ---------------------------------------------------------------- conversas
 
 export type ConsultaFeita = { nome: string; args: Record<string, unknown>; periodo?: { rotulo: string; de: string; ate: string } };
+/** `resposta` é a do jeito que a IA a vê: com os códigos de fornecedor, não os nomes. */
 export type Turno = { pergunta: string; resposta: string; consultas: ConsultaFeita[] };
-export type Conversa = { id: string; usuarioId: string; turnos: Turno[]; atualizadaEm: number };
+/** Presa ao usuário E ao perfil: perfil trocado no meio do caminho abre outra conversa, sem o histórico nem os códigos do perfil anterior. */
+export type Conversa = { id: string; usuarioId: string; papel?: PapelAutorizado; turnos: Turno[]; atualizadaEm: number; pseudonimos: Pseudonimos };
 
 /**
  * O fio da conversa, para a pergunta seguinte entender "e quantas delas?".
@@ -179,11 +182,11 @@ export class ConversasEmMemoria {
     setInterval(() => this.varrer(Date.now()), 60_000).unref();
   }
 
-  abrir(usuarioId: string, conversaId: string | undefined, agora = Date.now()): Conversa {
+  abrir(usuarioId: string, conversaId: string | undefined, agora = Date.now(), papel?: PapelAutorizado): Conversa {
     this.varrer(agora);
     const existente = conversaId ? this.conversas.get(conversaId) : undefined;
-    if (existente && existente.usuarioId === usuarioId) return existente;
-    const nova: Conversa = { id: randomUUID(), usuarioId, turnos: [], atualizadaEm: agora };
+    if (existente && existente.usuarioId === usuarioId && existente.papel === papel) return existente;
+    const nova: Conversa = { id: randomUUID(), usuarioId, papel, turnos: [], atualizadaEm: agora, pseudonimos: new Pseudonimos() };
     this.conversas.set(nova.id, nova);
     return nova;
   }
@@ -224,6 +227,13 @@ export type EventoDeUso = {
   caracteresFalados?: number;
   latenciaMs: number;
   falha?: string;
+  /**
+   * Conferência dos valores da resposta (perguntas com consultarDespesas):
+   * CONFERIDA — todos os valores vieram das ferramentas;
+   * SUBSTITUIDA — havia valor sem origem e a resposta virou o resumo do servidor;
+   * BLOQUEADA — havia valor sem origem e não havia resumo: a resposta diz que não pôde conferir.
+   */
+  conferencia?: "CONFERIDA" | "SUBSTITUIDA" | "BLOQUEADA";
 };
 
 /**
@@ -288,6 +298,7 @@ export class MetricasDoAssistente {
         custoEstimadoUsd: Number(custo.toFixed(6)),
         latenciaMs: e.latenciaMs,
         falha: e.falha,
+        conferencia: e.conferencia,
       }),
     );
     return custo;

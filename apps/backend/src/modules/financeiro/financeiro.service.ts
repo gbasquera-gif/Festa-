@@ -52,7 +52,11 @@ import {
   type EditarGastoInput,
   type GastoApurado,
   type NaturezaDoGasto,
+  type DespesaParaAnalise,
 } from "@festae/shared";
+
+/** Teto de lançamentos lidos por análise da Malu: muito acima do volume da Festaê, abaixo de um susto. */
+export const LIMITE_DE_LINHAS_DA_ANALISE = 20_000;
 
 /**
  * Os números do negócio, apurados a partir do que a operação já registra.
@@ -604,6 +608,40 @@ export class FinanceiroService {
     const agora = new Date();
     const linhas = reservas.map((reserva) => montarLinha(reserva, agora));
     return { apuradoEm: agora.toISOString(), ...detalhar(linhas, tipo, escopo, mes) };
+  }
+
+  /**
+   * Os lançamentos de despesa para as análises da Malu: só leitura e só os
+   * campos que a análise usa — observação e forma de pagamento não saem.
+   *
+   * Pagos com data de pagamento no intervalo (o mesmo dia que o Resultado
+   * Operacional lê) e todos os ainda a pagar, que a análise filtra pelo
+   * vencimento. Acima do teto de linhas, recusa em vez de ler tudo.
+   */
+  async despesasParaAnalise(de: string, ate: string): Promise<DespesaParaAnalise[]> {
+    const fim = new Date(`${ate}T00:00:00.000Z`);
+    fim.setUTCDate(fim.getUTCDate() + 1);
+    const linhas = await prisma.gasto.findMany({
+      where: { OR: [{ pagoEm: { gte: new Date(`${de}T00:00:00.000Z`), lt: fim } }, { pagoEm: null }] },
+      select: { id: true, descricao: true, natureza: true, valor: true, pagoEm: true, venceEm: true, categoria: true, fornecedor: true },
+      take: LIMITE_DE_LINHAS_DA_ANALISE + 1,
+    });
+    if (linhas.length > LIMITE_DE_LINHAS_DA_ANALISE) {
+      throw new BadRequestException(`Período com mais de ${LIMITE_DE_LINHAS_DA_ANALISE} lançamentos: escolha um período menor.`);
+    }
+    return linhas.map((l) => ({ ...l, natureza: l.natureza as NaturezaDoGasto, valor: paraNumero(l.valor) }));
+  }
+
+  /** Os nomes de fornecedor e de categoria como estão gravados, com quantos lançamentos cada um tem. */
+  async nomesNasDespesas(): Promise<{ fornecedores: { nome: string; lancamentos: number }[]; categorias: { nome: string; lancamentos: number }[] }> {
+    const [fornecedores, categorias] = await Promise.all([
+      prisma.gasto.groupBy({ by: ["fornecedor"], where: { fornecedor: { not: null } }, _count: { _all: true } }),
+      prisma.gasto.groupBy({ by: ["categoria"], where: { categoria: { not: null } }, _count: { _all: true } }),
+    ]);
+    return {
+      fornecedores: fornecedores.map((f) => ({ nome: f.fornecedor!, lancamentos: f._count._all })),
+      categorias: categorias.map((c) => ({ nome: c.categoria!, lancamentos: c._count._all })),
+    };
   }
 
   listarGastos(filtro: FiltroDeGastos = {}) {

@@ -52,6 +52,8 @@ function servicos(): ServicosDoAssistente {
         meta: null,
       })) as never,
       despesasPorNatureza: vi.fn(async (mes: string) => ({ mes, consumo: 120, custeio: 80, total: 200, acervo: 50, proLabore: 1500 })),
+      despesasParaAnalise: vi.fn(async () => []),
+      nomesNasDespesas: vi.fn(async () => ({ fornecedores: [], categorias: [] })),
     },
     retiradas: {
       listar: vi.fn(async (filtro: { ano?: string; mes?: string }) => {
@@ -110,6 +112,7 @@ describe("catálogo", () => {
     expect(ops).not.toContain("consultarCarteiraFutura");
     expect(ops).not.toContain("consultarUsoDoAcervo");
     expect(ops).not.toContain("consultarRetiradasDosSocios");
+    expect(ops).not.toContain("consultarDespesas");
     expect(ops).toEqual(
       expect.arrayContaining(["consultarFestas", "consultarPendencias", "consultarPropostas", "consultarDisponibilidadeDeProduto", "solicitarOperacao"]),
     );
@@ -130,8 +133,8 @@ describe("responder", () => {
     expect((resultado as { conteudo: string }).conteudo).toContain("R$ 1.234,50");
   });
 
-  it("retiradas dos sócios: o mês pela mesma apuração da aba, só o primeiro nome, e o critério que separa do Resultado", async () => {
-    const roteiro = new Roteiro([chama("consultarRetiradasDosSocios", { periodo: "outubro" }), diz("ok")]);
+  it("retiradas dos sócios: o mês pela mesma apuração da aba, sócio como código (a tela mostra o primeiro nome), e o critério que separa do Resultado", async () => {
+    const roteiro = new Roteiro([chama("consultarRetiradasDosSocios", { periodo: "outubro" }), diz("[S1] retirou R$ 1.500,00 e [S2], R$ 300,00.")]);
     const { nucleo, servicos: s } = montar(roteiro);
     const r = await nucleo.responder(entrada("Quanto os sócios retiraram em outubro?"));
     expect(s.retiradas.listar).toHaveBeenCalledWith({ ano: "2026", mes: "10", incluirEstornadas: "nao" }, AGORA);
@@ -139,14 +142,34 @@ describe("responder", () => {
     const dados = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo);
     expect(dados.noPeriodo).toEqual({ total: "R$ 1.800,00", distribuicaoDeLucros: "R$ 1.800,00", devolucaoDeAporte: "R$ 0,00" });
     expect(dados.anoInteiro.total).toBe("R$ 6.050,00");
-    // Quem não retirou no mês fica de fora; quem retirou vai só com o primeiro nome.
+    // Quem não retirou no mês fica de fora; quem retirou vai como código: nenhum nome de sócio sai.
     expect(dados.porSocio).toEqual([
-      { socio: "Ana", noPeriodo: "R$ 1.500,00", noAno: "R$ 3.000,00" },
-      { socio: "Bruno", noPeriodo: "R$ 300,00", noAno: "R$ 3.050,00" },
+      { socio: "[S1]", noPeriodo: "R$ 1.500,00", noAno: "R$ 3.000,00" },
+      { socio: "[S2]", noPeriodo: "R$ 300,00", noAno: "R$ 3.050,00" },
     ]);
-    expect(JSON.stringify(dados)).not.toContain("Silva");
+    expect(JSON.stringify(dados)).not.toMatch(/Ana|Bruno|Silva/);
+    // A pessoa vê o primeiro nome.
+    expect(r.texto).toBe("Ana retirou R$ 1.500,00 e Bruno, R$ 300,00.");
     expect(dados.criterios.join(" ")).toContain("não muda faturamento, despesas nem o Resultado Operacional");
     expect(dados.criterios.join(" ")).toContain("Pró-labore NÃO é retirada: é despesa");
+  });
+
+  it("clientes vão para a IA como código; pessoas diferentes com o mesmo primeiro nome, códigos diferentes; a tela mostra o primeiro nome", async () => {
+    const festa = (numero: number, nome: string, telefone: string, festaEm: string) => ({
+      linha: {
+        comercial: { numero, vigente: true, festaEm, status: "CONFIRMED", situacao: "PARCIAL", valor: 1000, saldo: 500, cliente: { nome, telefone, email: null } },
+        apurado: {},
+      },
+      canceladaEm: null,
+    });
+    const roteiro = new Roteiro([chama("consultarFestas", { periodo: "novembro" }), diz("Em novembro: [C1] (14/11) e [C2] (20/11), as duas com sinal recebido.")]);
+    const { nucleo, servicos: s } = montar(roteiro);
+    s.carteira = vi.fn(async () => [festa(41, "Ana Souza Teste", "00000000001", "2026-11-14"), festa(42, "Ana Lima Teste", "00000000002", "2026-11-20")]) as never;
+    const r = await nucleo.responder(entrada("Quais festas temos em novembro?"));
+    const conteudo = (roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo;
+    expect(JSON.parse(conteudo).lista.map((x: { cliente: string }) => x.cliente)).toEqual(["[C1]", "[C2]"]);
+    expect(JSON.stringify(roteiro.recebidas)).not.toMatch(/Ana|Souza|Lima|0000000000/);
+    expect(r.texto).toBe("Em novembro: Ana (14/11) e Ana (20/11), as duas com sinal recebido.");
   });
 
   it("retiradas dos sócios: ano, histórico sem período e semana recusada com as alternativas reais", async () => {
@@ -156,7 +179,7 @@ describe("responder", () => {
       chama("consultarRetiradasDosSocios", {}),
       diz("ok"),
       chama("consultarRetiradasDosSocios", {}),
-      diz("ok"),
+      diz("[S1], [S2], [S3], [S4], [S5], [S6] e [S7]."),
       chama("consultarRetiradasDosSocios", { periodo: "esta semana" }),
       diz("ok"),
     ]);
@@ -165,7 +188,7 @@ describe("responder", () => {
     expect(s.retiradas.listar).toHaveBeenLastCalledWith({ ano: "2026", mes: "todos", incluirEstornadas: "nao" }, AGORA);
     const doAno = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo);
     expect(doAno.noPeriodo.total).toBe("R$ 6.050,00");
-    expect(doAno.porSocio.map((x: { socio: string }) => x.socio)).toEqual(["Ana", "Bruno"]);
+    expect(doAno.porSocio.map((x: { socio: string }) => x.socio)).toEqual(["[S1]", "[S2]"]);
 
     await nucleo.responder(entrada("E no total, desde o começo?"));
     const historico = JSON.parse((roteiro.recebidas[3].mensagens.at(-1) as { conteudo: string }).conteudo);
@@ -187,18 +210,13 @@ describe("responder", () => {
       ],
       itens: [],
     } as never);
-    await nucleo.responder(entrada("E por sócio?"));
+    const porSocio = await nucleo.responder(entrada("E por sócio?"));
     const homonimos = JSON.parse((roteiro.recebidas[5].mensagens.at(-1) as { conteudo: string }).conteudo);
-    expect(homonimos.porSocio.map((x: { socio: string }) => x.socio)).toEqual([
-      "Ana S.",
-      "Ana P.",
-      "Bia Souza",
-      "Bia Santos",
-      "Caio Lima (1)",
-      "Caio Lima (2)",
-      "Davi",
-    ]);
-    expect(JSON.stringify(homonimos)).not.toMatch(/Silva|Costa|Rocha|Neto/);
+    // Cada pessoa, um código; nenhum nome sai.
+    expect(homonimos.porSocio.map((x: { socio: string }) => x.socio)).toEqual(["[S1]", "[S2]", "[S3]", "[S4]", "[S5]", "[S6]", "[S7]"]);
+    expect(JSON.stringify(homonimos)).not.toMatch(/Ana|Bia|Caio|Davi|Silva|Costa|Rocha|Neto/);
+    // Na tela, o mínimo que distingue um do outro — nunca duas pessoas com o mesmo rótulo.
+    expect(porSocio.texto).toBe("Ana S., Ana P., Bia Souza, Bia Santos, Caio Lima (1), Caio Lima (2) e Davi.");
 
     const r = await nucleo.responder(entrada("E nesta semana?"));
     const semana = JSON.parse((roteiro.recebidas[7].mensagens.at(-1) as { conteudo: string }).conteudo);
@@ -464,6 +482,36 @@ describe("responder", () => {
     expect(outro.id).not.toBe(r1.conversaId);
   });
 
+  it("conversa presa também ao perfil: o mesmo usuário com outro perfil abre conversa nova, sem histórico nem códigos", () => {
+    const conversas = new ConversasEmMemoria(lerConfiguracao({} as NodeJS.ProcessEnv).limites);
+    const admin = conversas.abrir("u1", undefined, Date.now(), "ADMIN");
+    admin.pseudonimos.codigo("Ana", { tipo: "S", chave: "s1" });
+    conversas.registrar(admin, { pergunta: "Retiradas?", resposta: "[S1] retirou.", consultas: [] });
+    expect(conversas.abrir("u1", admin.id, Date.now(), "ADMIN").id).toBe(admin.id);
+    const ops = conversas.abrir("u1", admin.id, Date.now(), "OPS");
+    expect(ops.id).not.toBe(admin.id);
+    expect(ops.turnos).toEqual([]);
+    expect(ops.pseudonimos.revelar("[S1]")).toBe("[S1]");
+  });
+
+  it("chave da cliente: mesmo telefone em formatos diferentes é a mesma pessoa; homônimas sem contato não se juntam", async () => {
+    const festa = (numero: number, nome: string, telefone: string | null) => ({
+      linha: { comercial: { numero, vigente: true, festaEm: "2026-11-14", status: "CONFIRMED", situacao: "PARCIAL", valor: 1000, saldo: 500, cliente: { nome, telefone, email: null } }, apurado: {} },
+      canceladaEm: null,
+    });
+    const roteiro = new Roteiro([chama("consultarFestas", { periodo: "novembro" }), diz("ok")]);
+    const { nucleo, servicos: s } = montar(roteiro);
+    s.carteira = vi.fn(async () => [
+      festa(1, "Bia Teste", "(00) 00000-0001"),
+      festa(2, "Bia Teste", "0000000-0001"),
+      festa(3, "Ana Teste", null),
+      festa(4, "Ana Teste", null),
+    ]) as never;
+    await nucleo.responder(entrada("Festas de novembro?"));
+    const lista = JSON.parse((roteiro.recebidas[1].mensagens.at(-1) as { conteudo: string }).conteudo).lista;
+    expect(lista.map((x: { cliente: string }) => x.cliente)).toEqual(["[C1]", "[C1]", "[C2]", "[C3]"]);
+  });
+
   it("conversa vencida sai da memória em até 31 minutos, mesmo sem nova pergunta", () => {
     vi.useFakeTimers();
     try {
@@ -523,6 +571,23 @@ describe("provedor simulado (demonstração)", () => {
     expect(await decide("Quantas reservas estão prontas para retirada?")).not.toMatchObject({ nome: "consultarRetiradasDosSocios" });
     expect(await decide("Cadastre um produto novo")).toMatchObject({ nome: "solicitarOperacao" });
     expect(await decide("Quantas festas temos?")).toMatchObject({ texto: expect.stringContaining("Para qual período") });
+  });
+
+  it("despesas com recorte vão para consultarDespesas; sem recorte, continuam no Financeiro", async () => {
+    expect(await decide("Quanto gastamos com Meta Ads em outubro?")).toEqual({ nome: "consultarDespesas", args: { fornecedor: "meta ads", periodo: "outubro" } });
+    expect(await decide("Qual foi o total de gastos de consumo no mês de outubro com Meta ADS até agora?")).toEqual({
+      nome: "consultarDespesas",
+      args: { fornecedor: "meta ads", natureza: ["CONSUMO"], periodo: "outubro ate agora" },
+    });
+    expect(await decide("Quais foram os 2 maiores fornecedores de custeio este mês?")).toEqual({
+      nome: "consultarDespesas",
+      args: { natureza: ["CUSTEIO"], agruparPor: "FORNECEDOR", limite: 2, periodo: "este mes" },
+    });
+    expect(await decide("Gastamos mais com Meta Ads em setembro ou outubro?")).toMatchObject({ nome: "consultarDespesas", args: { periodo: "outubro", compararCom: "setembro" } });
+    expect(await decide("Quanto gastamos de consumo de 01/01/2021 a 31/12/2021?")).toMatchObject({ nome: "consultarDespesas", args: { periodo: "de 01/01/2021 a 31/12/2021" } });
+    // Natureza depois de "com" não é fornecedor; quanto cliente gastou não é despesa.
+    expect(await decide("Quanto gastamos com consumo e com custeio em outubro?")).toEqual({ nome: "consultarFinanceiro", args: { periodo: "outubro" } });
+    expect(await decide("Qual cliente mais gastou com a Festaê este ano?")).toMatchObject({ texto: expect.stringContaining("Ainda não sei") });
   });
 
   it("redige a resposta de retiradas com os números da ferramenta", async () => {
