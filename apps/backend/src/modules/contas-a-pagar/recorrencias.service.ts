@@ -73,11 +73,16 @@ export class RecorrenciasService {
       orderBy: [{ situacao: "asc" }, { descricao: "asc" }],
     });
     const ids = recorrencias.map((r) => r.id);
-    const [emAberto, pagas, pendentes] = await Promise.all([
+    const [emAberto, pagas, pendentes, mesesPagos] = await Promise.all([
       prisma.gasto.groupBy({ by: ["recorrenciaId"], where: { recorrenciaId: { in: ids }, pagoEm: null }, _count: true }),
       prisma.gasto.groupBy({ by: ["recorrenciaId"], where: { recorrenciaId: { in: ids }, pagoEm: { not: null } }, _count: true }),
       prisma.conferenciaDeRecorrencia.groupBy({ by: ["recorrenciaId"], where: { recorrenciaId: { in: ids }, situacao: "PENDENTE" }, _count: true }),
+      prisma.gasto.findMany({
+        where: { recorrenciaId: { in: ids }, pagoEm: { not: null }, venceEm: { gte: instanteDoDia(hoje) } },
+        select: { recorrenciaId: true, competencia: true },
+      }),
     ]);
+    const pagosAFrente = new Set(mesesPagos.map((g) => `${g.recorrenciaId}:${g.competencia}`));
     const contar = (lista: { recorrenciaId: string | null; _count: number }[]) =>
       new Map(lista.map((l) => [l.recorrenciaId, l._count]));
     const abertos = contar(emAberto);
@@ -88,7 +93,11 @@ export class RecorrenciasService {
       recorrencias.map(async (r) => ({
         ...r,
         valorPrevisto: Number(r.valorPrevisto),
-        proximoVencimento: r.situacao === "ATIVA" ? (proximosVencimentos(regraDe(r), hoje, 1)[0]?.vencimento ?? null) : null,
+        // O próximo que ainda falta pagar: mês pago adiantado não é "próximo".
+        proximoVencimento:
+          r.situacao === "ATIVA"
+            ? (proximosVencimentos(regraDe(r), hoje, 13).find((o) => !pagosAFrente.has(`${r.id}:${o.competencia}`))?.vencimento ?? null)
+            : null,
         contasEmAberto: abertos.get(r.id) ?? 0,
         contasPagas: pagos.get(r.id) ?? 0,
         conferenciasPendentes: conferir.get(r.id) ?? 0,

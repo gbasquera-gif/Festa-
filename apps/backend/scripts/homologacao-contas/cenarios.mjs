@@ -350,6 +350,8 @@ console.log("G. Pagamento e indicadores financeiros antes e depois (API e relóg
     conferir("saldo disponível cai o valor pago", d((x) => x.saldo.saldo) === -1234.56, [antes.saldo.saldo, depoisDoPagamento.saldo.saldo]);
   }
   const pago = (await req("GET", `/financeiro/contas-a-pagar?mes=${vence.slice(0, 7)}`)).json.contas.find((c) => c.id === conta.id);
+  const aposPagar = (await req("GET", "/financeiro/recorrencias")).json.find((r) => r.id === nova.json.recorrencia.id);
+  conferir("o 'próximo vencimento' da despesa pula o mês já pago", aposPagar.proximoVencimento !== null && aposPagar.proximoVencimento > vence, aposPagar.proximoVencimento);
   conferir("a conta paga mostra dia, valor real e forma", pago?.situacao === "PAGA" && pago.pagoEm === hoje && pago.valor === 1234.56 && pago.formaDePagamento === "Pix", pago);
 
   // Naturezas preservadas.
