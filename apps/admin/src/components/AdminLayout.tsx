@@ -22,6 +22,7 @@ import { BotaoVoltar } from "@/components/BotaoVoltar";
 import { useAuth } from "@/lib/auth";
 import { AssistenteFestae } from "@/components/assistente/AssistenteFestae";
 import { BotaoDeValores } from "@/lib/privacidade";
+import { SinoDeAvisos } from "@/components/contas/SinoDeAvisos";
 
 /**
  * A navegação, em grupos.
@@ -292,6 +293,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           compacto={recolhida}
           className={`mb-3 h-10 w-full ${recolhida ? "justify-center" : "px-3"}`}
         />
+        {/* Avisos de contas a pagar: financeiro, então só ADMIN. */}
+        {user?.role === "ADMIN" && (
+          <SinoDeAvisos compacto={recolhida} className={`mb-3 h-10 w-full ${recolhida ? "justify-center" : "px-3"}`} />
+        )}
         <Navegacao recolhida={recolhida} />
         <Rodape recolhida={recolhida} />
       </aside>
@@ -341,6 +346,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             {tituloDaRota(location)}
           </span>
           <BotaoDeValores compacto className="ml-auto size-11 justify-center" />
+          {user?.role === "ADMIN" && <SinoDeAvisos compacto className="size-11 justify-center" />}
           <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} className="h-auto w-[104px] pr-1" />
         </header>
 

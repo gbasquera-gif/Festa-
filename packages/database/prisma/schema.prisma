@@ -989,11 +989,28 @@ model Gasto {
   /// lançado daqui pra frente.
   referenciaExterna String? @unique
 
+  /// A despesa recorrente de que este lançamento é um mês — gerado por ela,
+  /// ou lançado à mão e vinculado na conferência. Nulo no lançamento avulso.
+  ///
+  /// Não muda o que o lançamento é: continua um gasto como qualquer outro,
+  /// a pagar enquanto `pagoEm` for nulo. A recorrência é só a origem.
+  recorrenciaId String?
+  /// O mês da recorrência a que este lançamento corresponde, "AAAA-MM".
+  competencia   String?
+
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
+  recorrencia  DespesaRecorrente?   @relation(fields: [recorrenciaId], references: [id], onDelete: Restrict)
+  notificacoes NotificacaoDeConta[]
+
+  /// Um lançamento por recorrência e mês: a geração pode rodar quantas vezes
+  /// for, que o segundo lançamento do mesmo mês é recusado pelo banco.
+  /// Lançamentos avulsos (os dois nulos) convivem no índice.
+  @@unique([recorrenciaId, competencia])
   @@index([pagoEm])
   @@index([natureza])
+  @@index([venceEm])
   @@map("gastos")
 }
 
@@ -1586,4 +1603,305 @@ model RecuperacaoDeAcesso {
 
   @@unique([usuarioId, pedido])
   @@map("recuperacoes_de_acesso")
+}
+
+// ---------- Contas a pagar e despesas recorrentes ----------
+
+enum TipoDeValorRecorrente {
+  /// O mesmo todo mês (aluguel, assinatura).
+  FIXO
+  /// Estimativa; o valor real é o informado no pagamento (energia).
+  VARIAVEL
+}
+
+enum AjusteDeDiaInexistente {
+  ULTIMO_DIA_DO_MES
+  PRIMEIRO_DIA_DO_MES_SEGUINTE
+}
+
+enum AjusteDeDiaNaoUtil {
+  MANTER
+  ANTECIPAR
+  ADIAR
+}
+
+enum SituacaoDaRecorrencia {
+  ATIVA
+  PAUSADA
+  ENCERRADA
+}
+
+/// Uma despesa que se repete: a regra que gera, a cada mês, um `Gasto` a
+/// pagar.
+///
+/// Não guarda dinheiro nem totais. O que existe de financeiro são os gastos
+/// que ela gerou, e só os pagos (com `pagoEm`) entram em caixa, DRE e saldo
+/// — a obrigação prevista não é saída.
+///
+/// Dias do calendário ficam como texto "AAAA-MM-DD": são datas de boleto,
+/// não instantes, e nenhum fuso deve movê-las.
+model DespesaRecorrente {
+  id         String          @id @default(cuid())
+  descricao  String
+  natureza   NaturezaDoGasto
+  categoria  String?
+  fornecedor String?
+
+  tipoDeValor   TipoDeValorRecorrente
+  valorPrevisto Decimal               @db.Decimal(10, 2)
+
+  /// 1 (mensal), 2, 3, 6 ou 12. Fixo depois do cadastro.
+  intervaloMeses  Int     @default(1)
+  /// 1 a 31.
+  diaDoVencimento Int
+  /// Desde quando a conta existe. Fixo depois do cadastro.
+  dataInicial     String
+  /// Até quando, inclusive. Nulo enquanto não tem fim.
+  dataFinal       String?
+
+  ajusteDiaInexistente AjusteDeDiaInexistente @default(ULTIMO_DIA_DO_MES)
+  ajusteDiaNaoUtil     AjusteDeDiaNaoUtil     @default(MANTER)
+
+  situacao SituacaoDaRecorrencia @default(ATIVA)
+
+  /// A geração automática só cria meses que vencem deste dia em diante: o
+  /// dia do cadastro, ou da retomada. O que vem antes só por ação explícita.
+  geracaoDesde String
+
+  pausadaEm   DateTime?
+  encerradaEm DateTime?
+
+  /// O mesmo envio do formulário não cadastra duas vezes.
+  chaveDeIdempotencia String? @unique
+
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  gastos       Gasto[]
+  conferencias ConferenciaDeRecorrencia[]
+  eventos      EventoDaRecorrencia[]
+
+  @@index([situacao])
+  @@map("despesas_recorrentes")
+}
+
+enum TipoDeEventoDaRecorrencia {
+  CRIADA
+  EDITADA
+  PAUSADA
+  RETOMADA
+  ENCERRADA
+  RETROATIVAS_GERADAS
+}
+
+/// O histórico de uma despesa recorrente: o que mudou, quando, por quem, e
+/// quantas contas em aberto a mudança alcançou.
+model EventoDaRecorrencia {
+  id             String                    @id @default(cuid())
+  recorrenciaId  String
+  tipo           TipoDeEventoDaRecorrencia
+  antes          Json?
+  depois         Json?
+  contasAfetadas Int                       @default(0)
+  usuarioId      String?
+  criadoEm       DateTime                  @default(now())
+
+  recorrencia DespesaRecorrente @relation(fields: [recorrenciaId], references: [id], onDelete: Cascade)
+
+  @@index([recorrenciaId, criadoEm])
+  @@map("eventos_da_recorrencia")
+}
+
+enum SituacaoDaConferencia {
+  /// Há lançamento manual parecido; esperando alguém decidir.
+  PENDENTE
+  /// Era a mesma conta: o lançamento manual virou o mês da recorrência.
+  VINCULADA
+  /// Eram contas diferentes: o mês foi gerado.
+  GERADA
+  /// Este mês não terá conta da recorrência.
+  DISPENSADA
+}
+
+/// A decisão sobre um mês da recorrência que a geração não pôde tomar
+/// sozinha — ou que alguém tomou ao apagar o mês.
+///
+/// Uma por recorrência e mês. Enquanto existir, a geração automática não
+/// cria aquele mês por conta própria: pendente espera a decisão; dispensada
+/// fica dispensada (apagar uma conta gerada não a faz renascer amanhã).
+model ConferenciaDeRecorrencia {
+  id             String                @id @default(cuid())
+  recorrenciaId  String
+  competencia    String
+  vencimento     String
+  situacao       SituacaoDaConferencia @default(PENDENTE)
+  /// Ids dos lançamentos manuais que pareceram a mesma conta.
+  candidatos     String[]
+  /// O lançamento vinculado ou gerado, quando houver.
+  gastoId        String?
+  resolvidaEm    DateTime?
+  resolvidaPorId String?
+  criadoEm       DateTime              @default(now())
+
+  recorrencia DespesaRecorrente @relation(fields: [recorrenciaId], references: [id], onDelete: Cascade)
+
+  @@unique([recorrenciaId, competencia])
+  @@index([situacao])
+  @@map("conferencias_de_recorrencia")
+}
+
+// ---------- Avisos de contas a pagar ----------
+
+/// Como e quando avisar. Uma linha só (id "padrao"); sem ela, valem os
+/// padrões: todos os marcos, 8h, e-mail desligado, sem valor no e-mail.
+model ConfiguracaoDeAvisos {
+  id                  String   @id @default("padrao")
+  /// Dias até o vencimento em que avisar: 7, 3, 1, 0 e -1.
+  marcos              Int[]
+  /// Hora de Brasília a partir da qual os avisos do dia saem.
+  horaDoAviso         Int      @default(8)
+  emailAtivo          Boolean  @default(false)
+  mostrarValorNoEmail Boolean  @default(false)
+  atualizadoPorId     String?
+  atualizadoEm        DateTime @updatedAt
+
+  @@map("configuracao_de_avisos")
+}
+
+/// Quem recebe os avisos por e-mail. Só recebe depois de confirmar o
+/// endereço com o código de 6 dígitos enviado para ele.
+model DestinatarioDeAviso {
+  id    String  @id @default(cuid())
+  email String  @unique
+  nome  String?
+  ativo Boolean @default(true)
+
+  verificadoEm       DateTime?
+  /// Só o hash do código; o código em si nunca é guardado.
+  codigoHash         String?
+  codigoExpiraEm     DateTime?
+  codigoEnviadoEm    DateTime?
+  tentativasDoCodigo Int       @default(0)
+
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  envios EnvioDeAviso[]
+
+  @@map("destinatarios_de_aviso")
+}
+
+/// Um aviso na central do painel: "a conta X vence em 3 dias".
+///
+/// A chave (conta, vencimento, marco) é única: o mesmo aviso não nasce duas
+/// vezes, nem com a tarefa rodando de novo, nem depois de uma falha.
+model NotificacaoDeConta {
+  id         String    @id @default(cuid())
+  chave      String    @unique
+  gastoId    String?
+  marco      Int
+  vencimento String
+  /// O dia (em Brasília) em que o aviso foi dado.
+  dia        String
+  titulo     String
+  lidaEm     DateTime?
+  criadaEm   DateTime  @default(now())
+
+  gasto Gasto?        @relation(fields: [gastoId], references: [id], onDelete: SetNull)
+  itens ItemDoEnvio[]
+
+  @@index([lidaEm])
+  @@index([criadaEm])
+  @@map("notificacoes_de_conta")
+}
+
+enum SituacaoDoEnvio {
+  PENDENTE
+  /// Em envio agora (com prazo: travado até `travadoAte`).
+  ENVIANDO
+  ENVIADO
+  /// Falhou; tenta de novo em `proximaTentativaEm`.
+  FALHOU
+  /// Falhou em todas as tentativas.
+  ESGOTADO
+  /// Não precisa mais: as contas foram pagas, ou o aviso perdeu a hora.
+  CANCELADO
+  /// Ficou em envio sem resposta por tempo demais para repetir com
+  /// segurança. Pode ter saído ou não; não é reenviado sozinho.
+  INCERTO
+}
+
+/// Um e-mail de aviso para um destinatário (a caixa de saída).
+///
+/// O id vai como chave de idempotência ao provedor: repetir o envio depois
+/// de uma queda não manda o e-mail duas vezes.
+model EnvioDeAviso {
+  id                  String          @id @default(cuid())
+  destinatarioId      String
+  dia                 String
+  situacao            SituacaoDoEnvio @default(PENDENTE)
+  tentativas          Int             @default(0)
+  proximaTentativaEm  DateTime        @default(now())
+  travadoAte          DateTime?
+  primeiraTentativaEm DateTime?
+  enviadoEm           DateTime?
+  idNoProvedor        String?
+  /// O e-mail como saiu na primeira tentativa. Retentativa manda este mesmo
+  /// texto, com a mesma chave: o provedor reconhece e não entrega de novo.
+  assunto             String?
+  corpo               String?
+  /// Motivo curto da última falha (código HTTP/tipo). Nunca o conteúdo.
+  ultimoErro          String?
+  criadoEm            DateTime        @default(now())
+  atualizadoEm        DateTime        @updatedAt
+
+  destinatario DestinatarioDeAviso @relation(fields: [destinatarioId], references: [id], onDelete: Restrict)
+  itens        ItemDoEnvio[]
+
+  @@index([situacao, proximaTentativaEm])
+  @@map("envios_de_aviso")
+}
+
+/// Que avisos foram (ou vão) num e-mail. Um aviso vai a cada destinatário
+/// uma vez só: (aviso, destinatário) é único.
+model ItemDoEnvio {
+  envioId        String
+  notificacaoId  String
+  destinatarioId String
+
+  envio       EnvioDeAviso       @relation(fields: [envioId], references: [id], onDelete: Cascade)
+  notificacao NotificacaoDeConta @relation(fields: [notificacaoId], references: [id], onDelete: Cascade)
+
+  @@id([envioId, notificacaoId])
+  @@unique([notificacaoId, destinatarioId])
+  @@map("itens_do_envio")
+}
+
+// ---------- Tarefas agendadas ----------
+
+/// Cada execução de uma tarefa agendada, com contagens (nunca valores nem
+/// nomes) e o erro, se houve.
+model ExecucaoDeTarefa {
+  id          String    @id @default(cuid())
+  tarefa      String
+  iniciadaEm  DateTime  @default(now())
+  terminadaEm DateTime?
+  sucesso     Boolean?
+  resumo      Json?
+  erro        String?
+
+  @@index([tarefa, iniciadaEm])
+  @@map("execucoes_de_tarefa")
+}
+
+/// Trava para a mesma tarefa não rodar duas vezes ao mesmo tempo. Vence
+/// sozinha em `ate`, para uma execução que morreu não travar as próximas.
+model TravaDeTarefa {
+  nome String   @id
+  dono String
+  ate  DateTime
+
+  @@map("travas_de_tarefa")
 }

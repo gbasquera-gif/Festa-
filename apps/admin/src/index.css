@@ -454,6 +454,8 @@
 }
 .fin-situacao.quitado { color: var(--fin-good); background: rgba(46, 155, 107, 0.1); }
 .fin-situacao.vencido { color: #fff; background: var(--fin-coral); }
+/* Vence hoje: ainda não venceu, mas é o dia. Coral sem o fundo cheio do vencido. */
+.fin-situacao.hoje { color: var(--fin-coral-dark); background: rgba(224, 90, 58, 0.12); }
 .fin-situacao.parcial { color: var(--fin-gold-dark); background: var(--fin-gold-pale); }
 .fin-situacao.aguardando { color: var(--fin-muted); background: rgba(122, 114, 102, 0.1); }
 .fin-situacao.cancelado { color: var(--fin-muted); background: transparent; border: 1px dashed var(--fin-line); }

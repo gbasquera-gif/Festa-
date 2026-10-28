@@ -1,6 +1,7 @@
 import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { ConciliacaoMercadoPago } from "@/components/financeiro/ConciliacaoMercadoPago";
 import { Contratos } from "@/components/financeiro/Contratos";
+import { ContasAPagar } from "@/components/contas/ContasAPagar";
 import { Evolucao } from "@/components/financeiro/Evolucao";
 import { Gastos } from "@/components/financeiro/Gastos";
 import { Retiradas } from "@/components/financeiro/Retiradas";
@@ -28,6 +29,7 @@ const ABAS = [
   { chave: "evolucao", rotulo: "Evolução" },
   { chave: "contratos", rotulo: "Vendas / Contratos" },
   { chave: "despesas", rotulo: "Despesas" },
+  { chave: "contas", rotulo: "Contas a pagar" },
   { chave: "aportes", rotulo: "Aportes / Acervo" },
   { chave: "retiradas", rotulo: "Retiradas dos sócios" },
   { chave: "mercadopago", rotulo: "Mercado Pago" },
@@ -152,6 +154,7 @@ export default function Financeiro() {
           explicacao="O que some na festa, o que mantém a empresa de pé e o pró-labore dos sócios. Consumo e custeio entram no Resultado Operacional do mês em que foram pagos; pró-labore é despesa com os sócios e fica fora dele, por definição."
         />
       )}
+      {aba === "contas" && <ContasAPagar mes={mes} />}
       {aba === "aportes" && (
         <Gastos
           mes={mesFiltrado}

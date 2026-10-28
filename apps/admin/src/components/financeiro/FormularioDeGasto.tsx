@@ -24,6 +24,9 @@ export interface Gasto {
   vidaUtilMeses: number | null;
   valorResidual: string | number | null;
   referenciaExterna: string | null;
+  /** Mês de uma despesa recorrente, quando é. */
+  recorrenciaId?: string | null;
+  competencia?: string | null;
 }
 
 /** Data ISO do backend -> "AAAA-MM-DD" para o input de data. */

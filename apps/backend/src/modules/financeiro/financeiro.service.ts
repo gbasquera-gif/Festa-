@@ -196,8 +196,19 @@ export class FinanceiroService {
     return paraNumero(soma._sum.valor ?? 0);
   }
 
+  /**
+   * Os gastos que a apuração lê.
+   *
+   * Fica de fora a conta de despesa recorrente ainda não paga: é obrigação
+   * prevista, não saída. As funções de mês já exigem `pagoEm`, mas os
+   * acumulados (acervo acumulado, gasto acumulado) somam tudo — sem este
+   * filtro, cadastrar a recorrência de uma compra parcelada mudaria o acervo
+   * da Visão Geral antes de qualquer pagamento. Paga, a conta entra como
+   * qualquer outra. Lançamentos avulsos seguem exatamente como antes.
+   */
   private async gastos(): Promise<GastoApurado[]> {
     const linhas = await prisma.gasto.findMany({
+      where: { OR: [{ recorrenciaId: null }, { pagoEm: { not: null } }] },
       select: { valor: true, natureza: true, pagoEm: true },
     });
     return linhas.map((linha) => ({
@@ -618,7 +629,7 @@ export class FinanceiroService {
    * diz "pró-labore" é lançamento no lugar errado: como custeio, entraria no
    * Resultado Operacional, que por definição não inclui pró-labore.
    */
-  private conferirNaturezaDoProLabore(natureza: NaturezaDoGasto, descricao: string, categoria?: string | null) {
+  conferirNaturezaDoProLabore(natureza: NaturezaDoGasto, descricao: string, categoria?: string | null) {
     if (natureza !== "PRO_LABORE" && pareceProLabore(descricao, categoria)) {
       throw new BadRequestException(
         "Pró-labore tem natureza própria: escolha a natureza “Pró-labore”. Como consumo ou custeio ele entraria no Resultado Operacional, que não inclui pró-labore.",
@@ -646,10 +657,34 @@ export class FinanceiroService {
     return prisma.gasto.update({ where: { id }, data: dados });
   }
 
+  /**
+   * Apagar um mês de despesa recorrente deixa registrado que aquele mês foi
+   * dispensado: sem isso, a geração automática o criaria de novo no dia
+   * seguinte.
+   */
   async apagarGasto(id: string) {
     const existe = await prisma.gasto.findUnique({ where: { id } });
     if (!existe) throw new NotFoundException("Lançamento não encontrado.");
-    await prisma.gasto.delete({ where: { id } });
+    const { recorrenciaId, competencia, venceEm } = existe;
+    if (recorrenciaId && competencia) {
+      await prisma.$transaction([
+        prisma.gasto.delete({ where: { id } }),
+        prisma.conferenciaDeRecorrencia.upsert({
+          where: { recorrenciaId_competencia: { recorrenciaId, competencia } },
+          create: {
+            recorrenciaId,
+            competencia,
+            vencimento: venceEm ? venceEm.toISOString().slice(0, 10) : `${competencia}-01`,
+            situacao: "DISPENSADA",
+            candidatos: [],
+            resolvidaEm: new Date(),
+          },
+          update: { situacao: "DISPENSADA", gastoId: null, resolvidaEm: new Date() },
+        }),
+      ]);
+    } else {
+      await prisma.gasto.delete({ where: { id } });
+    }
     return { apagado: true };
   }
 

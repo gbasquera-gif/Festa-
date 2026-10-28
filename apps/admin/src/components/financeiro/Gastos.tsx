@@ -176,6 +176,15 @@ export function Gastos({
                         migrado
                       </span>
                     )}
+                    {g.recorrenciaId && (
+                      <span
+                        className="ml-2 fin-rotulo"
+                        style={{ fontSize: "0.58rem", opacity: 0.75 }}
+                        title={`Mês ${g.competencia ?? ""} de uma despesa recorrente`}
+                      >
+                        recorrente
+                      </span>
+                    )}
                     {g.categoria && (
                       <span className="block text-xs" style={{ color: "var(--fin-muted)" }}>
                         {g.categoria}
@@ -241,6 +250,9 @@ export function Gastos({
               {aExcluir?.descricao} — {aExcluir ? brl(Number(aExcluir.valor)) : ""}.
               {aExcluir?.referenciaExterna
                 ? " Este lançamento veio da migração do painel antigo; excluí-lo faz os totais deixarem de bater com o histórico."
+                : ""}
+              {aExcluir?.recorrenciaId
+                ? " É um mês de despesa recorrente: ele fica dispensado e não será gerado de novo."
                 : ""}{" "}
               Os indicadores do mês mudam na hora, e isso não tem desfazer.
             </AlertDialogDescription>
