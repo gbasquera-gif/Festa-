@@ -37,6 +37,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { AcoesDaReserva } from "@/components/AcoesDaReserva";
+import { ReferenciaVisualDaFesta } from "@/components/ReferenciaVisualDaFesta";
 import { TratarPagamentoTardio } from "@/components/credito/CancelarReserva";
 import { RegistrarReembolsoRealizado } from "@/components/credito/RegistrarReembolso";
 import { useAuth } from "@/lib/auth";
@@ -638,6 +639,7 @@ function Detail({ row }: { row: ReservationRow }) {
             {row.notes}
           </p>
         )}
+        <ReferenciaVisualDaFesta reservaId={row.id} />
       </section>
 
       <section className="min-w-0 space-y-3">

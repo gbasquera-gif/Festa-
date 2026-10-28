@@ -42,6 +42,7 @@ import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-com
 import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
 import { decidirCorrecao } from "./correcao-de-pagamento";
+import { referenciaVisual, type ReferenciaVisual } from "./referencia-visual";
 
 /**
  * O que a tela de reservas precisa saber do crédito Festaê e do cancelamento.
@@ -273,6 +274,24 @@ export class ReservationsService {
       saldosDeCredito(),
     ]);
     return reservas.map((r) => comCredito(r, saldos));
+  }
+
+  /**
+   * As fotos da decoração que a cliente viu na proposta que virou esta
+   * reserva (só a opção aprovada). Lido quando o detalhe é aberto: a lista
+   * não carrega isto. Reserva sem proposta devolve a lista vazia.
+   */
+  async referenciaVisual(id: string): Promise<ReferenciaVisual> {
+    const proposta = await prisma.orcamento.findUnique({
+      where: { reservationId: id },
+      select: {
+        imagens: true,
+        opcaoAprovadaId: true,
+        opcaoAprovadaNome: true,
+        opcoes: { orderBy: { ordem: "asc" }, select: { id: true, nome: true, imagens: true } },
+      },
+    });
+    return referenciaVisual(proposta);
   }
 
   /**

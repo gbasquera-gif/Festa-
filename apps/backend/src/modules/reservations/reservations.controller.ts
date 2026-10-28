@@ -79,6 +79,14 @@ export class ReservationsController {
     return this.reservationsService.findOneAdmin(id);
   }
 
+  /** As fotos da decoração que a cliente viu na proposta; vazio quando a reserva não veio de uma. */
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "OPS")
+  @Get("reservations/:id/referencia-visual")
+  referenciaVisual(@Param("id") id: string) {
+    return this.reservationsService.referenciaVisual(id);
+  }
+
   /**
    * Venda fechada por fora da loja, registrada no painel.
    *
