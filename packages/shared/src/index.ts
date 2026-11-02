@@ -164,8 +164,12 @@ export type {
 export {
   FESTAE_CONTATO,
   montarComprovante,
+  notaDosTermosDeUso,
+  numeroDaReserva,
   numeroDoContrato,
 } from "./comprovante";
+export { EMPRESA, enderecoCompleto, enderecoCurto, enderecoEmPartes, qualificacaoDoEndereco, rotuloDoEndereco } from "./empresa";
+export type { DadosDaEmpresa, EnderecoPostal, SedeCadastral } from "./empresa";
 export type {
   DadosDoComprovante,
   EntradaDoComprovante,

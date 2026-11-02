@@ -426,7 +426,7 @@ export function BlocosDaReserva({
                 checked={valor.fulfillment === "PICKUP"}
                 onChange={() => mudar({ fulfillment: "PICKUP" })}
               />
-              Retirada na sede
+              Retirada na Festaê
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input

@@ -5,6 +5,7 @@ import {
   DELIVERY_CITY,
   DELIVERY_FEE,
   DELIVERY_UNAVAILABLE_MESSAGE,
+  enderecoCurto,
   isDeliveryCity,
   type Fulfillment,
 } from "@festae/shared";
@@ -105,7 +106,7 @@ export function OpcoesLogistica({
         <Option
           icon="business-outline"
           title="Retirar na Festaê"
-          description="Você busca na nossa sede, no horário combinado."
+          description={`Você busca no nosso espaço, na ${enderecoCurto()}, no horário combinado.`}
           price="Grátis"
           selected={!entregando}
           onPress={() => escolherLogistica("PICKUP")}

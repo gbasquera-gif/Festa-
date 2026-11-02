@@ -3,12 +3,12 @@ import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   PAYMENT_METHOD_LABEL,
-  FESTAE_CONTATO,
-  TERMS_VERSION,
+  enderecoCurto,
   estaQuitado,
   eventTypeLabel,
   montarComprovante,
-  numeroDoContrato,
+  notaDosTermosDeUso,
+  numeroDaReserva,
   type DadosDoComprovante,
   type PaymentMethod,
 } from "@festae/shared";
@@ -48,7 +48,14 @@ interface ReservaCompleta {
       neighborhood: string | null;
       city: string;
       theme: { name: string } | null;
-      user: { name: string; phone: string | null; email: string | null };
+      user: {
+        name: string;
+        phone: string | null;
+        email: string | null;
+        /** A versão dos Termos que a cliente aceitou ao criar a conta; nula para quem nunca aceitou pelo app. */
+        termsAcceptedVersion?: string | null;
+        termsAcceptedAt?: string | null;
+      };
     };
   };
 }
@@ -84,7 +91,7 @@ export default function Comprovante() {
   useEffect(() => {
     if (!reserva) return;
     const anterior = document.title;
-    document.title = `Comprovante ${numeroDoContrato(reserva.contractSeq)} — ${reserva.order.event.user.name}`;
+    document.title = `Comprovante ${numeroDaReserva(reserva.contractSeq)} — ${reserva.order.event.user.name}`;
     return () => {
       document.title = anterior;
     };
@@ -146,12 +153,22 @@ export default function Comprovante() {
         </p>
       )}
 
-      <Documento c={c} cancelada={reserva.status === "CANCELLED" || reserva.status === "REJECTED"} />
+      <Documento
+        c={c}
+        cancelada={reserva.status === "CANCELLED" || reserva.status === "REJECTED"}
+        notaDosTermos={notaDosTermosDeUso(
+          {
+            versao: reserva.order.event.user.termsAcceptedVersion ?? null,
+            aceitoEm: reserva.order.event.user.termsAcceptedAt ?? null,
+          },
+          reserva.requestedAt,
+        )}
+      />
     </>
   );
 }
 
-function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean }) {
+function Documento({ c, cancelada, notaDosTermos }: { c: DadosDoComprovante; cancelada: boolean; notaDosTermos: string }) {
   const titulo = c.temPagamento || c.temCredito ? "Comprovante de pagamento" : "Confirmação de reserva";
   // Mesma função que a tela de Reservas usa. Duas telas com a mesma regra
   // escrita duas vezes é como a cliente que pagou tudo virava "sinal
@@ -168,7 +185,7 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
         <img src="/logo-festae.png" alt="Festaê" className="logo" />
         <div className="identificacao">
           <p className="titulo-documento">{titulo}</p>
-          <p className="numero-contrato">{c.contrato}</p>
+          <p className="numero-contrato">Reserva nº {c.reserva}</p>
           <p className="emitido">Emitido em {c.emitidoEm}</p>
         </div>
       </header>
@@ -204,6 +221,9 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
                 (c.logistica.montagem ? " · com montagem" : "")
               }
             />
+            {/* Onde retirar: o endereço comercial, nunca o do cadastro na
+                Receita. Na entrega, a linha "Endereço" abaixo é a da festa. */}
+            {!c.logistica.entrega && <Linha rotulo="Local de retirada" valor={enderecoCurto()} />}
             {c.logistica.endereco && (
               <Linha rotulo="Endereço" valor={`${c.logistica.endereco} — ${c.festa.cidade}`} />
             )}
@@ -294,14 +314,9 @@ function Documento({ c, cancelada }: { c: DadosDoComprovante; cancelada: boolean
 
       <AssinaturaFestae declaracao="Emitido eletronicamente. Vale como comprovante do valor recebido e da data reservada." />
 
-      <RodapeFestae
-        nota={
-          <>
-            Esta reserva segue os Termos de Uso da Festaê, versão {TERMS_VERSION}, disponíveis em{" "}
-            reservas.{FESTAE_CONTATO.site}/legal/termos.
-          </>
-        }
-      />
+      {/* A versão que a cliente aceitou, quando há registro dela. Sem
+          registro, a nota diz isso — nunca uma versão presumida pela data. */}
+      <RodapeFestae nota={notaDosTermos} />
     </article>
   );
 }

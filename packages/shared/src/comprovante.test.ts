@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { montarComprovante, numeroDoContrato, type EntradaDoComprovante } from "./comprovante";
+import {
+  montarComprovante,
+  notaDosTermosDeUso,
+  numeroDaReserva,
+  numeroDoContrato,
+  type EntradaDoComprovante,
+} from "./comprovante";
 
 const base: EntradaDoComprovante = {
   contractSeq: 42,
@@ -25,27 +31,68 @@ const base: EntradaDoComprovante = {
   emitidoEm: new Date("2026-09-10T12:00:00.000Z"),
 };
 
-describe("numeroDoContrato", () => {
+describe("numeroDaReserva", () => {
   it("é legível e ditável por telefone", () => {
-    expect(numeroDoContrato(1)).toBe("FE-0001");
-    expect(numeroDoContrato(42)).toBe("FE-0042");
-    expect(numeroDoContrato(1234)).toBe("FE-1234");
+    expect(numeroDaReserva(1)).toBe("FE-0001");
+    expect(numeroDaReserva(42)).toBe("FE-0042");
+    expect(numeroDaReserva(1234)).toBe("FE-1234");
   });
 
   it("cresce sem quebrar quando passa de quatro dígitos", () => {
-    expect(numeroDoContrato(10000)).toBe("FE-10000");
+    expect(numeroDaReserva(10000)).toBe("FE-10000");
   });
 
   it("aceita o BigInt que vem do banco", () => {
-    expect(numeroDoContrato(42n)).toBe("FE-0042");
+    expect(numeroDaReserva(42n)).toBe("FE-0042");
+  });
+
+  it("o nome antigo continua dando o mesmo número, para quem ainda o usa", () => {
+    expect(numeroDoContrato).toBe(numeroDaReserva);
+  });
+});
+
+describe("notaDosTermosDeUso", () => {
+  const reservadaEm = "2026-09-01T14:00:00.000Z";
+  const vigente = "A versão vigente está em reservas.festaechapeco.com.br/legal/termos.";
+  const semRegistro = `Não há registro de aceite dos Termos de Uso da Festaê pela cliente até a data desta reserva. ${vigente}`;
+
+  it("cita a versão que a cliente aceitou antes da reserva, e quando", () => {
+    expect(notaDosTermosDeUso({ versao: "1.3.0", aceitoEm: "2026-08-18T15:00:00.000Z" }, reservadaEm)).toBe(
+      `Termos de Uso da Festaê aceitos pela cliente na versão 1.3.0, em 18/08/2026, antes desta reserva. ${vigente}`,
+    );
+  });
+
+  it("aceite no mesmo instante da reserva conta como anterior", () => {
+    expect(notaDosTermosDeUso({ versao: "1.6.0", aceitoEm: reservadaEm }, reservadaEm)).toMatch(/versão 1\.6\.0, em 01\/09\/2026/);
+  });
+
+  it("sem registro de aceite, diz que não há registro — não presume versão pela data", () => {
+    const texto = notaDosTermosDeUso({ versao: null, aceitoEm: null }, reservadaEm);
+    expect(texto).toBe(semRegistro);
+    expect(texto).not.toMatch(/\d+\.\d+\.\d+/);
+  });
+
+  /**
+   * Reimpressão de uma reserva antiga: a cliente se cadastrou no app e
+   * aceitou os Termos depois de reservar. O papel não pode atribuir à reserva
+   * uma versão que ela só aceitou mais tarde.
+   */
+  it("aceite posterior à reserva não é citado", () => {
+    const texto = notaDosTermosDeUso({ versao: "1.6.0", aceitoEm: "2026-10-20T12:00:00.000Z" }, reservadaEm);
+    expect(texto).toBe(semRegistro);
+    expect(texto).not.toMatch(/1\.6\.0/);
+  });
+
+  it("versão sem data do aceite não comprova que valia na reserva", () => {
+    expect(notaDosTermosDeUso({ versao: "1.6.0", aceitoEm: null }, reservadaEm)).toBe(semRegistro);
   });
 });
 
 describe("montarComprovante", () => {
   const c = montarComprovante(base);
 
-  it("traz o número do contrato e as três datas que a cliente confere", () => {
-    expect(c.contrato).toBe("FE-0042");
+  it("traz o número da reserva e as três datas que a cliente confere", () => {
+    expect(c.reserva).toBe("FE-0042");
     expect(c.reservadoEm).toBe("01/09/2026");
     expect(c.dataDaFesta).toBe("25/09/2026");
     expect(c.emitidoEm).toBe("10/09/2026");

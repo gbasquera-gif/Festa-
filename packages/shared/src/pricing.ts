@@ -8,7 +8,7 @@
  * locação.
  *
  * Regras oficiais do negócio (17/08/2026):
- *   retirada          grátis, na sede
+ *   retirada          grátis, no endereço comercial da Festaê
  *   entrega           R$ 20,00, exclusivamente em Chapecó
  *   entrega+montagem  R$ 70,00 (a montagem custa R$ 50,00 e só existe junto
  *                     da entrega — se a equipe vai montar, ela já leva)

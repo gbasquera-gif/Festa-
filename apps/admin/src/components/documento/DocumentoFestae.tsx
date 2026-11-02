@@ -1,4 +1,4 @@
-import { COMPANY, FESTAE_CONTATO } from "@festae/shared";
+import { EMPRESA, enderecoEmPartes, rotuloDoEndereco } from "@festae/shared";
 import { ALLURA_WOFF2_BASE64 } from "@/pages/assinatura-manuscrita";
 
 /**
@@ -56,7 +56,7 @@ export function AssinaturaFestae({ declaracao }: { declaracao: string }) {
       <p className="marca-assinatura">Maria Luiza Pocai</p>
       <p className="linha-assinatura" />
       <p className="quem-assina">
-        Maria Luiza Pocai · {COMPANY.tradeName} · CNPJ {COMPANY.taxId}
+        Maria Luiza Pocai · {EMPRESA.nomeFantasia} · CNPJ {EMPRESA.cnpj}
       </p>
       <p className="emitido-por">{declaracao}</p>
     </section>
@@ -64,20 +64,26 @@ export function AssinaturaFestae({ declaracao }: { declaracao: string }) {
 }
 
 /**
- * Marca e contatos comerciais da Festaê, e a linha final própria de cada
+ * Marca, identificação e contatos da Festaê, e a linha final própria de cada
  * documento.
  *
- * Sem endereço físico, de propósito: o endereço cadastrado é residencial, e
- * estes papéis circulam — a cliente encaminha, imprime, guarda no celular.
- * Quem precisa falar com a Festaê tem telefone, e-mail, site e Instagram.
+ * O endereço é o comercial, onde a Festaê atende — e é chamado assim, não de
+ * sede, enquanto o cartão CNPJ não for atualizado (ver `EMPRESA`). O
+ * endereço residencial do cadastro nunca vai para estes papéis: eles
+ * circulam — a cliente encaminha, imprime, guarda no celular.
  */
 export function RodapeFestae({ nota }: { nota: React.ReactNode }) {
+  const c = EMPRESA.contato;
+  const endereco = enderecoEmPartes();
   return (
     <footer className="rodape">
-      <p className="rodape-empresa">{COMPANY.tradeName} · Sua festa linda, sem complicação</p>
+      <p className="rodape-empresa">{EMPRESA.nomeFantasia} · {EMPRESA.slogan}</p>
+      <p className="rodape-identificacao">
+        {EMPRESA.razaoSocial} · {rotuloDoEndereco()}: {endereco.semCep},{" "}
+        <span className="sem-quebra">{endereco.cep}</span>
+      </p>
       <p className="rodape-contatos">
-        {FESTAE_CONTATO.telefone} · {FESTAE_CONTATO.email} · {FESTAE_CONTATO.site} ·{" "}
-        {FESTAE_CONTATO.instagram}
+        {c.telefone} · {c.email} · {c.site} · {c.instagram}
       </p>
       <p className="rodape-termos">{nota}</p>
     </footer>
@@ -239,6 +245,8 @@ export const CSS_DO_DOCUMENTO = `
 .rodape { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--sand); text-align: center; }
 .rodape p { margin: 2px 0; font-size: 11px; color: #7A8FA6; line-height: 1.5; }
 .rodape-contatos { font-weight: 700; color: var(--navy) !important; font-size: 12px !important; }
+.rodape-identificacao { color: var(--navy) !important; }
+.sem-quebra { white-space: nowrap; }
 
 @media print {
   @page { size: A4; margin: 12mm; }

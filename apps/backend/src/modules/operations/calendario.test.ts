@@ -54,7 +54,8 @@ describe("descricaoDaFesta", () => {
 
   it("diz retirada quando não há entrega, e omite o endereço", () => {
     const texto = descricaoDaFesta({ ...festa, entrega: false });
-    expect(texto).toContain("Retirada na sede");
+    expect(texto).toContain("Retirada na Festaê — Rua Barão do Rio Branco, 590-E, sala subsolo");
+    expect(texto).not.toMatch(/sede/i);
     expect(texto).not.toContain("Rua das Flores");
   });
 
@@ -115,9 +116,11 @@ describe("gerarIcs", () => {
     }
   });
 
-  it("põe o endereço no local quando há entrega, e a sede quando não há", () => {
+  it("põe o endereço da festa no local quando há entrega, e o endereço comercial da Festaê quando não há", () => {
     expect(ics).toContain("LOCATION:Rua das Flores");
-    expect(gerarIcs({ ...festa, entrega: false }, agora)).toContain("LOCATION:Retirada na sede");
+    const retirada = gerarIcs({ ...festa, entrega: false }, agora);
+    expect(retirada).toContain("LOCATION:Festaê — Rua Barão do Rio Branco");
+    expect(retirada).not.toMatch(/sede/i);
   });
 });
 
