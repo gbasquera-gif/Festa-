@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import { useFiltroNaUrl } from "@/lib/filtro-na-url";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, Plus, Search } from "lucide-react";
 import {
   STATUS_DO_ORCAMENTO_LABEL,
   formatarDataDaFesta,
   mesDeReferenciaDaProposta,
+  textoDoSelo,
+  type SeloDeDisponibilidade,
   type StatusDoOrcamento,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
@@ -75,6 +77,33 @@ const ABA_NOTA: Record<Aba, string> = {
   EXPIRADO: "passaram da validade sem resposta",
 };
 
+/**
+ * O selo de disponibilidade: conferido agora, não no envio. Uma proposta
+ * enviada ontem com tudo livre aparece com conflito se hoje outra festa
+ * levou a peça — é para a equipe saber antes da cliente.
+ */
+const SELO: Record<SeloDeDisponibilidade["situacao"], { cor: string; Icone: typeof CheckCircle2 }> = {
+  DISPONIVEL: { cor: "#2e9b6b", Icone: CheckCircle2 },
+  COM_CONFLITO: { cor: "#c4472a", Icone: AlertTriangle },
+  NAO_VERIFICADO: { cor: "#7a7266", Icone: CircleDashed },
+};
+
+function SeloDeDisponibilidadeDaLista({ selo }: { selo: SeloDeDisponibilidade | undefined }) {
+  if (!selo) return null;
+  const { cor, Icone } = SELO[selo.situacao];
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 rounded px-1.5 py-0.5 align-middle text-[0.6rem] font-medium uppercase tracking-wider"
+      style={{ background: `${cor}14`, color: cor }}
+      data-selo-disponibilidade={selo.situacao}
+      title="Disponibilidade das peças na data, conferida agora"
+    >
+      <Icone className="size-3" aria-hidden />
+      {textoDoSelo(selo)}
+    </span>
+  );
+}
+
 const COR: Record<StatusDoOrcamento, string> = {
   RASCUNHO: "#7a7266",
   ENVIADO: "#1b2e4b",
@@ -105,6 +134,15 @@ export default function Orcamentos() {
     queryKey: ["orcamentos"],
     queryFn: () => api("/orcamentos"),
   });
+
+  // Separada da lista: a lista abre na hora; os selos chegam logo depois,
+  // conferidos contra as reservas e propostas de agora.
+  const disponibilidade = useQuery<{ conferidoEm: string; selos: Record<string, SeloDeDisponibilidade> }>({
+    queryKey: ["orcamentos", "disponibilidade"],
+    queryFn: () => api("/orcamentos/disponibilidade"),
+    staleTime: 30_000,
+  });
+  const selos = disponibilidade.data?.selos ?? {};
 
   const todas = data?.orcamentos ?? [];
   const linhas = useMemo(() => {
@@ -231,7 +269,12 @@ export default function Orcamentos() {
             </button>
           ))}
         </nav>
-        <p className="painel-periodo mt-1">{ABA_NOTA[aba]}</p>
+        <p className="painel-periodo mt-1">
+          {ABA_NOTA[aba]}
+          {disponibilidade.data
+            ? ` · disponibilidade conferida às ${new Date(disponibilidade.data.conferidoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+            : ""}
+        </p>
       </div>
 
       <label className="flex max-w-md items-center gap-2">
@@ -286,6 +329,7 @@ export default function Orcamentos() {
                       falta virar reserva
                     </span>
                   )}
+                  <SeloDeDisponibilidadeDaLista selo={selos[o.id]} />
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   nº {o.numero}

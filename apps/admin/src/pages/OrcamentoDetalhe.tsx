@@ -16,6 +16,7 @@ import {
   formatarDataDaFesta,
   isEventType,
   mensagemDaProposta,
+  type OpcaoConferida,
   type StatusDoOrcamento,
   type TipoDaLinha,
 } from "@festae/shared";
@@ -25,11 +26,16 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { urlDaProposta } from "@/lib/site";
 import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
-import { DisponibilidadeDaProposta } from "@/components/orcamento/DisponibilidadeDaProposta";
+import {
+  DisponibilidadeDaProposta,
+  temItensIndisponiveis,
+  useDisponibilidadeDaProposta,
+} from "@/components/orcamento/DisponibilidadeDaProposta";
+import { AvisoDeIndisponibilidade } from "@/components/orcamento/AvisoDeIndisponibilidade";
 import { mensagemDeConflito } from "@/components/orcamento/conflito";
 import { AprovacaoManual } from "@/components/orcamento/AprovacaoManual";
 import { useFormato } from "@/lib/privacidade";
@@ -79,6 +85,28 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     queryFn: () => api(`/orcamentos/${id}`),
   });
 
+  /**
+   * A disponibilidade de agora, a mesma que o cartão mostra. Os botões de
+   * envio leem daqui para avisar antes do clique — mas quem decide é o
+   * servidor, que confere de novo no envio e recusa com o detalhe.
+   */
+  const disponibilidade = useDisponibilidadeDaProposta(id, Boolean(o?.festaEm) && !o?.reservaId);
+  /** O detalhe da recusa do envio pelo servidor (409), como ele mandou. */
+  const [recusaDoEnvio, setRecusaDoEnvio] = useState<{ data: string; opcoes: OpcaoConferida[]; conferidoEm: string } | null>(null);
+
+  /** Erro do envio: falta de material vira o aviso detalhado; o resto, uma frase. */
+  function tratarErroDoEnvio(e: unknown, padrao: string) {
+    const d = e instanceof ApiError ? e.detalhes : undefined;
+    if (d?.codigo === "OPCOES_INDISPONIVEIS" && Array.isArray(d.opcoes) && typeof d.data === "string") {
+      setRecusaDoEnvio({ data: d.data, opcoes: d.opcoes as OpcaoConferida[], conferidoEm: String(d.conferidoEm ?? "") });
+      queryClient.invalidateQueries({ queryKey: ["orcamento", id, "disponibilidade"] });
+      toast.error("Envio bloqueado: há itens indisponíveis. Veja o aviso no topo.");
+      setTimeout(() => document.getElementById("aviso-de-indisponibilidade")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      return;
+    }
+    toast.error(e instanceof Error ? e.message : padrao);
+  }
+
   const linkPublico = o ? urlDaProposta(String(o.token)) : "";
   const mensagem = o ? mensagemDaProposta(String(o.cliente ?? ""), linkPublico) : "";
 
@@ -89,8 +117,12 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
 
   const enviar = useMutation({
     mutationFn: () => api(`/orcamentos/${id}/enviar`, { method: "PATCH" }),
-    onSuccess: () => { invalidar(); toast.success("Proposta marcada como enviada. Mande o link para a cliente."); },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao enviar."),
+    onSuccess: () => {
+      setRecusaDoEnvio(null);
+      invalidar();
+      toast.success("Proposta marcada como enviada. Mande o link para a cliente.");
+    },
+    onError: (e) => tratarErroDoEnvio(e, "Erro ao enviar."),
   });
 
   /**
@@ -107,10 +139,11 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
       await api(`/orcamentos/${id}/enviar`, { method: "PATCH" });
     },
     onSuccess: async () => {
+      setRecusaDoEnvio(null);
       invalidar();
       await copiar(mensagem, "Proposta enviada. Mensagem copiada!");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao enviar. Nada foi copiado."),
+    onError: (e) => tratarErroDoEnvio(e, "Erro ao enviar. Nada foi copiado."),
   });
 
   /**
@@ -224,6 +257,15 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
     !o.reservaId &&
     Boolean(o.festaEm) &&
     ["ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
+  /**
+   * Por que o envio está bloqueado agora, ou nulo. Só aviso: o servidor
+   * confere de novo no clique e recusa do mesmo jeito.
+   */
+  const bloqueioDoEnvio = !o.festaEm
+    ? "Defina a data da festa para enviar: sem data não dá para conferir a disponibilidade."
+    : temItensIndisponiveis(disponibilidade.data)
+      ? "Há itens indisponíveis na data. Corrija as opções antes de enviar."
+      : null;
   const tipoDeFesta = isEventType(String(o.tipoDeFesta))
     ? EVENT_TYPE_META[String(o.tipoDeFesta) as keyof typeof EVENT_TYPE_META].label
     : String(o.tipoDeFesta);
@@ -259,7 +301,13 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             {duplicar.isPending ? "Duplicando…" : "Duplicar orçamento"}
           </Button>
           {situacao !== "APROVADO" && (
-            <Button className="min-h-11" onClick={() => enviar.mutate()} disabled={enviar.isPending}>
+            <Button
+              className="min-h-11"
+              onClick={() => enviar.mutate()}
+              disabled={enviar.isPending || Boolean(bloqueioDoEnvio)}
+              title={bloqueioDoEnvio ?? undefined}
+              data-enviar
+            >
               {situacao === "RASCUNHO" ? "Marcar como enviada" : "Reenviar"}
             </Button>
           )}
@@ -300,6 +348,35 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         </div>
       </div>
 
+      {situacao !== "APROVADO" && bloqueioDoEnvio && (
+        <p className="text-sm" style={{ color: "#c4472a" }} data-envio-bloqueado>
+          Envio bloqueado: {bloqueioDoEnvio.charAt(0).toLowerCase() + bloqueioDoEnvio.slice(1)}
+        </p>
+      )}
+
+      {/* A DISPONIBILIDADE, no topo: é o que decide se a proposta pode sair.
+          A recusa do servidor, quando acontece, aparece como ele mandou. */}
+      {recusaDoEnvio ? (
+        <AvisoDeIndisponibilidade
+          contexto="envio"
+          data={recusaDoEnvio.data}
+          opcoes={recusaDoEnvio.opcoes}
+          conferidoEm={recusaDoEnvio.conferidoEm}
+          verificando={disponibilidade.isFetching}
+          aoVerificar={() => {
+            setRecusaDoEnvio(null);
+            disponibilidade.refetch();
+          }}
+          acoesDaOpcao={(op) => (
+            <Button variant="outline" className="min-h-10" asChild>
+              <Link href={`/comercial/orcamentos/${id}/editar?opcao=${op.ordem}`}>Editar opção</Link>
+            </Button>
+          )}
+        />
+      ) : (
+        o.festaEm && !o.reservaId && <DisponibilidadeDaProposta id={id} consulta={disponibilidade} />
+      )}
+
       {/* O canal que faltou. A venda não nasce com origem escolhida pelo
           sistema: sem canal na proposta, quem converte diz por onde a
           cliente chegou — e só então os botões acima se liberam. */}
@@ -328,9 +405,9 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
         <div className="painel-cartao p-4" style={{ borderColor: "#c69654", background: "rgba(198,150,84,0.08)" }} data-data-a-definir>
           <p className="text-sm font-medium" style={{ color: "var(--color-navy)" }}>Data ainda não definida</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            A cliente vê a proposta, mas não consegue aprovar: a página pede que ela informe a data à
-            Festaê. Quando ela avisar, edite a proposta, preencha a data, confira a disponibilidade
-            abaixo e reenvie o link.
+            {ehRascunho
+              ? "A data é necessária para conferir a disponibilidade das peças, e por isso esta proposta não pode ser enviada sem ela. Ela continua salva como rascunho: quando a cliente informar a data, edite a proposta e preencha."
+              : "Esta proposta saiu antes de a data ser obrigatória. A cliente vê, mas não consegue aprovar. Quando ela informar a data, edite a proposta, preencha a data e envie de novo — o envio confere a disponibilidade."}
           </p>
         </div>
       )}
@@ -425,9 +502,10 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
           {ehRascunho ? (
             <Button
               className="min-h-11"
-              title="Marcar como enviada e copiar"
-              disabled={enviarECopiar.isPending}
+              title={bloqueioDoEnvio ?? "Marcar como enviada e copiar"}
+              disabled={enviarECopiar.isPending || Boolean(bloqueioDoEnvio)}
               onClick={() => enviarECopiar.mutate()}
+              data-enviar-e-copiar
             >
               <Copy className="mr-1 size-4" />
               {enviarECopiar.isPending ? "Enviando…" : "Marcar como enviada e copiar"}
@@ -471,8 +549,6 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
             : "Quem tiver o link vê esta proposta. O endereço é aleatório e não dá acesso a nenhuma outra."}
         </p>
       </section>
-
-      {o.festaEm && !o.reservaId && <DisponibilidadeDaProposta id={id} />}
 
       {/* AS OPÇÕES
         *
