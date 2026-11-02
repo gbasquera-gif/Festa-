@@ -13,6 +13,7 @@
  * gravada no aceite de cada usuário.
  */
 
+import { EMPRESA } from "./empresa";
 import {
   ASSEMBLY_FEE,
   DELIVERY_CITY,
@@ -60,17 +61,21 @@ export interface LegalDocument {
   sections: LegalSection[];
 }
 
-// Dados cadastrais conforme o cartão CNPJ. As lojas conferem se o
-// responsável declarado aqui bate com o titular da conta de desenvolvedor.
+// Dados cadastrais conforme o cartão CNPJ, lidos de `EMPRESA`. As lojas
+// conferem se o responsável declarado aqui bate com o titular da conta de
+// desenvolvedor.
 export const COMPANY = {
-  legalName: "68.155.380 MARIA LUIZA POCAI",
-  tradeName: "Festaê",
-  taxId: "68.155.380/0001-77",
+  legalName: EMPRESA.razaoSocial,
+  tradeName: EMPRESA.nomeFantasia,
+  taxId: EMPRESA.cnpj,
+  // O endereço que a Política v1.6.0 publicada cita. Sai daqui junto com a
+  // versão que passa a citar o endereço comercial: trocar antes mudaria o
+  // texto de uma versão já aceita sem mudar o número dela.
   address: "Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, CEP 89802-080",
-  city: "Chapecó",
-  state: "SC",
-  supportEmail: "contato@festaechapeco.com.br",
-  privacyEmail: "contato@festaechapeco.com.br",
+  city: EMPRESA.enderecoComercial.cidade,
+  state: EMPRESA.enderecoComercial.uf,
+  supportEmail: EMPRESA.contato.email,
+  privacyEmail: EMPRESA.contato.emailDePrivacidade,
 } as const;
 
 export const PRIVACY_POLICY: LegalDocument = {

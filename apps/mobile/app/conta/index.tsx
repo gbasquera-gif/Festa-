@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, Share, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { EMPRESA } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { DetailHeader } from "@/components/DetailHeader";
 import { api, ApiError } from "@/lib/api";
@@ -133,8 +134,8 @@ export default function MinhaConta() {
       {message && <Text className="px-1 text-sm text-red-500">{message}</Text>}
 
       <Text className="px-1 text-xs leading-4 text-navy/50">
-        Para qualquer assunto sobre seus dados, fale com a gente pelo WhatsApp ou escreva para
-        contato@festaechapeco.com.br.
+        Para qualquer assunto sobre seus dados, fale com a gente pelo WhatsApp ou escreva para{" "}
+        {EMPRESA.contato.emailDePrivacidade}.
       </Text>
     </Screen>
   );

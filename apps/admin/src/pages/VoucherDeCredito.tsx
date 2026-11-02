@@ -7,7 +7,7 @@ import {
   formatarDataDaFesta,
   formatarDiaDoMomento,
   formatarReais,
-  numeroDoContrato,
+  numeroDaReserva,
   numeroDoCredito,
   textoDoVoucher,
   type MovimentoDeCredito,
@@ -103,7 +103,11 @@ export function VoucherDeCredito({ movimentoId }: { movimentoId: string }) {
             <p className="numero-contrato numero-credito">
               <span>CRÉDITO Nº</span> <span>{numeroDoCredito(v.numero)}</span>
             </p>
+            {/* O voucher é montado de novo a cada abertura, com os dados da
+                empresa de hoje. A data desta via fica à vista para que uma
+                reimpressão não se passe pelo papel entregue na geração. */}
             <p className="emitido">Gerado em {formatarDiaDoMomento(v.geradoEm)}</p>
+            <p className="emitido">Via emitida em {formatarDiaDoMomento(new Date())}</p>
           </div>
         </header>
 
@@ -114,7 +118,7 @@ export function VoucherDeCredito({ movimentoId }: { movimentoId: string }) {
           <section className="bloco">
             <h2>Origem</h2>
             <dl>
-              <Linha rotulo="Origem" valor={`Cancelamento da reserva nº ${numeroDoContrato(v.origem.numero)}`} />
+              <Linha rotulo="Origem" valor={`Cancelamento da reserva nº ${numeroDaReserva(v.origem.numero)}`} />
               <Linha rotulo="Festa prevista para" valor={formatarDataDaFesta(v.origem.festaEm)} />
               <Linha rotulo="Data de geração" valor={formatarDiaDoMomento(v.geradoEm)} />
               {v.motivo && <Linha rotulo="Motivo" valor={v.motivo} />}
@@ -195,7 +199,7 @@ export function ComprovanteDoSaldo({ clienteId }: { clienteId: string }) {
               {extrato.map((l) => (
                 <tr key={l.id}>
                   <td>{formatarDiaDoMomento(l.criadoEm)}</td>
-                  <td>{descricaoDoMovimento(l, numeroDoContrato)}</td>
+                  <td>{descricaoDoMovimento(l, numeroDaReserva)}</td>
                   <td className="num">{l.valor < 0 ? `− ${formatarReais(-l.valor)}` : formatarReais(l.valor)}</td>
                   <td className="num">{formatarReais(l.saldo)}</td>
                 </tr>

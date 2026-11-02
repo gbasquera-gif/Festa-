@@ -1254,6 +1254,18 @@ button.painel-cartao:focus-visible .painel-abre {
   color: #9a9086;
   margin: 0;
 }
+.proposta-rodape-empresa {
+  font-style: normal;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: #9a9086;
+  margin: 1.25rem auto 0;
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.proposta-sem-quebra { white-space: nowrap; }
 
 /* Reserve sua data — o passo do sinal, depois do aceite.
  *

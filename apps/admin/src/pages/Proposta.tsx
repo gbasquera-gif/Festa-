@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  EMPRESA,
   EVENT_TYPE_META,
   MENSAGEM_DATA_A_DEFINIR,
+  enderecoEmPartes,
+  rotuloDoEndereco,
   TIPO_DA_LINHA_LABEL,
   formatarDataDaFesta,
   isEventType,
@@ -571,9 +574,24 @@ export default function Proposta({ token }: { token: string }) {
         </section>
       )}
 
+      {/* Quem está fazendo a proposta: razão social, CNPJ e o endereço onde a
+          Festaê atende. É o endereço comercial — não a sede do cadastro, que
+          ainda não foi atualizado (ver EMPRESA). */}
       <footer className="proposta-rodape">
         <img src="/marca-festae.webp" alt="Festaê" width={1983} height={793} />
         <p>Pegue • Monte • Comemore</p>
+        <address className="proposta-rodape-empresa">
+          <span>
+            {EMPRESA.razaoSocial} · CNPJ {EMPRESA.cnpj}
+          </span>
+          <span>
+            {rotuloDoEndereco()}: {enderecoEmPartes().semCep},{" "}
+            <span className="proposta-sem-quebra">{enderecoEmPartes().cep}</span>
+          </span>
+          <span>
+            {EMPRESA.contato.telefone} · {EMPRESA.contato.email} · {EMPRESA.contato.instagram}
+          </span>
+        </address>
       </footer>
 
       {/* A escolha sempre à mão: com as opções longas, o botão de aprovar

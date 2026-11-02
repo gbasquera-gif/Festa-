@@ -10,6 +10,14 @@
  * custaria mais do que resolve.
  */
 
+import { EMPRESA, enderecoCompleto, enderecoCurto } from "@festae/shared";
+
+/**
+ * Onde a cliente retira o material: o endereço comercial, inteiro, para o
+ * mapa do celular abrir no lugar certo. Não é a sede do cadastro na Receita.
+ */
+const LOCAL_DE_RETIRADA = `${EMPRESA.nomeFantasia} — ${enderecoCompleto()}`;
+
 export interface FestaNoCalendario {
   reservaId: string;
   cliente: string;
@@ -67,7 +75,7 @@ export function descricaoDaFesta(f: FestaNoCalendario): string {
     `Cliente: ${f.cliente}`,
     f.telefone ? `Telefone: ${f.telefone}` : null,
     f.tema ? `Tema: ${f.tema}` : null,
-    f.entrega ? "Entrega no local" : "Retirada na sede",
+    f.entrega ? "Entrega no local" : `Retirada na Festaê — ${enderecoCurto()}`,
     f.montagem ? "Com montagem" : "Sem montagem",
     f.entrega && f.endereco ? `Endereço: ${f.endereco} — ${f.cidade}` : null,
     `Total: ${brl(f.total)}`,
@@ -134,7 +142,7 @@ export function gerarIcs(f: FestaNoCalendario, agora: Date = new Date()): string
     `DESCRIPTION:${escapar(descricaoDaFesta(f))}`,
     ...(f.entrega && f.endereco
       ? [`LOCATION:${escapar(`${f.endereco} — ${f.cidade}`)}`]
-      : ["LOCATION:Retirada na sede da Festaê"]),
+      : [`LOCATION:${escapar(LOCAL_DE_RETIRADA)}`]),
     `URL:${f.linkDoPainel}`,
     "STATUS:CONFIRMED",
     ...alarmes,
@@ -156,7 +164,7 @@ export function linkGoogleAgenda(f: FestaNoCalendario): string {
     text: tituloDaFesta(f),
     dates: `${diaInteiro(f.data)}/${diaInteiro(fim)}`,
     details: descricaoDaFesta(f),
-    location: f.entrega && f.endereco ? `${f.endereco} — ${f.cidade}` : "Retirada na sede da Festaê",
+    location: f.entrega && f.endereco ? `${f.endereco} — ${f.cidade}` : LOCAL_DE_RETIRADA,
   });
 
   return `https://calendar.google.com/calendar/render?${params.toString()}`;

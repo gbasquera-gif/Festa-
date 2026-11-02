@@ -1,4 +1,4 @@
-import { COMPANY } from "./legal";
+import { EMPRESA } from "./empresa";
 import { formatarDataDaFesta, formatarDiaDoMomento } from "./data-da-festa";
 import { saldoAPagar } from "./pricing";
 
@@ -16,26 +16,62 @@ import { saldoAPagar } from "./pricing";
  * componente de impressão.
  */
 
-/** Onde a cliente encontra a Festaê depois de fechar. */
+/** Onde a cliente encontra a Festaê depois de fechar. Lido de `EMPRESA`. */
 export const FESTAE_CONTATO = {
-  telefone: "(49) 99948-7777",
+  telefone: EMPRESA.contato.telefone,
   /** Mesmo número no formato que o WhatsApp entende. */
-  whatsapp: "5549999487777",
-  email: COMPANY.supportEmail,
-  site: "festaechapeco.com.br",
-  instagram: "@festae.chapeco",
+  whatsapp: EMPRESA.contato.whatsapp,
+  email: EMPRESA.contato.email,
+  site: EMPRESA.contato.site,
+  instagram: EMPRESA.contato.instagram,
 } as const;
 
 /**
- * O número do contrato, como a cliente lê e dita por telefone.
+ * O número da reserva, como a cliente lê e dita por telefone.
  *
  * Quatro dígitos com zero à esquerda enquanto couber, e cresce sozinho
- * depois. O ano não entra aqui: ele fica na data do contrato, ao lado. Um
+ * depois. O ano não entra aqui: ele fica na data da reserva, ao lado. Um
  * número que carregasse o ano sem reiniciar todo janeiro ("FE-2027-0043")
- * diria que houve 43 contratos em 2027, o que seria falso.
+ * diria que houve 43 reservas em 2027, o que seria falso.
+ *
+ * É o número da reserva, não de um contrato: o contrato digital terá
+ * numeração própria (CT-0001).
  */
-export function numeroDoContrato(seq: number | bigint): string {
+export function numeroDaReserva(seq: number | bigint): string {
   return `FE-${String(seq).padStart(4, "0")}`;
+}
+
+/**
+ * Nome antigo de `numeroDaReserva`. Continua para o Financeiro e o
+ * assistente, que não mudam nesta entrega.
+ */
+export const numeroDoContrato = numeroDaReserva;
+
+/**
+ * A linha do recibo sobre os Termos de Uso.
+ *
+ * Cita só a versão que a cliente aceitou de fato — a que ficou gravada no
+ * cadastro dela — e só se o aceite for anterior à reserva. O recibo é montado
+ * de novo a cada abertura; numa reimpressão, ele não pode afirmar sobre uma
+ * reserva antiga um aceite que só aconteceu depois dela, nem atribuir uma
+ * versão pela data ou pelo histórico de publicações.
+ *
+ * Sem aceite gravado, sem data do aceite ou com aceite posterior à reserva,
+ * o recibo diz que não há registro até a data da reserva: uma versão
+ * presumida num papel que a cliente guarda seria uma afirmação que ninguém
+ * consegue provar.
+ */
+export function notaDosTermosDeUso(
+  aceite: { versao: string | null; aceitoEm: string | Date | null },
+  reservadaEm: string | Date,
+): string {
+  const vigente = `A versão vigente está em reservas.${EMPRESA.contato.site}/legal/termos.`;
+  const aceitoEm = aceite.aceitoEm ? new Date(aceite.aceitoEm).getTime() : NaN;
+  const anteriorAReserva = Number.isFinite(aceitoEm) && aceitoEm <= new Date(reservadaEm).getTime();
+  if (!aceite.versao || !anteriorAReserva) {
+    return `Não há registro de aceite dos Termos de Uso da Festaê pela cliente até a data desta reserva. ${vigente}`;
+  }
+  return `Termos de Uso da Festaê aceitos pela cliente na versão ${aceite.versao}, em ${diaDoMomento(aceite.aceitoEm!)}, antes desta reserva. ${vigente}`;
 }
 
 export interface ItemDoComprovante {
@@ -51,7 +87,8 @@ export interface PagamentoDoComprovante {
 }
 
 export interface DadosDoComprovante {
-  contrato: string;
+  /** O número da reserva, FE-0042. */
+  reserva: string;
   emitidoEm: string;
   reservadoEm: string;
   dataDaFesta: string;
@@ -146,7 +183,7 @@ export function montarComprovante(entrada: EntradaDoComprovante): DadosDoComprov
     .join(" — ") || null;
 
   return {
-    contrato: numeroDoContrato(entrada.contractSeq),
+    reserva: numeroDaReserva(entrada.contractSeq),
     emitidoEm: diaDoMomento(entrada.emitidoEm ?? new Date()),
     reservadoEm: diaDoMomento(entrada.requestedAt),
     dataDaFesta: dia(entrada.eventDate),
