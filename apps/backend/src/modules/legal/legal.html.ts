@@ -1,4 +1,11 @@
-import { BRAND_COLORS, COMPANY, formatLegalDate, type LegalDocument } from "@festae/shared";
+import {
+  BRAND_COLORS,
+  EMPRESA,
+  enderecoCompleto,
+  rotuloDaAtualizacao,
+  rotuloDoEndereco,
+  type LegalDocument,
+} from "@festae/shared";
 
 /**
  * O texto vem do repositório, mas passa por escape mesmo assim: se um dia
@@ -29,7 +36,7 @@ export function renderLegalDocument(document: LegalDocument): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(document.title)} — ${escapeHtml(COMPANY.tradeName)}</title>
+<title>${escapeHtml(document.title)} — ${escapeHtml(EMPRESA.nomeFantasia)}</title>
 <style>
   :root { color-scheme: light; }
   body {
@@ -51,12 +58,13 @@ export function renderLegalDocument(document: LegalDocument): string {
 <body>
 <main>
   <h1>${escapeHtml(document.title)}</h1>
-  <p class="meta">Versão ${escapeHtml(document.version)} · atualizada em ${escapeHtml(formatLegalDate(document.updatedAt))}</p>
+  <p class="meta">Versão ${escapeHtml(document.version)} · ${escapeHtml(rotuloDaAtualizacao(document))}</p>
   <p class="intro">${escapeHtml(document.intro)}</p>
 ${sections}
   <footer>
-    ${escapeHtml(COMPANY.tradeName)} · ${escapeHtml(COMPANY.city)}/${escapeHtml(COMPANY.state)}<br>
-    Dúvidas sobre seus dados: <a href="mailto:${escapeHtml(COMPANY.privacyEmail)}">${escapeHtml(COMPANY.privacyEmail)}</a>
+    ${escapeHtml(EMPRESA.nomeFantasia)} · ${escapeHtml(EMPRESA.razaoSocial)} · CNPJ ${escapeHtml(EMPRESA.cnpj)}<br>
+    ${escapeHtml(rotuloDoEndereco())}: ${escapeHtml(enderecoCompleto())}<br>
+    Dúvidas sobre seus dados: <a href="mailto:${escapeHtml(EMPRESA.contato.emailDePrivacidade)}">${escapeHtml(EMPRESA.contato.emailDePrivacidade)}</a>
   </footer>
 </main>
 </body>

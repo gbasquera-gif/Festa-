@@ -1,7 +1,7 @@
 import { Pressable, Share, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { formatLegalDate } from "@festae/shared";
+import { rotuloDaAtualizacao } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { DetailHeader } from "@/components/DetailHeader";
 import { LEGAL_BY_SLUG } from "@/lib/legal";
@@ -34,7 +34,7 @@ export default function LegalDocumentScreen() {
       <View>
         <Text className="font-sans-extrabold text-2xl leading-8 text-navy">{document.title}</Text>
         <Text className="mt-1 text-sm text-navy/50">
-          Versão {document.version} · atualizada em {formatLegalDate(document.updatedAt)}
+          Versão {document.version} · {rotuloDaAtualizacao(document)}
         </Text>
       </View>
 

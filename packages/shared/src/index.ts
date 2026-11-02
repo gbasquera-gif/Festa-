@@ -56,6 +56,7 @@ export {
   TERMS_OF_USE,
   LEGAL_DOCUMENTS,
   formatLegalDate,
+  rotuloDaAtualizacao,
 } from "./legal";
 export type { LegalDocument, LegalSection } from "./legal";
 

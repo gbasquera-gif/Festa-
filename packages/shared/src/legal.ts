@@ -13,7 +13,7 @@
  * gravada no aceite de cada usuário.
  */
 
-import { EMPRESA } from "./empresa";
+import { EMPRESA, enderecoCompleto, qualificacaoDoEndereco } from "./empresa";
 import {
   ASSEMBLY_FEE,
   DELIVERY_CITY,
@@ -24,10 +24,19 @@ import {
 } from "./pricing";
 
 /** Sobe a cada alteração de conteúdo. Gravada no aceite do usuário. */
-export const TERMS_VERSION = "1.6.0";
+export const TERMS_VERSION = "1.6.1";
 
-/** Data da última alteração do texto. Guardada em ISO para ordenar/comparar. */
-export const TERMS_UPDATED_AT = "2026-10-19";
+/**
+ * Dia em que esta versão foi publicada, em ISO — é a data que o leitor vê
+ * como "atualizada em".
+ *
+ * Fica `null` enquanto a versão está em preparação: a data de vigência é a da
+ * publicação efetiva, nunca a do preparo do texto. Ela entra num commit
+ * próprio, no dia em que a versão for ao ar. O teste deste módulo falha na
+ * branch de produção enquanto ela estiver vazia, e o CI vermelho segura o
+ * deploy.
+ */
+export const TERMS_UPDATED_AT: string | null = null;
 
 /**
  * Dia em que o Assistente IA da gestão interna passa a ser usado. A Política
@@ -40,6 +49,14 @@ export const ASSISTENTE_IA_EM_USO_A_PARTIR_DE = "2026-10-20";
 export function formatLegalDate(isoDate: string) {
   const [year, month, day] = isoDate.split("-");
   return day && month && year ? `${day}/${month}/${year}` : isoDate;
+}
+
+/**
+ * A linha de vigência que acompanha a versão: "atualizada em 02/11/2026", ou,
+ * antes da publicação, o aviso de que o texto ainda não está em vigor.
+ */
+export function rotuloDaAtualizacao(document: Pick<LegalDocument, "updatedAt">): string {
+  return document.updatedAt ? `atualizada em ${formatLegalDate(document.updatedAt)}` : "em preparação, ainda não publicada";
 }
 
 /** Formata reais para o texto legal, com a vírgula que se lê no Brasil. */
@@ -56,7 +73,8 @@ export interface LegalDocument {
   slug: "privacidade" | "termos";
   title: string;
   version: string;
-  updatedAt: string;
+  /** Dia da publicação desta versão; `null` enquanto ela não foi publicada. */
+  updatedAt: string | null;
   intro: string;
   sections: LegalSection[];
 }
@@ -68,10 +86,10 @@ export const COMPANY = {
   legalName: EMPRESA.razaoSocial,
   tradeName: EMPRESA.nomeFantasia,
   taxId: EMPRESA.cnpj,
-  // O endereço que a Política v1.6.0 publicada cita. Sai daqui junto com a
-  // versão que passa a citar o endereço comercial: trocar antes mudaria o
-  // texto de uma versão já aceita sem mudar o número dela.
-  address: "Rua Coronel Manoel dos Passos Maia, 68, Apto 505, Jardim Itália, CEP 89802-080",
+  // O endereço comercial, onde a Festaê atende. Desde a v1.6.1 é o que os
+  // documentos citam; não é chamado de sede enquanto o cartão CNPJ não for
+  // atualizado (ver `EMPRESA.sedeCadastral`).
+  address: enderecoCompleto(),
   city: EMPRESA.enderecoComercial.cidade,
   state: EMPRESA.enderecoComercial.uf,
   supportEmail: EMPRESA.contato.email,
@@ -91,7 +109,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       title: "Quem é o controlador dos seus dados",
       paragraphs: [
-        `${COMPANY.legalName}, inscrita no CNPJ ${COMPANY.taxId}, com sede em ${COMPANY.address}, ${COMPANY.city}/${COMPANY.state}.`,
+        `${COMPANY.legalName}, inscrita no CNPJ ${COMPANY.taxId}, com ${qualificacaoDoEndereco()} na ${COMPANY.address}.`,
         `Para qualquer assunto relacionado a dados pessoais, incluindo o exercício dos seus direitos, escreva para ${COMPANY.privacyEmail}.`,
       ],
     },
@@ -237,8 +255,8 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       title: "Retirada, entrega e montagem",
       paragraphs: [
-        "A retirada na sede da Festaê é gratuita e é a forma padrão de receber os itens, nos horários combinados na confirmação da reserva.",
-        `A entrega no local da festa custa ${formatBRL(DELIVERY_FEE)} e está disponível apenas em ${DELIVERY_CITY}. Para festas em outras cidades, a retirada é feita na sede. A taxa aparece no resumo antes de você confirmar, e a entrega depende da disponibilidade da equipe na data.`,
+        `A retirada no endereço comercial da Festaê, na ${COMPANY.address}, é gratuita e é a forma padrão de receber os itens, nos horários combinados na confirmação da reserva.`,
+        `A entrega no local da festa custa ${formatBRL(DELIVERY_FEE)} e está disponível apenas em ${DELIVERY_CITY}. Para festas em outras cidades, a retirada é feita no endereço comercial da Festaê. A taxa aparece no resumo antes de você confirmar, e a entrega depende da disponibilidade da equipe na data.`,
         `A montagem da decoração no local da festa é feita pela equipe da Festaê e custa ${formatBRL(ASSEMBLY_FEE)}. Ela pode ser contratada tanto com a retirada quanto com a entrega — escolhendo entrega e montagem juntas, o total das duas taxas é ${formatBRL(DELIVERY_WITH_ASSEMBLY_FEE)}. Assim como a entrega, a montagem está disponível apenas em ${DELIVERY_CITY}.`,
         "A opção escolhida aparece no resumo do pedido, com o valor de cada parcela, e entra no total antes do cálculo do sinal.",
         "Os itens são cedidos em locação, não vendidos. Devem ser devolvidos nas condições em que foram recebidos, ressalvado o desgaste natural de uso.",
