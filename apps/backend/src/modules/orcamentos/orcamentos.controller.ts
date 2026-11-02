@@ -5,11 +5,13 @@ import {
   converterOrcamentoSchema,
   orcamentoSchema,
   recusarOrcamentoSchema,
+  simulacaoDeDisponibilidadeSchema,
   type AprovarManualmenteInput,
   type CategoriaDaPerda,
   type ConverterOrcamentoInput,
   type OrcamentoInput,
   type SaleChannel,
+  type SimulacaoDeDisponibilidadeInput,
 } from "@festae/shared";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
@@ -60,6 +62,23 @@ export class OrcamentosController {
   @Get("panorama")
   panorama(@Query("ano") ano?: string, @Query("mes") mes?: string) {
     return this.panoramas.panorama(lerRecorte(ano, mes));
+  }
+
+  /**
+   * O selo de disponibilidade de cada proposta da lista, conferido agora.
+   * Declarada antes de `:id`, senão "disponibilidade" seria lido como um id.
+   */
+  @ApiOperation({ summary: "Selo de disponibilidade das propostas" })
+  @Get("disponibilidade")
+  selos() {
+    return this.orcamentos.selosDeDisponibilidade();
+  }
+
+  /** Confere as opções como estão no editor, sem gravar nada. */
+  @ApiOperation({ summary: "Simula a disponibilidade das opções do editor (não grava)" })
+  @Post("disponibilidade/simular")
+  simular(@Body(new ZodValidationPipe(simulacaoDeDisponibilidadeSchema)) body: SimulacaoDeDisponibilidadeInput) {
+    return this.orcamentos.simularDisponibilidade(body);
   }
 
   /** Cada opção cabe na data? Contando reservas e propostas aprovadas sem reserva. */

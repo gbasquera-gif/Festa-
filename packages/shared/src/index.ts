@@ -597,3 +597,33 @@ export type {
   RegistrarPagamentoDeContaInput,
   ResolverConferenciaInput,
 } from "./schemas/contas-a-pagar";
+
+export {
+  ETAPA_DA_RESERVA_NO_AVISO,
+  MOTIVOS_DA_FALTA,
+  MOTIVOS_SEM_VERIFICACAO,
+  MOTIVO_DA_FALTA_LABEL,
+  MOTIVO_SEM_VERIFICACAO_LABEL,
+  NATUREZAS_DA_FALTA,
+  NATUREZA_DA_FALTA_LABEL,
+  NATUREZA_DO_MOTIVO,
+  SITUACOES_DO_SELO,
+  mensagemDeEnvioBloqueado,
+  seloDasOpcoes,
+  seloSemVerificacao,
+  simulacaoDeDisponibilidadeSchema,
+  textoDoResponsavel,
+  textoDoSelo,
+  unidades,
+} from "./disponibilidade-da-proposta";
+export type {
+  FaltaDeItem,
+  MotivoDaFalta,
+  MotivoSemVerificacao,
+  NaturezaDaFalta,
+  OpcaoConferida,
+  ResponsavelPelaFalta,
+  SeloDeDisponibilidade,
+  SimulacaoDeDisponibilidadeInput,
+  SituacaoDoSelo,
+} from "./disponibilidade-da-proposta";
