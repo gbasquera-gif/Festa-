@@ -4,7 +4,7 @@ Confere de ponta a ponta a disponibilidade das propostas: o aviso do painel, a t
 
 ## O que confere
 
-`cenarios.mjs` faz 87 verificações:
+`cenarios.mjs` faz cerca de 85 verificações:
 
 - **Um item indisponível**
   - O aviso traz nome, identificador do catálogo, necessário, disponível, faltante, motivo e a reserva responsável (FE-0042).
@@ -37,8 +37,9 @@ Confere de ponta a ponta a disponibilidade das propostas: o aviso do painel, a t
   - Uma aprovação segura a trava da data por 1,5 s. O envio que chega no meio espera, vê a peça segurada e é recusado.
   - Envio de outra data não espera.
 - **Reserva da loja sem sinal, prazo vencido**
-  - É apontada como inconsistência técnica, com o número, e continua contando.
-  - A liberação oficial (abrir o calendário da loja) cancela exatamente essa e mantém a que está no prazo.
+  - Abrir o painel aplica a liberação oficial antes de conferir: a vencida é cancelada e a peça volta ao acervo.
+  - A que está no prazo e a pendente com pagamento confirmado não são tocadas.
+  - Rodar de novo não muda nada.
 - **Selo da lista:** disponível; com conflito (quantas opções); não verificado (sem data, data passada, perdida). A aprovada confere só a opção escolhida. O selo exige login da equipe.
 - **A conta oficial não mudou**
   - As reservas, uma a uma, somam o mesmo que a conta do dia.

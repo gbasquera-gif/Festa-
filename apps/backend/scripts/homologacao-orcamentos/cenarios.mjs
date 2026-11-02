@@ -364,35 +364,46 @@ await aux("POST", "/__orc/enviada-sem-conferencia", { id: aAprovar.id });
 }
 
 // ----------------------------------------------------------------------------
-console.log("14. Reserva da loja sem sinal com o prazo vencido");
+console.log("14. Reserva da loja sem sinal com o prazo vencido (liberação oficial antes de conferir)");
 const D14 = dia(49);
 const cortina = await produto("Cortina de Voal", 1);
 const toalhaMesa = await produto("Toalha de Mesa Rendada", 1);
+const guirlanda = await produto("Guirlanda de Eucalipto", 1);
 const vencida = await reservar(D14, [[cortina, 1]]);
 await aux("POST", "/__orc/reserva-da-loja-sem-sinal", { reservaId: vencida.id, minutosAtras: 120 });
 const noPrazo = await reservar(D14, [[toalhaMesa, 1]]);
 await aux("POST", "/__orc/reserva-da-loja-sem-sinal", { reservaId: noPrazo.id, minutosAtras: 30 });
-const p14 = await proposta(D14, [opcao("Com cortina e toalha", [linha(cortina, 1), linha(toalhaMesa, 1)])]);
+// Pendente há duas horas, mas com pagamento confirmado: a regra nunca libera.
+const paga = await (async () => {
+  const r = await req("POST", "/reservations/manual", {
+    cliente: { nome: `Cliente Paga ${suf}`, telefone: telefone() },
+    evento: { data: D14, tipo: "ANIVERSARIO" },
+    produtos: { itens: [{ productId: guirlanda.id, quantity: 1 }] },
+    logistica: { fulfillment: "PICKUP", assembly: false },
+    financeiro: { valorProdutos: 100, entrega: 0, montagem: 0, desconto: 0, sinal: 30, formaPagamento: "PIX", statusPagamento: "PAID" },
+    origem: "WHATSAPP",
+  });
+  await aux("POST", "/__orc/reserva-da-loja-sem-sinal", { reservaId: r.json.id, minutosAtras: 120 });
+  return aux("GET", `/__orc/reserva?id=${r.json.id}`);
+})();
+const p14 = await proposta(D14, [opcao("Com cortina, toalha e guirlanda", [linha(cortina, 1), linha(toalhaMesa, 1), linha(guirlanda, 1)])]);
 {
   const d = await disponibilidade(p14.id);
-  const motivo = Object.fromEntries(d.opcoes[0].faltas.map((f) => [f.nome.replace(` ${suf}`, ""), f]));
+  conferir("abrir o painel aplica a regra oficial: a vencida foi cancelada", (await aux("GET", `/__orc/reserva?id=${vencida.id}`)).status === "CANCELLED");
+  conferir("a que está no prazo continua pendente", (await aux("GET", `/__orc/reserva?id=${noPrazo.id}`)).status === "PENDING");
+  conferir("a pendente com pagamento confirmado não é tocada", (await aux("GET", `/__orc/reserva?id=${paga.id}`)).status === "PENDING");
   conferir(
-    "vencida: apontada como inconsistência técnica, com o FE",
-    motivo["Cortina de Voal"]?.motivo === "RESERVA_SEM_SINAL_VENCIDA" &&
-      motivo["Cortina de Voal"]?.natureza === "TECNICA" &&
-      motivo["Cortina de Voal"]?.responsaveis[0]?.numero === fe(vencida),
-    motivo["Cortina de Voal"],
+    "a cortina voltou ao acervo; toalha e guirlanda seguem como conflito de estoque",
+    nomes(d.opcoes[0]).sort().join() === [`Guirlanda de Eucalipto ${suf}`, `Toalha de Mesa Rendada ${suf}`].sort().join() &&
+      d.opcoes[0].faltas.every((f) => f.motivo === "RESERVADO_EM_OUTRA_FESTA"),
+    d.opcoes[0].faltas,
   );
-  conferir("no prazo: conflito de estoque comum", motivo["Toalha de Mesa Rendada"]?.motivo === "RESERVADO_EM_OUTRA_FESTA", motivo["Toalha de Mesa Rendada"]);
-  conferir("o painel lista a reserva vencida", d.reservasSemSinalVencidas.map((r) => r.numero).join() === fe(vencida), d.reservasSemSinalVencidas);
-  conferir("ela continua contando: o envio é recusado", (await enviar(p14.id)).status === 409);
-
-  // A rotina oficial libera exatamente a que o aviso apontou — e só ela.
-  await aux("POST", "/__orc/abrir-calendario-da-loja", { mes: D14.slice(0, 7) });
-  conferir("a liberação oficial cancelou a vencida", (await aux("GET", `/__orc/reserva?id=${vencida.id}`)).status === "CANCELLED");
-  conferir("e manteve a que está no prazo", (await aux("GET", `/__orc/reserva?id=${noPrazo.id}`)).status === "PENDING");
-  const depois = await disponibilidade(p14.id);
-  conferir("depois da liberação, só a toalha falta", nomes(depois.opcoes[0]).join() === `Toalha de Mesa Rendada ${suf}`, nomes(depois.opcoes[0]));
+  conferir("nenhuma reserva vencida sobra para apontar", d.reservasSemSinalVencidas.length === 0, d.reservasSemSinalVencidas);
+  const antes = await aux("GET", "/__orc/contagem");
+  await disponibilidade(p14.id);
+  await req("GET", "/orcamentos/disponibilidade");
+  const depois = await aux("GET", "/__orc/contagem");
+  conferir("rodar de novo não muda nada (idempotente)", (await aux("GET", `/__orc/reserva?id=${noPrazo.id}`)).status === "PENDING" && antes.reservas === depois.reservas);
 }
 
 // ----------------------------------------------------------------------------

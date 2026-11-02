@@ -125,6 +125,21 @@ export class AvailabilityService {
   }
 
   /**
+   * A liberação oficial das reservas sem sinal vencidas, para quem confere
+   * disponibilidade fora do calendário da loja.
+   *
+   * É a mesma rotina, sem nenhuma mudança: só reserva PENDING, pedida há mais
+   * de RESERVATION_HOLD_MINUTES, sem pagamento confirmado e sem crédito; uma
+   * de cada vez, sob a trava do pedido, com a condição conferida de novo.
+   * Antes, ela só rodava quando alguém abria o calendário da loja — e a
+   * conferência das propostas contava como presa uma peça que a regra já
+   * mandava devolver.
+   */
+  liberarReservasSemSinalVencidas(): Promise<void> {
+    return this.releaseUnpaidHolds();
+  }
+
+  /**
    * Disponibilidade do mês, opcionalmente para uma seleção específica.
    *
    * Sem seleção, todo dia está disponível: não existe mais teto de festas por

@@ -348,6 +348,12 @@ export class OrcamentosService {
       congelar.find((c) => c.id === referencia?.id)?.composicao ??
       (lerComposicaoCongelada(referencia?.composicaoDoKit) ? referencia?.composicaoDoKit : null);
 
+    // A regra da reserva sem sinal vale aqui também: vencido o prazo, a peça
+    // volta ao acervo antes da conferência (rotina oficial, sob a trava do
+    // pedido). Sem isso, o envio recusava por uma reserva que já devia ter
+    // sido liberada.
+    await this.disponibilidade.liberarReservasSemSinalVencidas();
+
     await prisma.$transaction(async (tx) => {
       // A mesma trava da aprovação, por data. Enquanto este envio confere,
       // nenhuma proposta da mesma data é aprovada (e passa a segurar peças):
@@ -522,6 +528,7 @@ export class OrcamentosService {
     // é o que permite avisar antes do clique, e não só depois. O servidor
     // confere de novo na aprovação — entre abrir a página e aprovar, outra
     // cliente pode ter aprovado a mesma peça.
+    if (podeAprovar && o.festaEm) await this.disponibilidade.liberarReservasSemSinalVencidas();
     const cabe =
       podeAprovar && o.festaEm
         ? new Map(
@@ -729,6 +736,7 @@ export class OrcamentosService {
     // segunda só descobre que faltou depois de pagar. Aprovações da mesma
     // data passam uma de cada vez (trava da transação), para duas clientes
     // clicando no mesmo segundo não passarem juntas pela conferência.
+    await this.disponibilidade.liberarReservasSemSinalVencidas();
     const { count } = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`aprovacao-de-proposta:${diaDaFesta(festaEm)}`}))`;
       const { resultado } = await this.faltasPorOpcao({ id: o.id, festaEm, opcoes: [escolhida] }, tx);
@@ -1301,6 +1309,7 @@ export class OrcamentosService {
     if (!o.festaEm) return { data: null, situacao: "SEM_DATA" as const, ...vazio };
     if (o.reservationId) return { data: diaDaFesta(o.festaEm), situacao: "RESERVADA" as const, ...vazio };
 
+    await this.disponibilidade.liberarReservasSemSinalVencidas();
     const agora = new Date();
     const [c] = await this.conferirEmLote([{ id: o.id, festaEm: o.festaEm, opcoes: o.opcoes }], agora);
     const unica = o.opcoes.length === 1;
@@ -1336,6 +1345,7 @@ export class OrcamentosService {
    */
   async simularDisponibilidade(input: SimulacaoDeDisponibilidadeInput) {
     const festaEm = normalizarDataDaFesta(input.data);
+    await this.disponibilidade.liberarReservasSemSinalVencidas();
     const agora = new Date();
     const opcoes: OpcaoParaConferir[] = input.opcoes.map((op, n) => ({
       id: null,
@@ -1365,6 +1375,7 @@ export class OrcamentosService {
    * que ela segura. As demais saem como "não verificado", com o motivo.
    */
   async selosDeDisponibilidade(): Promise<{ conferidoEm: string; selos: Record<string, SeloDeDisponibilidade> }> {
+    await this.disponibilidade.liberarReservasSemSinalVencidas();
     const agora = new Date();
     const hoje = diaEmChapeco(agora);
     const todas = await prisma.orcamento.findMany({
