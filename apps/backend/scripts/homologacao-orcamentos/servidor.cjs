@@ -140,6 +140,21 @@ async function main() {
     }),
   );
   rota("get", "/__orc/contagem", async () => ({ orcamentos: await prisma.orcamento.count(), reservas: await prisma.reservation.count() }));
+  // O tempo passa para uma aprovação (e, se pedido, para a festa): só o
+  // cenário do alerta usa, no banco descartável.
+  rota("post", "/__orc/envelhecer-aprovacao", async (b) =>
+    prisma.orcamento.update({
+      where: { id: b.id },
+      data: {
+        aprovadoEm: b.semData ? null : new Date(Date.now() - b.horas * 3_600_000),
+        ...(b.festaEm ? { festaEm: new Date(`${b.festaEm}T12:00:00.000Z`) } : {}),
+      },
+      select: { id: true },
+    }),
+  );
+  rota("get", "/__orc/estado-do-alerta", async (q) =>
+    prisma.orcamento.findUnique({ where: { id: q.id }, select: { status: true, reservationId: true, updatedAt: true } }),
+  );
 
   // A leitura reserva por reserva soma o mesmo que a conta oficial do dia.
   rota("get", "/__orc/equivalencia", async (q) => {

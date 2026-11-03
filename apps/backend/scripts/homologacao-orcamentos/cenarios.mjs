@@ -421,5 +421,84 @@ for (const d of [D1, D2, D3, D6, D14]) {
   conferir(`${d}: propostas aprovadas somam o mesmo que a conta antiga`, a.diferencas.length === 0, a);
 }
 
+// ----------------------------------------------------------------------------
+console.log("17. Alerta: propostas aprovadas aguardando sinal além do prazo");
+{
+  const DA = dia(70);
+  const peca = await produto("Arco Alerta", 9);
+  async function aprovadaPeloLink(nome) {
+    const p = await proposta(DA, [opcao("Opcao Alerta", [linha(peca, 1)])], nome);
+    const e = await enviar(p.id);
+    if (e.status !== 200) throw new Error(`enviar: ${e.status} ${e.texto}`);
+    const a = await http("POST", `${API}/proposta/${p.token}/aprovar`, { nome });
+    if (a.status !== 200 && a.status !== 201) throw new Error(`aprovar: ${a.status} ${a.texto}`);
+    return p;
+  }
+  const envelhecer = (id, extra) => aux("POST", "/__orc/envelhecer-aprovacao", { id, ...extra });
+  const alerta = (token = ADMIN) => req("GET", "/orcamentos/alertas/aprovadas-sem-sinal", undefined, token);
+
+  const velha = await aprovadaPeloLink(`Cliente Velha ${suf}`);
+  await envelhecer(velha.id, { horas: 53 });
+  const recente = await aprovadaPeloLink(`Cliente Recente ${suf}`);
+  await envelhecer(recente.id, { horas: 10 });
+  const convertida = await aprovadaPeloLink(`Cliente Convertida ${suf}`);
+  await envelhecer(convertida.id, { horas: 72 });
+  const conv = await req("POST", `/orcamentos/${convertida.id}/converter`, { canal: "WHATSAPP" });
+  const perdida = await aprovadaPeloLink(`Cliente Perdida ${suf}`);
+  await envelhecer(perdida.id, { horas: 72 });
+  await req("PATCH", `/orcamentos/${perdida.id}/recusar`, { categoria: "OUTRO", motivo: "Cenário do alerta" });
+  const passada = await aprovadaPeloLink(`Cliente Passada ${suf}`);
+  await envelhecer(passada.id, { horas: 96, festaEm: dia(-2) });
+  const semData = await aprovadaPeloLink(`Cliente Sem Data ${suf}`);
+  await envelhecer(semData.id, { semData: true });
+
+  const antes = await aux("GET", "/__orc/contagem");
+  const estadoAntes = await aux("GET", `/__orc/estado-do-alerta?id=${velha.id}`);
+  const r = await alerta();
+  const lista = r.json?.propostas ?? [];
+  const achar = (p) => lista.find((x) => x.id === p.id);
+  conferir("o prazo padrão é 48 horas", r.status === 200 && r.json.limiarHoras === 48, r.json?.limiarHoras);
+  const v = achar(velha);
+  conferir(
+    "aprovada há 53 h, sem reserva: aparece, com há quanto tempo aguarda",
+    v && v.horasAguardando >= 53 && v.horasAguardando < 54 && v.festaEm === DA && v.festaJaPassou === false,
+    v,
+  );
+  conferir("com o que a equipe precisa conferir: número, cliente, opção, quem aprovou, valor e sinal esperado",
+    v && v.numero === velha.numero && v.cliente === `Cliente Velha ${suf}` && v.opcao === "Opcao Alerta" && v.aprovadaPor === "CLIENTE" &&
+      v.valorAprovado > 0 && v.sinalEsperado > 0 && v.sinalEsperado <= v.valorAprovado,
+    v,
+  );
+  conferir("aprovada há 10 h: ainda não aparece", !achar(recente));
+  conferir("convertida em reserva: não aparece", conv.status < 300 && !achar(convertida), conv.status);
+  conferir("marcada como perdida: não aparece", !achar(perdida));
+  conferir("festa que já passou: aparece sinalizada", achar(passada)?.festaJaPassou === true, achar(passada));
+  conferir("sem data de aprovação registrada: aparece por precaução", achar(semData)?.horasAguardando === null, achar(semData));
+  const ordem = lista.filter((x) => [velha.id, passada.id, semData.id].includes(x.id)).map((x) => x.id);
+  conferir("as que aguardam há mais tempo vêm primeiro", JSON.stringify(ordem) === JSON.stringify([semData.id, passada.id, velha.id]), ordem);
+
+  conferir("a equipe de operação (OPS) também vê", (await alerta(OPS)).status === 200);
+  conferir("a cliente não vê (403)", (await alerta(CLIENTE)).status === 403);
+  conferir("sem login, nada (401)", (await http("GET", `${API}/orcamentos/alertas/aprovadas-sem-sinal`)).status === 401);
+
+  const depois = await aux("GET", "/__orc/contagem");
+  const estadoDepois = await aux("GET", `/__orc/estado-do-alerta?id=${velha.id}`);
+  conferir("só leitura: nenhuma proposta ou reserva criada ou apagada", JSON.stringify(antes) === JSON.stringify(depois), { antes, depois });
+  conferir(
+    "só leitura: a proposta segue aprovada, sem reserva, sem alteração",
+    estadoDepois.status === "APROVADO" && estadoDepois.reservationId === null && estadoDepois.updatedAt === estadoAntes.updatedAt,
+    { estadoAntes, estadoDepois },
+  );
+
+  const ajustar = (texto) => req("PUT", "/orcamentos/conteudo", { blocos: [{ chave: "alerta_aprovadas_horas", texto }] });
+  await ajustar("8");
+  const r8 = (await alerta()).json;
+  conferir("prazo ajustado para 8 h: a aprovada há 10 h passa a aparecer", r8.limiarHoras === 8 && r8.propostas.some((x) => x.id === recente.id), r8.limiarHoras);
+  await ajustar("abc");
+  conferir("valor inválido não desliga o alerta: volta a 48 h", (await alerta()).json.limiarHoras === 48);
+  await ajustar("");
+  conferir("em branco: 48 h", (await alerta()).json.limiarHoras === 48);
+}
+
 console.log(`\n${ok} conferências ok, ${falhas} falha(s).`);
 process.exit(falhas === 0 ? 0 : 1);
