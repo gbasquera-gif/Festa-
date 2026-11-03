@@ -6,6 +6,9 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma, prisma } from "@festae/database";
+// Trava do dia e conta das aprovadas: as mesmas de todos os canais que comprometem acervo.
+import { travarDatas } from "../availability/trava-da-data";
+import { kitsDoCatalogo, opcaoQueSegura, seguradoPorPropostasAprovadas } from "./compromisso-das-propostas";
 import {
   MENSAGEM_DATA_A_DEFINIR,
   calcularSinal,
@@ -659,7 +662,7 @@ export class OrcamentosService {
     // data passam uma de cada vez (trava da transação), para duas clientes
     // clicando no mesmo segundo não passarem juntas pela conferência.
     const { count } = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`aprovacao-de-proposta:${diaDaFesta(festaEm)}`}))`;
+      await travarDatas(tx, [festaEm]);
       const { resultado } = await this.faltasPorOpcao({ id: o.id, festaEm, opcoes: [escolhida] }, tx);
       const conflitos = resultado[0]?.conflitos ?? [];
       if (conflitos.length > 0) {
@@ -754,22 +757,51 @@ export class OrcamentosService {
     const opcao = opcaoParaConverter(o);
     const { entrada, kitCombinado } = this.entradaDaVenda(o, opcao, canal, festaEm);
 
+    // A reserva e o vínculo da proposta nascem na mesma transação, sob a
+    // trava do dia. Antes, o vínculo era gravado depois: dois cliques (ou
+    // "converter" e "confirmar sinal" juntos) criavam duas reservas para a
+    // mesma proposta, e no intervalo a proposta continuava segurando material
+    // ao lado da própria reserva.
     const reserva = await this.reservas.criar(
       entrada as never,
       criadoPorId,
       { tipo: "CONVERSAO_DE_PROPOSTA", referencia: o.id },
       kitCombinado ?? undefined,
-    );
-
-    await prisma.orcamento.update({
-      where: { id: o.id },
-      data: {
-        reservationId: (reserva as { id: string }).id,
-        // Informado na conversão, o canal fica também na proposta: o funil e
-        // a venda passam a contar a mesma origem.
-        ...(o.canal ? {} : { canal }),
+      {
+        naMesmaTransacao: {
+          antes: async (tx) => {
+            const agoraEsta = await tx.orcamento.findUnique({
+              where: { id: o.id },
+              select: { status: true, versao: true, reservationId: true },
+            });
+            if (!agoraEsta || agoraEsta.reservationId) {
+              throw new ConflictException("Esta proposta já virou a reserva desta festa.");
+            }
+            if (agoraEsta.status !== "APROVADO" || agoraEsta.versao !== o.versao) {
+              throw new ConflictException(
+                "Esta proposta mudou enquanto a tela estava aberta. Recarregue para ver a versão atual.",
+              );
+            }
+          },
+          depois: async (tx, criada) => {
+            const { count } = await tx.orcamento.updateMany({
+              where: { id: o.id, status: "APROVADO", reservationId: null },
+              data: {
+                reservationId: criada.id,
+                // Informado na conversão, o canal fica também na proposta: o
+                // funil e a venda passam a contar a mesma origem.
+                ...(o.canal ? {} : { canal }),
+              },
+            });
+            if (count === 0) {
+              throw new ConflictException(
+                "Esta proposta mudou enquanto a reserva era criada (convertida, perdida ou excluída). Nada foi gravado.",
+              );
+            }
+          },
+        },
       },
-    });
+    );
 
     return { reservaId: (reserva as { id: string }).id };
   }
@@ -939,7 +971,7 @@ export class OrcamentosService {
             // pessoa pode ter aprovado ou convertido agora) e o material é
             // reconferido contando o que outras aprovadas seguram.
             antes: async (tx) => {
-              await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`aprovacao-de-proposta:${diaDaFesta(festaEm)}`}))`;
+              await travarDatas(tx, [festaEm]);
               const agoraEsta = await tx.orcamento.findUnique({
                 where: { id: o.id },
                 select: { status: true, versao: true, reservationId: true },
@@ -1295,49 +1327,9 @@ export class OrcamentosService {
    * conta que a tela da proposta faz.
    */
   async seguradoPorAprovadas(festaEm: Date, ignorarId?: string, db: Tx = prisma) {
-    const inicio = new Date(`${diaDaFesta(festaEm)}T00:00:00.000Z`);
-    const fim = new Date(inicio.getTime() + 86_400_000);
-    const aprovadas = await db.orcamento.findMany({
-      where: {
-        status: "APROVADO",
-        reservationId: null,
-        festaEm: { gte: inicio, lt: fim },
-        ...(ignorarId ? { id: { not: ignorarId } } : {}),
-      },
-      select: {
-        id: true,
-        numero: true,
-        clienteNome: true,
-        opcaoAprovadaId: true,
-        opcoes: {
-          orderBy: { ordem: "asc" },
-          select: {
-            id: true,
-            ordem: true,
-            nome: true,
-            kitId: true,
-            composicaoDoKit: true,
-            itens: { select: { productId: true, quantidade: true } },
-          },
-        },
-      },
-    });
-    const seguradas = aprovadas.flatMap((a) => {
-      const opcao = this.opcaoQueSegura(a);
-      return opcao ? [{ a, opcao }] : [];
-    });
-    const kits = await this.kitsDoCatalogo(seguradas.map((x) => x.opcao), db);
-    const demandas = seguradas.map((x) => demandaDaOpcao(x.opcao, (kitId) => kits.get(kitId)));
-    return {
-      total: compromissoDasAprovadas(demandas),
-      propostas: seguradas.map(({ a, opcao }, i) => ({
-        id: a.id,
-        numero: a.numero,
-        cliente: a.clienteNome,
-        opcao: opcao.nome,
-        produtos: [...demandas[i].itensDoKit, ...demandas[i].itensAvulsos].map((x) => x.productId),
-      })),
-    };
+    // A conta mora num lugar só, para a loja, a venda manual, a edição e a
+    // remarcação somarem exatamente o mesmo que a aprovação soma.
+    return seguradoPorPropostasAprovadas(festaEm, ignorarId, db);
   }
 
   /** A opção que uma aprovada segura: a que viraria reserva. */
@@ -1346,13 +1338,7 @@ export class OrcamentosService {
     opcaoAprovadaId: string | null;
     opcoes: T[];
   }): T | null {
-    try {
-      return opcaoParaConverter(a);
-    } catch {
-      // Sem registro de qual opção foi aprovada (não deveria existir), a de
-      // referência — a mesma que o resumo da proposta mostra.
-      return opcaoDeReferencia(a);
-    }
+    return opcaoQueSegura(a);
   }
 
   /**
@@ -1360,22 +1346,7 @@ export class OrcamentosService {
    * mesmas que a conversão leria do catálogo.
    */
   private async kitsDoCatalogo(opcoes: readonly OpcaoComMaterial[], db: Tx = prisma) {
-    const ids = [
-      ...new Set(
-        opcoes
-          .filter((op) => op.kitId && !lerComposicaoCongelada(op.composicaoDoKit))
-          .map((op) => op.kitId as string),
-      ),
-    ];
-    if (ids.length === 0) return new Map<string, { productId: string; quantity: number }[]>();
-    const kits = await db.kit.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        products: { where: { product: { active: true } }, select: { productId: true, quantity: true } },
-      },
-    });
-    return new Map(kits.map((k) => [k.id, k.products]));
+    return kitsDoCatalogo(opcoes, db);
   }
 
   /** A composição de hoje de um kit do catálogo; nula se o kit não existe mais. */

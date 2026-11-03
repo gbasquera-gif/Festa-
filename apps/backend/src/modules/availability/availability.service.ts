@@ -10,6 +10,7 @@ import {
 } from "./item-commitment";
 import { SELECAO_DO_COMPROMISSO, STATUS_QUE_COMPROMETEM } from "./selecao-do-pedido";
 import { travarPedido } from "../creditos/ledger";
+import { seguradoPorPropostasNoPeriodo } from "../orcamentos/compromisso-das-propostas";
 
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
@@ -158,6 +159,12 @@ export class AvailabilityService {
       pedidosPorDia.set(key, doDia);
     }
 
+    // O que propostas aprovadas, ainda sem reserva, seguram em cada dia: a
+    // reserva da loja confere contando isto, e o calendário precisa mostrar
+    // o mesmo — senão a cliente escolhe um dia verde e só descobre a falta
+    // no fim. Sem seleção não há o que conferir, e a leitura nem acontece.
+    const seguradoNoMes = temSelecao ? await seguradoPorPropostasNoPeriodo(start, end) : new Map();
+
     const estoque = temSelecao
       ? await this.estoqueDe(
           [...selecao!.itensDoKit, ...selecao!.itensAvulsos].map((i) => i.productId),
@@ -175,7 +182,7 @@ export class AvailabilityService {
         temSelecao
           ? conflitosDoPedido(
               selecao!,
-              somarCompromisso(pedidosPorDia.get(key) ?? []),
+              this.somarAoDia(somarCompromisso(pedidosPorDia.get(key) ?? []), seguradoNoMes.get(key)?.total),
               estoque,
             )
           : [];
@@ -198,6 +205,14 @@ export class AvailabilityService {
       });
     }
     return days;
+  }
+
+  /** O compromisso das reservas do dia mais o que as propostas aprovadas seguram. */
+  private somarAoDia(doDia: Map<string, number>, alem?: ReadonlyMap<string, number>): Map<string, number> {
+    for (const [productId, quantidade] of alem ?? []) {
+      doDia.set(productId, (doDia.get(productId) ?? 0) + quantidade);
+    }
+    return doDia;
   }
 
   /** Início e fim do dia da data, em UTC. */
