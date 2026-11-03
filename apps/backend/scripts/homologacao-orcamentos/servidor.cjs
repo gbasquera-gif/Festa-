@@ -28,6 +28,7 @@ const { AppModule } = dist("app.module.js");
 const { PrismaExceptionFilter } = dist("common/prisma-exception.filter.js");
 const { AvailabilityService } = dist("modules/availability/availability.service.js");
 const { OrcamentosService } = dist("modules/orcamentos/orcamentos.service.js");
+const { PaymentsService } = dist("modules/payments/payments.service.js");
 
 const esperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const slug = (nome) =>
@@ -169,6 +170,101 @@ async function main() {
   rota("post", "/__orc/abrir-calendario-da-loja", async (b) => {
     await disponibilidade.getMonth(b.mes);
     return { ok: true };
+  });
+
+  // ------------------------------------------------------------------
+  // Expiração do sinal: cenários de pagamento (só banco descartável).
+  // ------------------------------------------------------------------
+  const pagamentos = app.get(PaymentsService);
+
+  // Registro das mudanças de etapa da reserva, só neste banco de teste:
+  // prova o que aconteceu entre o cancelamento e o pagamento, na ordem.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "__historico_de_reserva" (
+    id serial PRIMARY KEY, reserva text, de text, para text, em timestamptz DEFAULT clock_timestamp())`);
+  await prisma.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION "__registrar_etapa"() RETURNS trigger AS $$
+    BEGIN IF NEW.status IS DISTINCT FROM OLD.status THEN
+      INSERT INTO "__historico_de_reserva"(reserva, de, para) VALUES (NEW.id, OLD.status, NEW.status);
+    END IF; RETURN NEW; END $$ LANGUAGE plpgsql`);
+  await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "__etapa_da_reserva" ON "reservations"`);
+  await prisma.$executeRawUnsafe(`CREATE TRIGGER "__etapa_da_reserva" AFTER UPDATE ON "reservations"
+    FOR EACH ROW EXECUTE FUNCTION "__registrar_etapa"()`);
+
+  // Pix da loja pendente no pedido da reserva, com a validade pedida.
+  rota("post", "/__exp/pix", async (b) => {
+    const r = await prisma.reservation.findUnique({ where: { id: b.reservaId }, select: { orderId: true } });
+    const p = await prisma.payment.create({
+      data: {
+        orderId: r.orderId,
+        type: "DEPOSIT",
+        method: "PIX",
+        amount: b.valor ?? 30,
+        status: "PENDING",
+        externalReference: `homologacao-${b.reservaId}-${Date.now()}`,
+        expiresAt: new Date(Date.now() + b.expiraEmMin * 60_000),
+      },
+    });
+    return { id: p.id };
+  });
+  // O webhook confirmado pelo Mercado Pago, já conferido: o mesmo `settle`
+  // que a notificação e a conferência periódica chamam.
+  rota("post", "/__exp/webhook-pago", async (b) => {
+    await pagamentos.settle(b.paymentId, "PAID");
+    return { ok: true };
+  });
+  // Crédito Festaê aplicado na reserva (movimento de utilização).
+  rota("post", "/__exp/credito", async (b) => {
+    const r = await prisma.reservation.findUnique({ where: { id: b.reservaId }, select: { order: { select: { event: { select: { userId: true } } } } } });
+    const m = await prisma.creditoClienteMovimento.create({
+      data: { userId: r.order.event.userId, tipo: "CREDITO_UTILIZADO", valor: -50, reservationDestinoId: b.reservaId, createdById: b.usuarioId },
+    });
+    return { id: m.id };
+  });
+  // Segura a trava do pedido (FOR UPDATE), como faria qualquer operação em
+  // andamento nele, para ordenar as que chegam depois.
+  rota("post", "/__exp/segurar-pedido", async (b) => {
+    const r = await prisma.reservation.findUnique({ where: { id: b.reservaId }, select: { orderId: true } });
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM orders WHERE id = ${r.orderId} FOR UPDATE`;
+        await esperar(b.ms);
+      },
+      { timeout: b.ms + 10_000 },
+    );
+    return { ok: true };
+  });
+  // O tempo passa: muda só quando a reserva foi pedida, nunca a etapa.
+  rota("post", "/__exp/envelhecer", async (b) =>
+    prisma.reservation.update({
+      where: { id: b.reservaId },
+      data: { requestedAt: new Date(Date.now() - b.minutosAtras * 60_000) },
+      select: { id: true },
+    }),
+  );
+  // A nova chamada (a mesma rotina oficial).
+  rota("post", "/__exp/liberar", async () => {
+    await disponibilidade.liberarReservasSemSinalVencidas();
+    return { ok: true };
+  });
+  rota("get", "/__exp/estado", async (q) => {
+    const r = await prisma.reservation.findUnique({
+      where: { id: q.reservaId },
+      select: {
+        status: true,
+        order: { select: { status: true, payments: { select: { id: true, status: true, origem: true, type: true }, orderBy: { createdAt: "asc" } } } },
+        pagamentosAposCancelamento: { select: { paymentId: true } },
+      },
+    });
+    const historico = await prisma.$queryRawUnsafe(
+      `SELECT de, para FROM "__historico_de_reserva" WHERE reserva = $1 ORDER BY id`,
+      q.reservaId,
+    );
+    return {
+      reserva: r.status,
+      pedido: r.order.status,
+      pagamentos: r.order.payments.map((p) => `${p.type}:${p.status}${p.origem ? `:${p.origem}` : ""}`),
+      aposCancelamento: r.pagamentosAposCancelamento.length,
+      etapas: historico.map((h) => `${h.de}>${h.para}`),
+    };
   });
 
   const porta = Number(process.env.HOMOLOGACAO_PORTA || 3340);
