@@ -143,7 +143,7 @@ console.log("B2. Pix pago no Mercado Pago, aviso (webhook) ainda não registrado
 await encerrarCena();
 
 // ============================================================================
-console.log("B3. Pix gerado de novo perto do vencimento (QR ainda válido)");
+console.log("B3. Pix válido além do prazo (gerado antes da regra de validade): pago dentro da validade, protegido");
 {
   const r = await reservaDaLoja(61);
   await pix(r.id, -31, { status: "FAILED" }); // o primeiro, trocado pelo novo
@@ -234,7 +234,8 @@ console.log("B7. Geração de Pix e liberação concorrentes; Pix depois do canc
   conferir("reserva liberada e nenhum Pix nasceu para ela", e.reserva === "CANCELLED" && gerado.status === 409 && !e.pagamentos.includes("PIX:PENDING"), { gerado: gerado.status, e });
 }
 {
-  // Geração primeiro na fila: o Pix nasce; a liberação o enxerga e espera.
+  // Geração primeiro na fila, mas depois do prazo: pela regra de validade, o
+  // Pix não nasce (nenhum prazo novo); a liberação segue a conferência.
   const r = await reservaDaLoja(61);
   const trava = segurar(r.id, 1200);
   await esperar(150);
@@ -243,13 +244,96 @@ console.log("B7. Geração de Pix e liberação concorrentes; Pix depois do canc
   const liberacao = liberar();
   const [, gerado] = await Promise.all([trava, geracao, liberacao]);
   const e = await estado(r.id);
-  conferir("Pix gerado antes: a reserva não é liberada com ele válido", gerado.status === 200 && e.reserva === "PENDING", { gerado: gerado.status, e });
+  conferir(
+    "depois do prazo nenhum Pix novo nasce (409), e a reserva sem pagamento é liberada",
+    gerado.status === 409 && gerado.json?.codigo === "PRAZO_DO_SINAL_ENCERRADO" && e.reserva === "CANCELLED" && !e.pagamentos.includes("PIX:PENDING"),
+    { gerado: gerado.json, e },
+  );
+}
+{
+  // Dentro do prazo, na fila antes da liberação: o Pix nasce, e a reserva
+  // (ainda no prazo) nem é candidata à liberação.
+  const r = await reservaDaLoja(10);
+  const trava = segurar(r.id, 1200);
+  await esperar(150);
+  const geracao = auxBruto("POST", "/__pag/gerar-pix", { eventId: r.eventId });
+  await esperar(250);
+  const liberacao = liberar();
+  const [, gerado] = await Promise.all([trava, geracao, liberacao]);
+  const e = await estado(r.id);
+  conferir("dentro do prazo: Pix gerado e a reserva segue aguardando o sinal", gerado.status === 200 && e.reserva === "PENDING", { gerado: gerado.status, e });
 }
 {
   const r = await reservaDaLoja(5);
   await aux("POST", "/__pag/ja-cancelada", { reservaId: r.id });
   const gerado = await auxBruto("POST", "/__pag/gerar-pix", { eventId: r.eventId });
   conferir("reserva cancelada não gera Pix novo", gerado.status === 409, gerado.json);
+}
+await encerrarCena();
+
+// ============================================================================
+console.log("B9. Validade do Pix: a regeneração não amplia o prazo da reserva");
+const pixNoApp = async (eventId) => {
+  const { token } = await aux("GET", `/__pag/token-da-cliente?eventId=${eventId}`);
+  return http("POST", `${API}/events/${eventId}/order/payments`, { type: "DEPOSIT", method: "PIX" }, token);
+};
+{
+  const r = await reservaDaLoja(5);
+  const { requestedAt } = await aux("GET", `/__pag/evento-da-reserva?reservaId=${r.id}`);
+  const prazo = new Date(requestedAt).getTime() + 60 * 60_000;
+  const antes = Date.now();
+  const g = await pixNoApp(r.eventId);
+  const vale = g.json?.expiresAt ? new Date(g.json.expiresAt).getTime() : NaN;
+  conferir("no começo do prazo, o Pix sai pela rota do app com 30 minutos", g.status === 201 && Math.abs(vale - antes - 30 * 60_000) < 15_000, g.json ?? g.texto);
+  conferir("e vence antes do fim do prazo da reserva", vale <= prazo - 60_000, { vale, prazo });
+}
+{
+  // O primeiro Pix venceu aos 31 minutos; faltam 29 para o prazo.
+  const r = await reservaDaLoja(31);
+  await pix(r.id, -1);
+  const antes = (await estado(r.id)).pagamentos.length;
+  const g = await pixNoApp(r.eventId);
+  const depois = await estado(r.id);
+  conferir("regenerar sem 30 minutos até o prazo é recusado (409 PRAZO_DO_SINAL_INSUFICIENTE)", g.status === 409 && g.json?.codigo === "PRAZO_DO_SINAL_INSUFICIENTE", g.json);
+  conferir(
+    "a cliente recebe a orientação no texto que o app mostra (horário do prazo, já pagou, WhatsApp)",
+    /termina às \d\d:\d\d/.test(g.json?.message ?? "") && g.json.message.includes("Se você já pagou") && g.json.message.includes("WhatsApp"),
+    g.json?.message,
+  );
+  conferir("nenhuma cobrança nova é criada nem cancelada, e a reserva segue no prazo", depois.pagamentos.length === antes && depois.reserva === "PENDING", { antes, depois });
+}
+{
+  // Prazo já encerrado, mas a liberação ainda não pôde confirmar (Mercado
+  // Pago fora do ar): sem Pix novo, e as peças continuam seguras.
+  const r = await reservaDaLoja(70);
+  const velho = await pix(r.id, -40);
+  await provedor({ referencia: velho.externalReference, modoDaReferencia: "fora-do-ar" });
+  const g = await pixNoApp(r.eventId);
+  await liberar();
+  const e = await estado(r.id);
+  conferir("depois do prazo: recusado (409 PRAZO_DO_SINAL_ENCERRADO), com orientação", g.status === 409 && g.json?.codigo === "PRAZO_DO_SINAL_ENCERRADO" && (g.json?.message ?? "").includes("terminou às"), g.json);
+  conferir("em verificação pendente, a reserva não é liberada", e.reserva === "PENDING", e);
+  // O Mercado Pago volta e diz que o Pix (pago dentro da validade) foi pago.
+  await provedor({ referencia: velho.externalReference, modoDaReferencia: "pago" });
+  await liberar();
+  const depois = await estado(r.id);
+  conferir("pago dentro da validade e confirmado depois do prazo: registrado e a reserva confirmada", depois.reserva === "CONFIRMED" && depois.pagamentos.includes("PIX:PAID"), depois);
+}
+{
+  // Reserva confirmada (venda manual, sem prazo correndo): o Pix vale 30 minutos.
+  const v = await req("POST", "/reservations/manual", {
+    cliente: { nome: `Cliente Pagamentos ${suf}`, telefone: telefone() },
+    evento: { data: DATA, tipo: "ANIVERSARIO" },
+    produtos: { kitId: kit.id, itens: [] },
+    logistica: { fulfillment: "PICKUP", assembly: false },
+    financeiro: { valorProdutos: 100, entrega: 0, montagem: 0, desconto: 0, sinal: 0, formaPagamento: "PIX", statusPagamento: "PENDING" },
+    origem: "WHATSAPP",
+  });
+  const { order } = await aux("GET", `/__pag/evento-da-reserva?reservaId=${v.json.id}`);
+  const antes = Date.now();
+  const g = await pixNoApp(order.eventId);
+  const vale = g.json?.expiresAt ? new Date(g.json.expiresAt).getTime() : NaN;
+  conferir("sem prazo correndo (reserva confirmada), o Pix sai com 30 minutos", g.status === 201 && Math.abs(vale - antes - 30 * 60_000) < 15_000, g.json ?? g.texto);
 }
 await encerrarCena();
 

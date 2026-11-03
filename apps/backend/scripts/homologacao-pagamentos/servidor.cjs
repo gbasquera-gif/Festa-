@@ -60,7 +60,8 @@ async function main() {
       try {
         r.json((await fn(metodo === "get" ? q.query : await corpo(q))) ?? null);
       } catch (e) {
-        r.status(e && e.status ? e.status : 500).json({ erro: String(e && e.message ? e.message : e), status: e?.status });
+        const corpo = typeof e?.getResponse === "function" && typeof e.getResponse() === "object" ? e.getResponse() : {};
+        r.status(e && e.status ? e.status : 500).json({ erro: String(e && e.message ? e.message : e), status: e?.status, ...corpo });
       }
     });
 
@@ -118,6 +119,20 @@ async function main() {
       (await prisma.user.create({ data: { name: `Equipe ${q.papel}`, email, role: q.papel } }));
     return { token: await app.get(JwtService).signAsync({ sub: u.id, email: u.email, role: u.role }), id: u.id };
   });
+  // A cliente dona da festa, para chamar a rota de verdade que o app usa.
+  rota("get", "/__pag/token-da-cliente", async (q) => {
+    const evento = await prisma.event.findUnique({ where: { id: q.eventId }, select: { user: true } });
+    const u = evento.user;
+    const email = u.email ?? `cliente-${u.id}@homologacao.invalid`;
+    if (!u.email) await prisma.user.update({ where: { id: u.id }, data: { email } });
+    return { token: await app.get(JwtService).signAsync({ sub: u.id, email, role: u.role }) };
+  });
+  rota("get", "/__pag/evento-da-reserva", async (q) =>
+    prisma.reservation.findUnique({
+      where: { id: q.reservaId },
+      select: { requestedAt: true, order: { select: { eventId: true } } },
+    }),
+  );
   rota("post", "/__pag/produto", async (b) => {
     const p = await prisma.product.create({ data: { name: b.nome, slug: slug(b.nome), unitPrice: 50, stockQuantity: b.estoque ?? 3 } });
     return { id: p.id };
@@ -165,7 +180,7 @@ async function main() {
   // A geração do Pix pela loja (createCheckout de verdade, gateway simulado).
   const pagamentos = app.get(PaymentsService);
   rota("post", "/__pag/gerar-pix", async (b) => {
-    const p = await pagamentos.createCheckout(b.eventId, { type: "DEPOSIT", method: "PIX" }, "cliente@homologacao.invalid");
+    const p = await pagamentos.createCheckout(b.eventId, { type: b.tipo ?? "DEPOSIT", method: "PIX" }, "cliente@homologacao.invalid");
     return { id: p.id, expiresAt: p.expiresAt };
   });
   rota("post", "/__pag/webhook-pago", async (b) => {

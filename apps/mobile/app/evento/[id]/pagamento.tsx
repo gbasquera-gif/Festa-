@@ -187,7 +187,8 @@ export default function Pagamento() {
             <View className="flex-row gap-2 rounded-2xl bg-linen p-3.5">
               <Ionicons name="time-outline" size={18} color={colors.navy} />
               <Text className="flex-1 text-sm leading-5 text-navy/70">
-                O código anterior venceu. Gere um novo — sua reserva continua guardada.
+                O código anterior venceu. Você pode gerar um novo enquanto houver tempo no prazo do sinal —
+                se não houver, avisamos o que fazer.
               </Text>
             </View>
           )}

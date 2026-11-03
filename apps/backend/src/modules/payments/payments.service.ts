@@ -21,6 +21,7 @@ import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
 import { travarPedido } from "../creditos/ledger";
 import { triagemDoSinal, type SituacaoDoSinal } from "./liberacao-do-sinal";
+import { prazoDaReserva, validadeDoPix } from "./validade-do-pix";
 import {
   aindaPodeSerPago,
   TEXTO_DO_ALERTA,
@@ -376,7 +377,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       await travarPedido(tx, order.id);
       const atual = await tx.order.findUnique({
         where: { id: order.id },
-        include: { payments: true, reservation: { select: { status: true } } },
+        include: { payments: true, reservation: { select: { status: true, requestedAt: true } } },
       });
       // Reserva cancelada não gera cobrança nova: um Pix de uma festa que não
       // existe mais seria dinheiro entrando sem destino.
@@ -396,6 +397,19 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           (!p.expiresAt || p.expiresAt.getTime() > now),
       );
       if (reusable) return { reusable };
+
+      // Um Pix novo nunca vale além do prazo da reserva que aguarda o sinal
+      // (ver validade-do-pix.ts). Sem tempo para a validade mínima do Mercado
+      // Pago, nenhuma cobrança é criada — nada é gravado, e a cliente recebe a
+      // orientação. O Pix ainda válido, acima, continua sendo devolvido.
+      const validade = input.method === "PIX" ? validadeDoPix(new Date(now), prazoDaReserva(atual.reservation)) : null;
+      if (validade && !validade.ok) {
+        throw new ConflictException({
+          message: validade.mensagem,
+          codigo: validade.codigo,
+          prazo: validade.prazo.toISOString(),
+        });
+      }
 
       // Pendentes vencidos saem do caminho para não confundirem a tela nem a
       // conferência da Maria Luiza com QR que ninguém mais consegue pagar.
@@ -418,7 +432,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (amount <= 0) {
         throw new ConflictException("Esta festa já está paga integralmente.");
       }
-      const expiresAt = new Date(now + PIX_EXPIRATION_MINUTES * 60_000);
+      const expiresAt = validade?.ok ? validade.expiresAt : new Date(now + PIX_EXPIRATION_MINUTES * 60_000);
 
       const payment = await tx.payment.create({
         data: {
