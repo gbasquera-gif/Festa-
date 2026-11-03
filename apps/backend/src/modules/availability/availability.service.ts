@@ -10,6 +10,15 @@ import {
 } from "./item-commitment";
 import { SELECAO_DO_COMPROMISSO, STATUS_QUE_COMPROMETEM } from "./selecao-do-pedido";
 import { travarPedido } from "../creditos/ledger";
+import { PaymentsService } from "../payments/payments.service";
+
+/**
+ * Quantas consultas ao Mercado Pago uma rodada de liberação pode fazer.
+ * A rodada roda dentro da consulta do calendário da loja: sem teto, um
+ * acúmulo de reservas vencidas faria a cliente esperar a resposta de cada
+ * Pix. O que passar da cota fica para a próxima rodada, segurando as peças.
+ */
+const CONSULTAS_POR_RODADA = 5;
 
 /**
  * Estados que ocupam a agenda do dia. PREPARING, READY e COMPLETED contam
@@ -50,6 +59,8 @@ export interface DayAvailability {
 export class AvailabilityService {
   private readonly logger = new Logger(AvailabilityService.name);
 
+  constructor(private readonly pagamentos: PaymentsService) {}
+
   /**
    * Devolve ao estoque as reservas que ninguém pagou.
    *
@@ -64,7 +75,8 @@ export class AvailabilityService {
    * agendador seria mais uma peça para manter no ar.
    */
   private async releaseUnpaidHolds(): Promise<void> {
-    const deadline = new Date(Date.now() - RESERVATION_HOLD_MINUTES * 60_000);
+    const agora = new Date();
+    const deadline = new Date(agora.getTime() - RESERVATION_HOLD_MINUTES * 60_000);
 
     const expired = await prisma.reservation.findMany({
       where: {
@@ -79,20 +91,41 @@ export class AvailabilityService {
     });
     if (expired.length === 0) return;
 
-    // Uma de cada vez, sob a trava do pedido — a mesma do registro de
-    // pagamento. A condição é reconferida dentro da trava: um Pix confirmado
-    // entre a busca e aqui faz a reserva deixar de ser "sem sinal", e ela não
-    // é cancelada. Confirmado depois, ela já está cancelada quando o
-    // pagamento é gravado, e ele vira pagamento após o cancelamento.
+    // Uma de cada vez. Antes de devolver as peças, o pagamento: um Pix pago
+    // cujo aviso não chegou, ou um Pix gerado de novo que ainda pode ser
+    // pago, não é "sem sinal". Sem confirmação, a reserva espera — com as
+    // peças — a próxima rodada.
     let liberadas = 0;
+    let consultas = 0;
+    const aguardando: Record<string, number> = { PAGO: 0, COBRANCA_VIVA: 0, VERIFICACAO_PENDENTE: 0 };
     for (const reserva of expired) {
+      const sinal = await this.pagamentos.situacaoDoSinalParaLiberar(reserva.orderId, {
+        agora,
+        podeConsultar: consultas < CONSULTAS_POR_RODADA,
+      });
+      consultas += sinal.consultas;
+      if (sinal.situacao !== "LIBERAVEL") {
+        aguardando[sinal.situacao] += 1;
+        continue;
+      }
+
+      // Sob a trava do pedido — a mesma do registro de pagamento e da
+      // geração do Pix. A condição é reconferida dentro da trava: um Pix
+      // confirmado, ou gerado, entre a consulta e aqui faz a reserva deixar
+      // de ser "sem sinal", e ela não é cancelada.
       const cancelou = await prisma.$transaction(async (tx) => {
         await travarPedido(tx, reserva.orderId);
         const { count } = await tx.reservation.updateMany({
           where: {
             id: reserva.id,
             status: "PENDING",
-            order: { payments: { none: { status: "PAID" } } },
+            order: {
+              payments: {
+                none: {
+                  OR: [{ status: "PAID" }, { status: "PENDING", method: "PIX", expiresAt: { gt: new Date() } }],
+                },
+              },
+            },
             creditosUtilizados: { none: {} },
           },
           data: { status: "CANCELLED" },
@@ -102,13 +135,25 @@ export class AvailabilityService {
         }
         return count === 1;
       });
-      if (cancelou) liberadas += 1;
+      if (!cancelou) continue;
+      liberadas += 1;
+      // As cobranças que sobraram são encerradas, como no cancelamento pelo
+      // painel: nenhum Pix de uma reserva cancelada fica aguardando pagamento.
+      await this.pagamentos.encerrarCobrancasPendentes(reserva.orderId).catch((error) => {
+        this.logger.warn(`Reserva ${reserva.id} liberada; cobranças pendentes não encerradas agora: ${error}`);
+      });
     }
-    if (liberadas === 0) return;
 
-    this.logger.log(
-      `${liberadas} reserva(s) sem sinal pago passaram do prazo e a data foi liberada.`,
-    );
+    const esperando = aguardando.COBRANCA_VIVA + aguardando.VERIFICACAO_PENDENTE;
+    if (liberadas > 0) {
+      this.logger.log(`${liberadas} reserva(s) sem sinal pago passaram do prazo e a data foi liberada.`);
+    }
+    if (esperando > 0 || aguardando.PAGO > 0) {
+      this.logger.log(
+        `Reservas vencidas sem liberar: ${aguardando.PAGO} com pagamento confirmado agora, ` +
+          `${aguardando.COBRANCA_VIVA} com Pix ainda pagável, ${aguardando.VERIFICACAO_PENDENTE} aguardando confirmação do Mercado Pago.`,
+      );
+    }
   }
 
   /**

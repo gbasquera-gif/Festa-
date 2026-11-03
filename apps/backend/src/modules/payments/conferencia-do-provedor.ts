@@ -90,6 +90,15 @@ function situacao(p: PagamentoNoProvedor): Situacao {
 }
 
 /**
+ * O pagamento ainda pode virar dinheiro recebido: pendente, em análise ou
+ * autorizado sem captura. Não é recebido — mas também não é recusado, e
+ * liberar a reserva por isso seria apostar que ele não vai ser aprovado.
+ */
+export function aindaPodeSerPago(p: PagamentoNoProvedor): boolean {
+  return situacao(p) === "PENDENTE";
+}
+
+/**
  * O que fazer com a resposta do Mercado Pago para uma cobrança nossa.
  *
  * A consulta à API diz o status, mas o status sozinho não prova que o

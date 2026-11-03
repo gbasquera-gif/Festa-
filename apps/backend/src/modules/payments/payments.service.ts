@@ -20,7 +20,9 @@ import {
 import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
 import { travarPedido } from "../creditos/ledger";
+import { triagemDoSinal, type SituacaoDoSinal } from "./liberacao-do-sinal";
 import {
+  aindaPodeSerPago,
   TEXTO_DO_ALERTA,
   consolidarDecisoes,
   decidirPeloProvedor,
@@ -355,61 +357,83 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       include: { payments: true, event: { include: { user: true } }, reservation: { select: { status: true } } },
     });
     if (!order) throw new NotFoundException("Orçamento do evento não encontrado.");
-    // Reserva cancelada não gera cobrança nova: um Pix de uma festa que não
-    // existe mais seria dinheiro entrando sem destino.
-    if (order.status === "CANCELLED" || (order.reservation && ENCERRADAS.includes(order.reservation.status))) {
-      throw new ConflictException("Esta reserva foi cancelada. Não há pagamento a gerar.");
-    }
     if (!order.kitId) {
       throw new ConflictException("Selecione um kit antes de gerar o pagamento.");
     }
-    if (order.payments.some((p) => p.type === input.type && p.status === "PAID")) {
-      throw new ConflictException("Este pagamento já foi realizado.");
-    }
 
-    const now = Date.now();
-    const reusable = order.payments.find(
-      (p) =>
-        p.type === input.type &&
-        p.status === "PENDING" &&
-        p.pixQrCode &&
-        (!p.expiresAt || p.expiresAt.getTime() > now),
-    );
-    if (reusable) return reusable;
-
-    // Pendentes vencidos saem do caminho para não confundirem a tela nem a
-    // conferência da Maria Luiza com QR que ninguém mais consegue pagar.
-    const stale = order.payments.filter(
-      (p) => p.type === input.type && p.status === "PENDING" && p.expiresAt && p.expiresAt.getTime() <= now,
-    );
-    if (stale.length > 0) {
-      await prisma.payment.updateMany({
-        where: { id: { in: stale.map((p) => p.id) } },
-        data: { status: "FAILED" },
+    /**
+     * A decisão de cobrar, sob a trava do pedido — a mesma da liberação da
+     * reserva sem sinal, do cancelamento e do registro de pagamento.
+     *
+     * Sem ela, a liberação podia cancelar a reserva entre a conferência
+     * daqui e a gravação da cobrança, e a cliente recebia um Pix válido de
+     * uma festa já cancelada. Com ela, ou a liberação vem antes (e aqui a
+     * reserva já está cancelada: nada é gerado), ou a cobrança nasce antes
+     * (e a liberação a enxerga como Pix ainda pagável e espera). A chamada
+     * ao Mercado Pago fica fora da trava: rede não segura linha do banco.
+     */
+    const decisao = await prisma.$transaction(async (tx) => {
+      await travarPedido(tx, order.id);
+      const atual = await tx.order.findUnique({
+        where: { id: order.id },
+        include: { payments: true, reservation: { select: { status: true } } },
       });
-    }
+      // Reserva cancelada não gera cobrança nova: um Pix de uma festa que não
+      // existe mais seria dinheiro entrando sem destino.
+      if (!atual || atual.status === "CANCELLED" || (atual.reservation && ENCERRADAS.includes(atual.reservation.status))) {
+        throw new ConflictException("Esta reserva foi cancelada. Não há pagamento a gerar.");
+      }
+      if (atual.payments.some((p) => p.type === input.type && p.status === "PAID")) {
+        throw new ConflictException("Este pagamento já foi realizado.");
+      }
 
-    const amount = valorACobrar(
-      input.type,
-      Number(order.total),
-      order.payments.filter((p) => p.status === "PAID").map((p) => Number(p.amount)),
-    );
+      const now = Date.now();
+      const reusable = atual.payments.find(
+        (p) =>
+          p.type === input.type &&
+          p.status === "PENDING" &&
+          p.pixQrCode &&
+          (!p.expiresAt || p.expiresAt.getTime() > now),
+      );
+      if (reusable) return { reusable };
 
-    if (amount <= 0) {
-      throw new ConflictException("Esta festa já está paga integralmente.");
-    }
-    const expiresAt = new Date(now + PIX_EXPIRATION_MINUTES * 60_000);
+      // Pendentes vencidos saem do caminho para não confundirem a tela nem a
+      // conferência da Maria Luiza com QR que ninguém mais consegue pagar.
+      const stale = atual.payments.filter(
+        (p) => p.type === input.type && p.status === "PENDING" && p.expiresAt && p.expiresAt.getTime() <= now,
+      );
+      if (stale.length > 0) {
+        await tx.payment.updateMany({
+          where: { id: { in: stale.map((p) => p.id) }, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+      }
 
-    const payment = await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        type: input.type,
-        method: input.method,
-        amount,
-        status: "PENDING",
-        expiresAt: input.method === "PIX" ? expiresAt : null,
-      },
+      const amount = valorACobrar(
+        input.type,
+        Number(atual.total),
+        atual.payments.filter((p) => p.status === "PAID").map((p) => Number(p.amount)),
+      );
+
+      if (amount <= 0) {
+        throw new ConflictException("Esta festa já está paga integralmente.");
+      }
+      const expiresAt = new Date(now + PIX_EXPIRATION_MINUTES * 60_000);
+
+      const payment = await tx.payment.create({
+        data: {
+          orderId: order.id,
+          type: input.type,
+          method: input.method,
+          amount,
+          status: "PENDING",
+          expiresAt: input.method === "PIX" ? expiresAt : null,
+        },
+      });
+      return { payment, amount, expiresAt };
     });
+    if ("reusable" in decisao) return decisao.reusable;
+    const { payment, amount, expiresAt } = decisao;
 
     let checkout;
     try {
@@ -542,6 +566,65 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         `Sinal do pagamento ${registro.payment.id} chegou com a reserva em ${registro.reserva?.status ?? "nenhuma"}. Confira no painel.`,
       );
     }
+  }
+
+  /**
+   * Pode a reserva deste pedido ser liberada por falta de sinal?
+   *
+   * O banco decide sozinho quando dá (pagamento registrado, Pix ainda
+   * pagável, nenhuma cobrança no provedor). Quando há cobrança no Mercado
+   * Pago ainda não confirmada como não paga, pergunta a ele — e a resposta
+   * passa pela mesma conferência do webhook: aprovada e conferida, o
+   * pagamento é registrado agora e a reserva, confirmada.
+   *
+   * Não deu para confirmar (provedor fora do ar, resposta divergente,
+   * pagamento em análise): VERIFICACAO_PENDENTE. A reserva fica como está,
+   * segurando as peças, e a próxima liberação pergunta de novo. Liberar no
+   * escuro seria trocar a dúvida por um cancelamento com dinheiro entrando.
+   *
+   * `podeConsultar: false` (cota da rodada esgotada) responde pendente em vez
+   * de consultar.
+   */
+  async situacaoDoSinalParaLiberar(
+    orderId: string,
+    opcoes: { agora?: Date; podeConsultar?: boolean } = {},
+  ): Promise<{ situacao: SituacaoDoSinal; consultas: number }> {
+    const agora = opcoes.agora ?? new Date();
+    const cobrancas = await prisma.payment.findMany({ where: { orderId } });
+    const triagem = triagemDoSinal(cobrancas, agora);
+    if (triagem.decisao) return { situacao: triagem.decisao, consultas: 0 };
+    if (opcoes.podeConsultar === false) return { situacao: "VERIFICACAO_PENDENTE", consultas: 0 };
+
+    let consultas = 0;
+    for (const resumo of triagem.aConsultar) {
+      const cobranca = cobrancas.find((c) => c.id === resumo.id)!;
+      let encontrados: PagamentoNoProvedor[];
+      try {
+        consultas += 1;
+        encontrados = await this.consultarCobranca(cobranca);
+      } catch (error) {
+        this.logger.warn(
+          `Liberação da reserva aguardando: não foi possível consultar a cobrança ${cobranca.id} no Mercado Pago (${error}). Nada foi cancelado.`,
+        );
+        return { situacao: "VERIFICACAO_PENDENTE", consultas };
+      }
+      await prisma.payment.update({ where: { id: cobranca.id }, data: { syncedAt: new Date() } });
+      const resultado = await this.aplicarDecisoes(cobranca, encontrados);
+      if (resultado.acao === "LIQUIDAR") return { situacao: "PAGO", consultas };
+      if (resultado.alertas.length > 0) return { situacao: "VERIFICACAO_PENDENTE", consultas };
+      // Pix sem resposta do provedor, ou pagamento ainda em análise: não dá
+      // para afirmar que não foi pago.
+      if ((cobranca.method === "PIX" && encontrados.length === 0) || encontrados.some(aindaPodeSerPago)) {
+        return { situacao: "VERIFICACAO_PENDENTE", consultas };
+      }
+      // Vencida e confirmada sem pagamento: recusada, como na conferência
+      // periódica.
+      const vencida = cobranca.expiresAt !== null && cobranca.expiresAt.getTime() < agora.getTime();
+      if (cobranca.status === "PENDING" && vencida) {
+        await prisma.payment.updateMany({ where: { id: cobranca.id, status: "PENDING" }, data: { status: "FAILED" } });
+      }
+    }
+    return { situacao: "LIBERAVEL", consultas };
   }
 
   /**
