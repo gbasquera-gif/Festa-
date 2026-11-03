@@ -68,6 +68,16 @@ export class OrcamentosController {
    * O selo de disponibilidade de cada proposta da lista, conferido agora.
    * Declarada antes de `:id`, senão "disponibilidade" seria lido como um id.
    */
+  /**
+   * Propostas aprovadas há mais do prazo do alerta, sem reserva. Só leitura.
+   * Declarada antes de `:id`, como as outras rotas de nome fixo.
+   */
+  @ApiOperation({ summary: "Aprovadas aguardando sinal além do prazo do alerta" })
+  @Get("alertas/aprovadas-sem-sinal")
+  aprovadasSemSinal() {
+    return this.orcamentos.aprovadasAguardandoSinal();
+  }
+
   @ApiOperation({ summary: "Selo de disponibilidade das propostas" })
   @Get("disponibilidade")
   selos() {

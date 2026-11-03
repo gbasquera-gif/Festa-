@@ -34,6 +34,9 @@ import {
   type SeloDeDisponibilidade,
   type SimulacaoDeDisponibilidadeInput,
   type StatusDoOrcamento,
+  CHAVE_DO_ALERTA_DE_APROVADAS,
+  aguardoDoSinal,
+  limiarDoAlerta,
 } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
 import { somarCompromisso, type Conflito } from "../availability/item-commitment";
@@ -1231,6 +1234,66 @@ export class OrcamentosService {
       });
     }
     return this.conteudo();
+  }
+
+  /**
+   * Propostas aprovadas, sem reserva, aguardando o sinal além do prazo do
+   * alerta (padrão 48 h, ajustável no conteúdo da proposta).
+   *
+   * Só leitura: nada é cancelado, convertido, liberado ou lançado. A equipe
+   * confere o extrato — o sinal pode ter entrado por Pix direto na conta e
+   * ainda não ter sido registrado — e decide pelos fluxos que já existem na
+   * proposta (registrar o sinal, marcar como perdida).
+   *
+   * As mais antigas primeiro: são as que seguram peças há mais tempo.
+   */
+  async aprovadasAguardandoSinal(agora: Date = new Date()) {
+    const conteudo = await this.conteudo();
+    const limiarHoras = limiarDoAlerta(conteudo[CHAVE_DO_ALERTA_DE_APROVADAS]?.texto);
+    const corte = new Date(agora.getTime() - limiarHoras * 3_600_000);
+    const aprovadas = await prisma.orcamento.findMany({
+      where: {
+        status: "APROVADO",
+        reservationId: null,
+        // Sem data de aprovação registrada (não deveria existir), entra por precaução.
+        OR: [{ aprovadoEm: { lte: corte } }, { aprovadoEm: null }],
+      },
+      select: {
+        id: true,
+        numero: true,
+        clienteNome: true,
+        festaEm: true,
+        aprovadoEm: true,
+        aprovadoPelaEquipePorId: true,
+        opcaoAprovadaNome: true,
+        valorAprovado: true,
+        total: true,
+        percentualDoSinal: true,
+      },
+      orderBy: [{ aprovadoEm: { sort: "asc", nulls: "first" } }, { numero: "asc" }],
+    });
+    return {
+      limiarHoras,
+      conferidoEm: agora.toISOString(),
+      propostas: aprovadas.map((o) => {
+        const valor = num(o.valorAprovado ?? o.total);
+        const aguardo = aguardoDoSinal(agora, o.aprovadoEm, o.festaEm, limiarHoras);
+        return {
+          id: o.id,
+          numero: o.numero,
+          cliente: o.clienteNome,
+          festaEm: o.festaEm ? diaDaFesta(o.festaEm) : null,
+          aprovadoEm: o.aprovadoEm?.toISOString() ?? null,
+          aprovadaPor: o.aprovadoPelaEquipePorId ? ("EQUIPE" as const) : ("CLIENTE" as const),
+          opcao: o.opcaoAprovadaNome,
+          valorAprovado: valor,
+          sinalEsperado: calcularSinal(valor, this.percentualDoSinal(o, conteudo)).valor,
+          horasAguardando: aguardo.horasAguardando,
+          diasAteAFesta: aguardo.diasAteAFesta,
+          festaJaPassou: aguardo.festaJaPassou,
+        };
+      }),
+    };
   }
 
   /**

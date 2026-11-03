@@ -19,6 +19,7 @@ import {
   type Situacao,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
+import { AlertaAprovadasSemSinal } from "@/components/orcamento/AlertaAprovadasSemSinal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, baixarArquivo } from "@/lib/api";
@@ -354,6 +355,10 @@ export default function ProximasAcoes() {
       <p className="mb-6 text-muted-foreground">
         O que precisa ser feito, e quando. Nenhuma festa depende de alguém lembrar.
       </p>
+
+      <div className="mb-6">
+        <AlertaAprovadasSemSinal contexto="operacao" />
+      </div>
 
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Numero label="Festas hoje" valor={resumo.hoje} />

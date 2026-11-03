@@ -627,3 +627,14 @@ export type {
   SimulacaoDeDisponibilidadeInput,
   SituacaoDoSelo,
 } from "./disponibilidade-da-proposta";
+
+export {
+  ALERTA_APROVADAS_HORAS_MAX,
+  ALERTA_APROVADAS_HORAS_MIN,
+  ALERTA_APROVADAS_HORAS_PADRAO,
+  CHAVE_DO_ALERTA_DE_APROVADAS,
+  aguardoDoSinal,
+  limiarDoAlerta,
+  textoDoAguardo,
+} from "./aprovadas-sem-sinal";
+export type { AguardoDoSinal } from "./aprovadas-sem-sinal";

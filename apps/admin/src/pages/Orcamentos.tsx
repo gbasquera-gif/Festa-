@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useFiltroNaUrl } from "@/lib/filtro-na-url";
+import { AlertaAprovadasSemSinal } from "@/components/orcamento/AlertaAprovadasSemSinal";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, CircleDashed, Plus, Search } from "lucide-react";
@@ -184,6 +185,7 @@ export default function Orcamentos() {
 
   return (
     <div className="space-y-4">
+      <AlertaAprovadasSemSinal contexto="orcamentos" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-2xl text-sm text-muted-foreground">
           Cada proposta vira um link para a cliente abrir no celular. Aprovada, ela não cria reserva
