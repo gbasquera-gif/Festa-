@@ -5,8 +5,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma } from "@festae/database";
-import type { CreateEventInput, UpdateEventInput } from "@festae/shared";
+import { diaDaFesta, formatarDataDaFesta, type CreateEventInput, type UpdateEventInput } from "@festae/shared";
 import type { AuthUser } from "../../common/decorators/current-user.decorator";
+import { travarPedido } from "../creditos/ledger";
+
+/** Reserva que ainda segura data e material. Cancelada e recusada não seguram. */
+const reservaAtiva = (status: string) => status !== "CANCELLED" && status !== "REJECTED";
 
 const eventInclude = {
   theme: true,
@@ -70,13 +74,55 @@ export class EventsService {
    * cadastrou no balcão, porque o dono do registro é o cliente.
    */
   async update(id: string, requester: AuthUser, input: UpdateEventInput) {
-    const event = await prisma.event.findUnique({ where: { id } });
+    const event = await prisma.event.findUnique({ where: { id }, include: { order: { select: { id: true } } } });
     if (!event) throw new NotFoundException("Evento não encontrado.");
     if (event.userId !== requester.userId && requester.role === "CLIENT") {
       throw new ForbiddenException("Você não tem acesso a este evento.");
     }
 
-    return prisma.event.update({ where: { id }, data: input, include: eventInclude });
+    const novoDia = input.date ? diaDaFesta(input.date) : null;
+    if (!novoDia || novoDia === diaDaFesta(event.date) || !event.order) {
+      return prisma.event.update({ where: { id }, data: input, include: eventInclude });
+    }
+
+    /**
+     * A data da festa com reserva só muda pela remarcação.
+     *
+     * A agenda, o acervo, a operação e o financeiro leem a data da RESERVA.
+     * Mudar só a do evento deixava a peça presa no dia antigo e o dia novo
+     * sem proteção — duas festas para uma peça. Com reserva ativa, o dia só
+     * muda por "Alterar data da festa" (ou pela edição da reserva), que
+     * confere o acervo do dia novo sob a trava, muda as duas datas juntas e
+     * guarda a data anterior.
+     *
+     * Alinhar o evento ao dia da própria reserva continua permitido: é como a
+     * equipe corrige, à mão, um registro antigo que ficou divergente — sem
+     * efeito no acervo, que já segue a reserva.
+     *
+     * Decidido sob a trava do pedido, a mesma do pedido de reserva da loja:
+     * uma reserva sendo criada agora não passa no meio.
+     */
+    const orderId = event.order.id;
+    await prisma.$transaction(async (tx) => {
+      await travarPedido(tx, orderId);
+      const reserva = await tx.reservation.findUnique({
+        where: { orderId },
+        select: { id: true, status: true, eventDate: true },
+      });
+      if (reserva && reservaAtiva(reserva.status) && diaDaFesta(reserva.eventDate) !== novoDia) {
+        const dataDaReserva = formatarDataDaFesta(reserva.eventDate);
+        throw new ConflictException({
+          message:
+            requester.role === "CLIENT"
+              ? `Sua festa já está reservada para ${dataDaReserva}. Para mudar a data, fale com a Festaê pelo WhatsApp: conferimos se o dia novo está livre.`
+              : `Esta festa tem reserva para ${dataDaReserva}. A data só muda pela reserva — "Alterar data da festa" na tela de Reservas, ou a edição da reserva —, que confere o acervo do dia novo e guarda a data anterior.`,
+          codigo: "DATA_DA_FESTA_COM_RESERVA",
+          ...(requester.role === "CLIENT" ? {} : { reservaId: reserva.id, dataDaReserva: diaDaFesta(reserva.eventDate) }),
+        });
+      }
+      await tx.event.update({ where: { id }, data: input });
+    });
+    return prisma.event.findUnique({ where: { id }, include: eventInclude });
   }
 
   /**
