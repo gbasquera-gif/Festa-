@@ -416,5 +416,172 @@ console.log("16. A tela da proposta continua somando as aprovadas como antes");
   }
 }
 
+// ----------------------------------------------------------------------------
+// Data da festa: a da reserva e a do evento andam juntas.
+const datas = (reservaId) => aux("GET", `/__trv/datas?reservaId=${reservaId}`);
+const corrigirFesta = (eventId, corpo, token = ADMIN) => req("PATCH", `/events/${eventId}`, corpo, token);
+async function datasConsistentes(nome, reservaId) {
+  const d = await datas(reservaId);
+  conferir(`${nome}: data da reserva e data do evento iguais (${d.reserva})`, d.reserva === d.evento, d);
+  return d;
+}
+
+console.log("17. Eventos → Corrigir festa com reserva ativa: a data não muda sozinha");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Painel Corrigir", 1);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const { eventId } = await datas(venda.id);
+  const r = await corrigirFesta(eventId, { date: D2 });
+  conferir(
+    "mudar o dia é recusado (409 DATA_DA_FESTA_COM_RESERVA), apontando a reserva",
+    r.status === 409 && erro(r).codigo === "DATA_DA_FESTA_COM_RESERVA" && erro(r).reservaId === venda.id,
+    resumo([r]),
+  );
+  conferir("a mensagem orienta a remarcar pela reserva", String(erro(r).message).includes("Alterar data da festa"), erro(r).message);
+  const d = await datasConsistentes("depois da recusa", venda.id);
+  conferir("nada mudou: a festa continua no dia de antes", d.reserva === D1, d);
+  const outros = await corrigirFesta(eventId, { guestCount: 80 });
+  conferir("os outros campos (convidados) continuam editáveis", deu(outros), resumo([outros]));
+  const a2 = await acervo(p, D2);
+  conferir("o dia pedido continua livre para outra venda (a peça segue no dia da reserva)", a2.emReservas === 0, a2);
+}
+
+console.log("18. A cliente não contorna pela mesma rota, com o próprio login");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Arco Cliente", 1);
+  const k = await kitCom("Kit Cliente", p);
+  const c = await carrinho(D1, k);
+  const pedido = await pedirNaLoja(c);
+  conferir("reserva pedida pela loja", deu(pedido), resumo([pedido]));
+  const { token } = await aux("GET", `/__trv/token-da-dona?eventId=${c.eventId}`);
+  const r = await corrigirFesta(c.eventId, { date: D2 }, token);
+  conferir(
+    "a dona da festa também é recusada (409), com orientação para falar com a Festaê e sem dado interno",
+    r.status === 409 && String(erro(r).message).includes("WhatsApp") && erro(r).reservaId === undefined,
+    erro(r),
+  );
+  await datasConsistentes("depois da tentativa da cliente", pedido.json.id);
+}
+
+console.log("19. Carrinho sem reserva: a data pode mudar, e a reserva nasce no dia novo");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Mesa Carrinho", 1);
+  const k = await kitCom("Kit Carrinho", p);
+  const c = await carrinho(D1, k);
+  const r = await corrigirFesta(c.eventId, { date: D2 });
+  conferir("sem reserva, mudar a data passa", deu(r), resumo([r]));
+  const pedido = await pedirNaLoja(c);
+  const d = await datasConsistentes("reserva pedida depois", pedido.json.id);
+  conferir("a reserva nasce no dia novo", d.reserva === D2, d);
+}
+
+console.log("20. Registro antigo divergente: nada é corrigido sozinho; a equipe alinha ou remarca");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const D3 = novoDia();
+  const p = await produto("Totem Antigo", 1);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  await aux("POST", "/__trv/divergir", { reservaId: venda.id, data: D2 });
+  const { eventId } = await datas(venda.id);
+  const lista = (await req("GET", "/events/admin/all")).json ?? [];
+  const linha = lista.find((e) => e.id === eventId);
+  conferir("a lista de Eventos traz as duas datas para o painel sinalizar", linha?.order?.reservation?.eventDate?.slice(0, 10) === D1 && linha?.date?.slice(0, 10) === D2, linha?.order?.reservation);
+  const outra = await corrigirFesta(eventId, { date: D3 });
+  conferir("levar o cadastro para um terceiro dia é recusado", outra.status === 409, resumo([outra]));
+  let d = await datas(venda.id);
+  conferir("a recusa não altera nenhuma das duas datas", d.reserva === D1 && d.evento === D2, d);
+  const alinhar = await corrigirFesta(eventId, { date: D1 });
+  conferir("alinhar o cadastro ao dia da reserva é permitido (decisão da equipe)", deu(alinhar), resumo([alinhar]));
+  await datasConsistentes("depois de alinhar", venda.id);
+  const a1 = await acervo(p, D1);
+  conferir("o acervo não mudou: a peça segue no dia da reserva", a1.emReservas === 1, a1);
+}
+
+console.log("21. Remarcar mantém as duas datas juntas e guarda a data anterior");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const D3 = novoDia();
+  const p = await produto("Cadeira Historico", 3);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  conferir("primeira remarcação passa", deu(await remarcar(venda.id, D2)));
+  conferir("segunda remarcação passa", deu(await remarcar(venda.id, D3)));
+  const d = await datasConsistentes("depois de duas remarcações", venda.id);
+  conferir("o histórico guarda a data original, não a do meio", d.reserva === D3 && d.remarcadaDe === D1, d);
+}
+
+console.log("22. Corrigir festa × pedido da loja, no mesmo instante (carrinho sem reserva)");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Painel Corrida Data", 1);
+  const k = await kitCom("Kit Corrida Data", p);
+  const c = await carrinho(D1, k);
+  const [pedido, mudanca] = await cruzar("pedidos", [c.orderId], [
+    [0, () => pedirNaLoja(c)],
+    [300, () => corrigirFesta(c.eventId, { date: D2 })],
+  ]);
+  conferir("só uma das duas vale: a reserva no dia de antes ou a data nova sem reserva", deu(pedido) !== deu(mudanca), resumo([pedido, mudanca]));
+  if (deu(pedido)) {
+    const d = await datasConsistentes("a loja reservou primeiro", pedido.json.id);
+    conferir("e a mudança de data foi recusada por já haver reserva", mudanca.status === 409 && d.reserva === D1, d);
+  }
+}
+
+console.log("23. Remarcação em corrida com venda, edição e confirmação de pagamento");
+{
+  // Remarcação × venda manual pela última unidade no dia novo.
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Arco Remarca Venda", 1);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const rs = await cruzar("produtos", [p.id], [
+    [0, () => remarcar(venda.id, D2)],
+    [0, () => venderNoBalcao(D2, [[p, 1]])],
+  ]);
+  conferir("remarcação × venda: só uma leva a unidade do dia novo", rs.filter(deu).length === 1 && rs.some((r) => r.status === 409), resumo(rs));
+  await semExcesso("remarcação × venda", p, D2);
+  await datasConsistentes("remarcação × venda", venda.id);
+}
+{
+  // Remarcação × edição da mesma reserva: passam uma de cada vez (trava do pedido).
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Mesa Remarca Edicao", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const rs = await cruzar("reservas", [venda.id], [
+    [0, () => remarcar(venda.id, D2)],
+    [100, () => editar(venda, D1, [[p, 2]])],
+  ]);
+  conferir("remarcação × edição: nenhuma das duas trava ou dá erro interno", rs.every((r) => r.status < 500), resumo(rs));
+  const d = await datasConsistentes("remarcação × edição", venda.id);
+  await semExcesso("remarcação × edição, no dia em que a festa ficou", p, d.reserva);
+}
+{
+  // Remarcação × confirmação de pagamento de uma reserva da loja aguardando sinal.
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Bolo Remarca Pagamento", 2);
+  const k = await kitCom("Kit Remarca Pagamento", p);
+  const c = await carrinho(D1, k);
+  const pedido = await pedirNaLoja(c);
+  const id = pedido.json.id;
+  const inicio = Date.now();
+  const rs = await cruzar("reservas", [id], [
+    [0, () => remarcar(id, D2)],
+    [100, () => pagar(id)],
+  ]);
+  const d = await datasConsistentes("remarcação × pagamento", id);
+  conferir("remarcação e pagamento passam, sem impasse", rs.every(deu) && Date.now() - inicio < 6_000, resumo(rs));
+  conferir("a reserva fica confirmada no dia novo", d.status === "CONFIRMED" && d.reserva === D2, d);
+}
+
 console.log(`\n${ok} ok, ${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

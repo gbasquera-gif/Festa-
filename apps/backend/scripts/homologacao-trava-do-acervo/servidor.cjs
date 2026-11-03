@@ -134,6 +134,35 @@ async function main() {
     return { ok: true };
   });
   rota("get", "/__trv/segurando", async () => ({ segurando }));
+  // As duas datas de uma reserva: a da reserva (agenda, acervo) e a do evento
+  // (tela Eventos, app da cliente), mais o histórico de remarcação.
+  rota("get", "/__trv/datas", async (q) => {
+    const r = await prisma.reservation.findUnique({
+      where: { id: q.reservaId },
+      select: { status: true, eventDate: true, rescheduledFrom: true, order: { select: { eventId: true, event: { select: { date: true } } } } },
+    });
+    return {
+      status: r.status,
+      reserva: r.eventDate.toISOString().slice(0, 10),
+      evento: r.order.event.date.toISOString().slice(0, 10),
+      remarcadaDe: r.rescheduledFrom ? r.rescheduledFrom.toISOString().slice(0, 10) : null,
+      eventId: r.order.eventId,
+    };
+  });
+  // Simula um registro antigo que ficou divergente (a data do evento mudada
+  // sozinha antes da correção). Só o cenário usa; a API não faz mais isso.
+  rota("post", "/__trv/divergir", async (b) => {
+    const r = await prisma.reservation.findUnique({ where: { id: b.reservaId }, select: { order: { select: { eventId: true } } } });
+    await prisma.event.update({ where: { id: r.order.eventId }, data: { date: meioDia(b.data) } });
+    return { ok: true };
+  });
+  // A dona do evento, para tentar mudar a data pelo login da cliente.
+  rota("get", "/__trv/token-da-dona", async (q) => {
+    const e = await prisma.event.findUnique({ where: { id: q.eventId }, select: { user: true } });
+    const email = e.user.email ?? `dona-${e.user.id}@homologacao.invalid`;
+    if (!e.user.email) await prisma.user.update({ where: { id: e.user.id }, data: { email } });
+    return { token: await app.get(JwtService).signAsync({ sub: e.user.id, email, role: e.user.role }) };
+  });
   rota("get", "/__trv/orcamento", async (q) =>
     prisma.orcamento.findUnique({ where: { id: q.id }, select: { status: true, token: true, numero: true, reservationId: true } }),
   );
