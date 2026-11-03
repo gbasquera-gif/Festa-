@@ -32,6 +32,8 @@ export interface ConflitoDetalhado {
   necessario: number;
   disponivel: number;
   reservasEmChoque: { id: string; cliente: string; status: string }[];
+  /** Propostas aprovadas, ainda sem reserva, que seguram a peça no dia. */
+  propostasEmChoque?: { id: string; numero: number; cliente: string; opcao: string }[];
 }
 
 /**
@@ -190,6 +192,12 @@ export function PainelDeConflitos({
             {c.reservasEmChoque.length > 0 && (
               <p className="text-red-700">
                 Em choque com: {c.reservasEmChoque.map((r) => r.cliente).join(", ")}
+              </p>
+            )}
+            {(c.propostasEmChoque?.length ?? 0) > 0 && (
+              <p className="text-red-700">
+                Segurado por proposta aprovada aguardando sinal:{" "}
+                {c.propostasEmChoque!.map((p) => `nº ${p.numero} (${p.cliente})`).join(", ")}
               </p>
             )}
           </div>
