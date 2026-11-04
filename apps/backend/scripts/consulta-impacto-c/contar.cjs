@@ -52,6 +52,12 @@ async function main() {
       n("escrita_bloqueada", bloqueada);
       if (bloqueada !== "on") throw new Error("escrita não foi bloqueada");
 
+      // 0. A consulta enxerga dados? Só sim/não — sem revelar volume.
+      const sim = (x) => (x ? "on" : "off");
+      n("existem_propostas_no_banco", sim(await tx.orcamento.findFirst({ select: { id: true } })));
+      n("existem_propostas_que_viraram_reserva", sim(await tx.orcamento.findFirst({ where: { reservationId: { not: null } }, select: { id: true } })));
+      n("existem_reservas_futuras_que_seguram_acervo", sim(await tx.reservation.findFirst({ where: { eventDate: { gte: hoje }, status: { in: [...STATUS_QUE_COMPROMETEM] } }, select: { id: true } })));
+
       // 1. Aprovadas sem reserva (= sem sinal registrado: confirmar o sinal converte antes).
       const todas = await tx.orcamento.findMany({
         where: { status: "APROVADO", reservationId: null },
