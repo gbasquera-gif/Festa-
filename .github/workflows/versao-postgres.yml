@@ -1,0 +1,28 @@
+name: Festae - versao do PostgreSQL (somente leitura)
+# Branch isolado, sem o codigo do app: so este workflow roda.
+# Uma unica consulta (SHOW server_version) em sessao somente leitura.
+# Imprime apenas o numero da versao; erros de conexao nao sao repassados.
+on:
+  push:
+    branches: ["consulta/versao-postgres"]
+permissions:
+  contents: read
+jobs:
+  versao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Versao do servidor
+        env:
+          FESTAE_DATABASE_PUBLIC_URL: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          URL="$FESTAE_DATABASE_PUBLIC_URL"; unset FESTAE_DATABASE_PUBLIC_URL
+          test -n "$URL" || { echo 'falha=SemSegredo'; exit 1; }
+          case "$URL" in *sslmode=disable*) echo 'falha=SemSSL'; exit 1;; esac
+          case "$URL" in *sslmode=*) ;; *\?*) URL="$URL&sslmode=require";; *) URL="$URL?sslmode=require";; esac
+          V=$(printf '%s\n' "$URL" | docker run --rm -i -e PGOPTIONS='-c default_transaction_read_only=on' postgres:18-alpine \
+                sh -c 'read -r U; psql "$U" -XAtqc "SHOW server_version"' 2>/dev/null || true)
+          unset URL
+          V=$(printf '%s' "$V" | tr -d '\r' | head -n 1 | cut -d' ' -f1)
+          if printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+$'; then echo "versao_postgres=$V"; else echo 'falha=SemVersao'; exit 1; fi
