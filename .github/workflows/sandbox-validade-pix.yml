@@ -1,8 +1,11 @@
 name: Festae - sandbox Mercado Pago (validade mínima do Pix)
 
-# Só no push deste branch de teste. O job usa o Environment protegido
-# "mercadopago-sandbox": fica parado até a aprovação de quem foi cadastrado
-# como revisor, e só ele enxerga o segredo MP_SANDBOX_ACCESS_TOKEN.
+# Duas travas antes de qualquer chamada ao Mercado Pago:
+# 1. Enviar este branch NÃO executa o teste: o job só roda num commit cuja
+#    mensagem contenha [executar-sandbox], criado de propósito depois da
+#    autorização. Sem o marcador, o job aparece como "skipped".
+# 2. O job usa o Environment protegido "mercadopago-sandbox": fica parado até
+#    a aprovação manual do revisor, e só ele enxerga MP_SANDBOX_ACCESS_TOKEN.
 # Nenhum outro segredo, nenhum banco, nenhum deploy.
 on:
   push:
@@ -17,6 +20,7 @@ concurrency:
 
 jobs:
   testar:
+    if: contains(github.event.head_commit.message, '[executar-sandbox]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: mercadopago-sandbox

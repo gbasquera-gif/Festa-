@@ -25,8 +25,18 @@ Casos: 2, 5, 10, 15, 20, 29, 30 e 31 minutos, R$ 1,00 cada.
 
 ## Execução
 
-O push do branch `teste/sandbox-validade-pix` inicia o workflow, que fica
-**aguardando aprovação**. Aprove em *Actions → execução → Review deployments*.
+Enviar o branch `teste/sandbox-validade-pix` **não executa** o teste: o job
+só roda num commit cuja mensagem contenha `[executar-sandbox]`. Esse commit
+(vazio) só é criado depois da autorização e da configuração acima. Mesmo
+então, o job fica **aguardando aprovação** no Environment: aprove em
+*Actions → execução → Review deployments*.
+
+## Movimentação financeira
+
+Nenhuma. Credencial de teste cria cobranças no ambiente de teste do Mercado
+Pago (`live_mode: false`), que não movimentam dinheiro. Ninguém paga os Pix
+criados, e todos são cancelados no fim. Se a credencial não for de teste, o
+script para antes de criar qualquer cobrança.
 
 ## Proteções
 
