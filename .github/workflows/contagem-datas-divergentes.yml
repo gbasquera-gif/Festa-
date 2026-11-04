@@ -1,0 +1,31 @@
+name: Festae - contagem somente leitura (datas divergentes)
+
+# Roda só no push deste branch isolado, que não tem o código do app:
+# nenhum outro workflow, deploy, migration ou escrita no banco.
+on:
+  push:
+    branches: ["consulta/datas-divergentes"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: festae-consulta-datas-divergentes
+  cancel-in-progress: false
+
+jobs:
+  contar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verificar segredo
+        env:
+          DB_CONFIGURADO: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL != '' }}
+        run: test "$DB_CONFIGURADO" = true || { echo 'Falta FESTAE_DATABASE_PUBLIC_URL'; exit 1; }
+      - name: Contagem em transação somente leitura
+        env:
+          FESTAE_DATABASE_PUBLIC_URL: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL }}
+        run: bash consulta/executar.sh
