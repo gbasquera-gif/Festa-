@@ -84,3 +84,35 @@ describe("validade de um Pix novo", () => {
     expect(!r.ok && r.mensagem.replace("18:00", "").replace("30 minutos", "")).not.toMatch(/\d/);
   });
 });
+
+describe("prazo do sinal na tela de pagamento", () => {
+  // Importado aqui para o bloco ficar autocontido.
+  it("é a mesma conta da geração do Pix, minuto a minuto", async () => {
+    const { prazoDoSinalParaTela } = await import("./validade-do-pix");
+    for (let m = 0; m <= 70; m++) {
+      const agora = aos(m);
+      const tela = prazoDoSinalParaTela(reservaPendente, agora);
+      const geracao = validadeDoPix(agora, prazo);
+      expect(tela.temPrazo).toBe(true);
+      if (!tela.temPrazo) continue;
+      expect(tela.prazo).toBe(prazo.toISOString());
+      expect(tela.horario).toBe("18:00");
+      expect(tela.podeGerarNovoPix).toBe(geracao.ok);
+      expect(tela.encerrado).toBe(m >= 60);
+      if (geracao.ok) {
+        expect(tela.mensagem).toBeNull();
+        // Todo Pix que a tela deixa gerar vence antes do horário que ela mostra.
+        expect(geracao.expiresAt.getTime()).toBeLessThan(prazo.getTime());
+      } else {
+        expect(tela.motivo).toBe(geracao.codigo);
+        expect(tela.mensagem).toBe(geracao.mensagem);
+      }
+    }
+  });
+
+  it("sem prazo correndo (reserva confirmada ou sem reserva), a tela não mostra horário", async () => {
+    const { prazoDoSinalParaTela } = await import("./validade-do-pix");
+    expect(prazoDoSinalParaTela({ status: "CONFIRMED", requestedAt: pedidoEm }, aos(10))).toEqual({ temPrazo: false });
+    expect(prazoDoSinalParaTela(null, aos(10))).toEqual({ temPrazo: false });
+  });
+});

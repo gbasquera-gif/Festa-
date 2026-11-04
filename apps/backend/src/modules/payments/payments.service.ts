@@ -21,7 +21,7 @@ import type { CreateCheckoutInput as CreateCheckoutBody } from "@festae/shared";
 import { PAYMENT_GATEWAY, type PaymentGateway } from "./gateway/payment-gateway.interface";
 import { travarPedido } from "../creditos/ledger";
 import { triagemDoSinal, type SituacaoDoSinal } from "./liberacao-do-sinal";
-import { prazoDaReserva, validadeDoPix } from "./validade-do-pix";
+import { prazoDaReserva, prazoDoSinalParaTela, validadeDoPix } from "./validade-do-pix";
 import {
   aindaPodeSerPago,
   TEXTO_DO_ALERTA,
@@ -342,6 +342,20 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.conferindo = false;
     }
+  }
+
+  /**
+   * O prazo do sinal da reserva da loja, para a tela de pagamento: até que
+   * horas pagar, se um Pix novo ainda pode ser gerado e, se não, a mesma
+   * mensagem que a geração devolveria. Só leitura.
+   */
+  async prazoDoSinal(orderId: string, agora: Date = new Date()) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { reservation: { select: { status: true, requestedAt: true } } },
+    });
+    if (!order) throw new NotFoundException("Orçamento do evento não encontrado.");
+    return prazoDoSinalParaTela(order.reservation, agora);
   }
 
   /**

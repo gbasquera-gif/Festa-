@@ -7,8 +7,10 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   PERCENTUAL_DO_SINAL,
   formatarDataDaFesta,
+  horarioEmChapeco,
   saldoAPagar,
   splitPayment,
+  type PrazoDoSinal,
 } from "@festae/shared";
 import { Screen } from "@/components/Screen";
 import { Card } from "@/components/Card";
@@ -53,6 +55,21 @@ export default function Pagamento() {
   const paid = deposit?.status === "PAID";
 
   /**
+   * Até que horas pagar o sinal — calculado pelo servidor, com a mesma conta
+   * que decide se um Pix novo pode ser gerado e até quando ele vale. O app
+   * não calcula prazo: só mostra o horário (de Chapecó) e a mensagem que vêm
+   * prontos, para a tela nunca prometer o que a geração do Pix vai recusar.
+   */
+  const { data: prazo, refetch: reconferirPrazo } = useQuery({
+    queryKey: ["prazo-do-sinal", id],
+    queryFn: () => api<PrazoDoSinal>(`/events/${id}/order/prazo-do-sinal`),
+    enabled: !paid,
+    refetchInterval: 30_000,
+  });
+  const comPrazo = !paid && prazo?.temPrazo ? prazo : null;
+  const semNovoPix = Boolean(comPrazo && !comPrazo.podeGerarNovoPix);
+
+  /**
    * Conta o tempo que resta do QR. O Pix vence, e sem mostrar isso a pessoa
    * ficaria tentando pagar um código morto sem entender por quê.
    */
@@ -70,6 +87,10 @@ export default function Pagamento() {
   }, [deposit?.expiresAt, paid]);
 
   const expirado = restante === 0 || (deposit != null && deposit.status === "FAILED");
+  // QR venceu: pergunta de novo ao servidor se ainda cabe um Pix no prazo.
+  useEffect(() => {
+    if (expirado) reconferirPrazo();
+  }, [expirado, reconferirPrazo]);
   const pixAtivo = deposit != null && !expirado && Boolean(deposit.pixQrCode);
   const contagem =
     restante == null
@@ -87,8 +108,10 @@ export default function Pagamento() {
       queryClient.invalidateQueries({ queryKey: ["payments", id] });
       setError(null);
     },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : "Não foi possível gerar o Pix agora."),
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : "Não foi possível gerar o Pix agora.");
+      reconferirPrazo();
+    },
   });
 
   async function copyCode() {
@@ -179,16 +202,50 @@ export default function Pagamento() {
         </View>
       </Card>
 
+      {comPrazo && (
+        <View className="flex-row gap-2 rounded-2xl border border-sand bg-white p-3.5" testID="prazo-do-sinal">
+          <Ionicons name="alarm-outline" size={18} color={colors.coral} />
+          <Text className="flex-1 text-sm leading-5 text-navy">
+            {comPrazo.encerrado ? (
+              <>O prazo para pagar o sinal terminou às {comPrazo.horario}.</>
+            ) : (
+              <>
+                Pague até <Text className="font-sans-bold">{comPrazo.horario}</Text> (horário de Chapecó) para
+                garantir a data.
+              </>
+            )}
+          </Text>
+        </View>
+      )}
+
       {isLoading && <ActivityIndicator color={colors.coral} />}
 
-      {!isLoading && (!deposit || expirado) && (
+      {/* Sem tempo para um Pix novo dentro do prazo: nada de botão que o
+          servidor recusaria. A mensagem é a mesma que a geração devolve. */}
+      {!isLoading && (!deposit || expirado) && semNovoPix && comPrazo?.mensagem && (
+        <Card className="gap-3" testID="sem-novo-pix">
+          {expirado && <Text className="text-sm font-sans-bold text-navy">O código anterior venceu.</Text>}
+          <Text className="text-sm leading-5 text-navy/70">{comPrazo.mensagem}</Text>
+          <Button
+            variant="outline"
+            onPress={() =>
+              openWhatsApp(
+                `Oi! O prazo do Pix do sinal da minha festa (pedido ${id}) terminou no app. Podem conferir comigo?`,
+              )
+            }
+          >
+            Falar com a Festaê
+          </Button>
+        </Card>
+      )}
+
+      {!isLoading && (!deposit || expirado) && !semNovoPix && (
         <>
           {expirado && (
             <View className="flex-row gap-2 rounded-2xl bg-linen p-3.5">
               <Ionicons name="time-outline" size={18} color={colors.navy} />
               <Text className="flex-1 text-sm leading-5 text-navy/70">
-                O código anterior venceu. Você pode gerar um novo enquanto houver tempo no prazo do sinal —
-                se não houver, avisamos o que fazer.
+                O código anterior venceu. Ainda dá tempo de gerar um novo dentro do prazo do sinal.
               </Text>
             </View>
           )}
@@ -219,6 +276,11 @@ export default function Pagamento() {
             <View className="items-center gap-1 rounded-2xl border border-sand bg-white p-3.5">
               <Text className="text-sm text-navy/60">Este código vale por</Text>
               <Text className="font-sans-extrabold text-2xl text-coral">{contagem}</Text>
+              {deposit.expiresAt && (
+                <Text className="text-xs text-navy/50" testID="validade-do-codigo">
+                  até {horarioEmChapeco(new Date(deposit.expiresAt))}
+                </Text>
+              )}
             </View>
           )}
 

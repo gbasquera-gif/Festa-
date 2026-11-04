@@ -1,4 +1,11 @@
-import { FUSO_DE_CHAPECO_EM_MINUTOS, PIX_EXPIRATION_MINUTES, RESERVATION_HOLD_MINUTES } from "@festae/shared";
+import {
+  PIX_EXPIRATION_MINUTES,
+  RESERVATION_HOLD_MINUTES,
+  horarioEmChapeco,
+  type PrazoDoSinal,
+} from "@festae/shared";
+
+export { horarioEmChapeco };
 
 /**
  * Até quando um Pix novo pode valer.
@@ -42,11 +49,6 @@ export function prazoDaReserva(reserva: { status: string; requestedAt: Date } | 
   return new Date(reserva.requestedAt.getTime() + RESERVATION_HOLD_MINUTES * 60_000);
 }
 
-/** "18:42" — o horário de Chapecó, como a cliente lê no relógio. */
-export function horarioEmChapeco(instante: Date): string {
-  return new Date(instante.getTime() + FUSO_DE_CHAPECO_EM_MINUTOS * 60_000).toISOString().slice(11, 16);
-}
-
 export function validadeDoPix(agora: Date, prazo: Date | null): ResultadoDaValidade {
   const expiresAt = new Date(agora.getTime() + PIX_EXPIRATION_MINUTES * 60_000);
   if (!prazo) return { ok: true, expiresAt };
@@ -73,4 +75,30 @@ export function validadeDoPix(agora: Date, prazo: Date | null): ResultadoDaValid
     };
   }
   return { ok: true, expiresAt };
+}
+
+/**
+ * O prazo do sinal para a tela de pagamento.
+ *
+ * Feito com as MESMAS funções que decidem a geração do Pix: o horário que o
+ * app mostra ("Pague até 18:42"), a validade de qualquer Pix aceito (sempre
+ * antes desse horário) e a mensagem quando não dá mais para gerar um Pix
+ * novo saem da mesma conta. O app não calcula prazo nenhum.
+ */
+export function prazoDoSinalParaTela(
+  reserva: { status: string; requestedAt: Date } | null | undefined,
+  agora: Date,
+): PrazoDoSinal {
+  const prazo = prazoDaReserva(reserva);
+  if (!prazo) return { temPrazo: false };
+  const validade = validadeDoPix(agora, prazo);
+  return {
+    temPrazo: true,
+    prazo: prazo.toISOString(),
+    horario: horarioEmChapeco(prazo),
+    encerrado: prazo.getTime() <= agora.getTime(),
+    podeGerarNovoPix: validade.ok,
+    motivo: validade.ok ? null : validade.codigo,
+    mensagem: validade.ok ? null : validade.mensagem,
+  };
 }

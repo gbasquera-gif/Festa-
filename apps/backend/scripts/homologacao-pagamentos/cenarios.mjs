@@ -338,6 +338,69 @@ const pixNoApp = async (eventId) => {
 await encerrarCena();
 
 // ============================================================================
+console.log("B10. Tela de pagamento: o prazo mostrado é o mesmo que a geração do Pix aplica");
+const prazoNoApp = async (eventId, token) => {
+  const t = token ?? (await aux("GET", `/__pag/token-da-cliente?eventId=${eventId}`)).token;
+  return http("GET", `${API}/events/${eventId}/order/prazo-do-sinal`, undefined, t);
+};
+const horarioChapeco = (d) => new Date(d.getTime() - 180 * 60_000).toISOString().slice(11, 16);
+{
+  const r = await reservaDaLoja(5);
+  const { requestedAt } = await aux("GET", `/__pag/evento-da-reserva?reservaId=${r.id}`);
+  const esperado = new Date(new Date(requestedAt).getTime() + 60 * 60_000);
+  const t = await prazoNoApp(r.eventId);
+  conferir(
+    "no começo: a tela recebe o prazo do servidor (pedido + 60 min) e o horário de Chapecó",
+    t.status === 200 && t.json.temPrazo && t.json.prazo === esperado.toISOString() && t.json.horario === horarioChapeco(esperado) &&
+      t.json.podeGerarNovoPix === true && t.json.encerrado === false && t.json.mensagem === null,
+    t.json,
+  );
+  const g = await pixNoApp(r.eventId);
+  conferir("o Pix gerado vence antes do horário mostrado", g.status === 201 && new Date(g.json.expiresAt) < esperado, { vence: g.json?.expiresAt, prazo: esperado });
+}
+{
+  const r = await reservaDaLoja(31);
+  await pix(r.id, -1);
+  const t = await prazoNoApp(r.eventId);
+  const g = await pixNoApp(r.eventId);
+  conferir("sem tempo para um Pix novo: a tela já sabe, sem precisar tentar", t.json?.podeGerarNovoPix === false && t.json?.motivo === "PRAZO_DO_SINAL_INSUFICIENTE" && t.json?.encerrado === false, t.json);
+  conferir("e a mensagem da tela é idêntica à da recusa da geração", g.status === 409 && t.json?.mensagem === g.json?.message, { tela: t.json?.mensagem, geracao: g.json?.message });
+}
+{
+  const r = await reservaDaLoja(70);
+  const velho = await pix(r.id, -40);
+  await provedor({ referencia: velho.externalReference, modoDaReferencia: "fora-do-ar" });
+  const t = await prazoNoApp(r.eventId);
+  const g = await pixNoApp(r.eventId);
+  conferir(
+    "depois do prazo: encerrado, com a mesma mensagem da recusa",
+    t.json?.encerrado === true && t.json?.motivo === "PRAZO_DO_SINAL_ENCERRADO" && t.json?.mensagem === g.json?.message,
+    { tela: t.json, geracao: g.json?.message },
+  );
+}
+{
+  const v = await req("POST", "/reservations/manual", {
+    cliente: { nome: `Cliente Pagamentos ${suf}`, telefone: telefone() },
+    evento: { data: DATA, tipo: "ANIVERSARIO" },
+    produtos: { kitId: kit.id, itens: [] },
+    logistica: { fulfillment: "PICKUP", assembly: false },
+    financeiro: { valorProdutos: 100, entrega: 0, montagem: 0, desconto: 0, sinal: 0, formaPagamento: "PIX", statusPagamento: "PENDING" },
+    origem: "WHATSAPP",
+  });
+  const { order } = await aux("GET", `/__pag/evento-da-reserva?reservaId=${v.json.id}`);
+  const t = await prazoNoApp(order.eventId);
+  conferir("reserva confirmada (sem prazo correndo): a tela não mostra horário", t.status === 200 && t.json?.temPrazo === false, t.json);
+}
+{
+  const r = await reservaDaLoja(5);
+  const outra = await reservaDaLoja(5);
+  const { token } = await aux("GET", `/__pag/token-da-cliente?eventId=${outra.eventId}`);
+  const t = await prazoNoApp(r.eventId, token);
+  conferir("outra cliente não lê o prazo desta festa (403)", t.status === 403, t.status);
+}
+await encerrarCena();
+
+// ============================================================================
 console.log("B8. Crédito, reexecução e cota de consultas");
 {
   const r = await reservaDaLoja(120);

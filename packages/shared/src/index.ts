@@ -307,6 +307,7 @@ export {
   dataDaFestaSchema,
   diaDaFesta,
   diaEmChapeco,
+  horarioEmChapeco,
   formatarDataDaFesta,
   formatarDiaDoMomento,
   normalizarDataDaFesta,
@@ -597,3 +598,5 @@ export type {
   RegistrarPagamentoDeContaInput,
   ResolverConferenciaInput,
 } from "./schemas/contas-a-pagar";
+
+export type { PrazoDoSinal } from "./data-da-festa";
