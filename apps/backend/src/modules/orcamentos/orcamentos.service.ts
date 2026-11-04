@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -63,6 +64,18 @@ import {
 } from "./opcoes";
 
 type Tx = Prisma.TransactionClient;
+
+/**
+ * As chaves do conteúdo que são configuração financeira: o que a cliente usa
+ * para pagar e o que decide quando a equipe é alertada. Só ADMIN altera.
+ */
+const CHAVES_DE_PAGAMENTO_DO_CONTEUDO = new Set([
+  "sinal_percentual",
+  "pix_chave",
+  "pix_favorecido",
+  "pix_instrucao",
+  CHAVE_DO_ALERTA_DE_APROVADAS,
+]);
 
 /** Uma opção pronta para a conferência detalhada: o material e como chamá-la. */
 type OpcaoParaConferir = OpcaoComMaterial & { id: string | null; chave?: string | null; nome: string };
@@ -1216,7 +1229,27 @@ export class OrcamentosService {
 
   async salvarConteudo(
     blocos: { chave: string; titulo?: string; texto?: string; imagemUrl?: string }[],
+    papel?: string,
   ) {
+    // A tela manda todos os blocos de uma vez; o que conta é o que mudou.
+    // OPS salva os textos institucionais, mas uma mudança nas configurações
+    // de pagamento recusa o envio inteiro — nada fica salvo pela metade.
+    if (papel !== "ADMIN") {
+      const atual = await this.conteudo();
+      const norm = (v: string | null | undefined) => (v ? v : null);
+      const mexeu = blocos.filter(
+        (b) =>
+          CHAVES_DE_PAGAMENTO_DO_CONTEUDO.has(b.chave) &&
+          (norm(b.texto) !== norm(atual[b.chave]?.texto) ||
+            norm(b.titulo) !== norm(atual[b.chave]?.titulo) ||
+            norm(b.imagemUrl) !== norm(atual[b.chave]?.imagemUrl)),
+      );
+      if (mexeu.length > 0) {
+        throw new ForbiddenException(
+          "Só o ADMIN altera as configurações de pagamento (chave Pix, favorecido, instrução, percentual do sinal e prazo do alerta). Nada foi salvo.",
+        );
+      }
+    }
     for (const b of blocos) {
       await prisma.conteudoInstitucional.upsert({
         where: { chave: b.chave },

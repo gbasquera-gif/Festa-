@@ -243,7 +243,8 @@ export default function OrcamentoDetalhe({ id }: { id: string }) {
    * a cliente que aprovou e não pagou o sinal segura os itens da data, e
    * marcar a proposta como perdida é o que os devolve para outra cliente.
    */
-  const podeMarcarPerdida = situacao !== "RECUSADO" && !o.reservaId;
+  // Só ADMIN: tira a proposta de circulação e libera as peças (o servidor também barra OPS).
+  const podeMarcarPerdida = user?.role === "ADMIN" && situacao !== "RECUSADO" && !o.reservaId;
   const podeExcluir =
     !o.reservaId && ["RASCUNHO", "ENVIADO", "EXPIRADO", "APROVADO"].includes(situacao);
   /**

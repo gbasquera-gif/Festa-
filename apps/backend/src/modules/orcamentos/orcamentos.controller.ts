@@ -44,11 +44,17 @@ export class OrcamentosController {
     return this.orcamentos.conteudo();
   }
 
+  /**
+   * Textos institucionais: ADMIN e OPS. Configurações de pagamento (chave
+   * Pix, favorecido, instrução, percentual do sinal e prazo do alerta): só
+   * ADMIN — o serviço recusa se OPS tentar mudar alguma delas.
+   */
   @Put("conteudo")
   salvarConteudo(
     @Body() body: { blocos: { chave: string; titulo?: string; texto?: string; imagemUrl?: string }[] },
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.orcamentos.salvarConteudo(body.blocos ?? []);
+    return this.orcamentos.salvarConteudo(body.blocos ?? [], user.role);
   }
 
   /**
@@ -151,6 +157,10 @@ export class OrcamentosController {
     return this.orcamentos.excluir(id);
   }
 
+  // Marcar como perdida tira a proposta de circulação e libera as peças que
+  // ela segurava: decisão comercial do ADMIN. OPS acompanha (o alerta e a
+  // proposta continuam visíveis), mas não executa.
+  @Roles("ADMIN")
   @Patch(":id/recusar")
   recusar(
     @Param("id") id: string,

@@ -500,5 +500,53 @@ console.log("17. Alerta: propostas aprovadas aguardando sinal além do prazo");
   conferir("em branco: 48 h", (await alerta()).json.limiarHoras === 48);
 }
 
+// ----------------------------------------------------------------------------
+console.log("18. Permissões: OPS acompanha o alerta, ADMIN decide");
+{
+  const DP = dia(75);
+  const peca = await produto("Painel Permissao", 9);
+  async function aprovadaHa(horas, nome) {
+    const p = await proposta(DP, [opcao("Opcao Permissao", [linha(peca, 1)])], nome);
+    if ((await enviar(p.id)).status !== 200) throw new Error("enviar");
+    const a = await http("POST", `${API}/proposta/${p.token}/aprovar`, { nome });
+    if (a.status !== 200 && a.status !== 201) throw new Error(`aprovar: ${a.status}`);
+    await aux("POST", "/__orc/envelhecer-aprovacao", { id: p.id, horas });
+    return p;
+  }
+  const p = await aprovadaHa(60, `Cliente Permissao ${suf}`);
+  const naLista = async () => ((await req("GET", "/orcamentos/alertas/aprovadas-sem-sinal", undefined, OPS)).json?.propostas ?? []).some((x) => x.id === p.id);
+  conferir("OPS vê a proposta no alerta", await naLista());
+
+  const perdidaOps = await req("PATCH", `/orcamentos/${p.id}/recusar`, { categoria: "OUTRO", motivo: "Teste de permissão" }, OPS);
+  conferir("OPS não marca como perdida (403)", perdidaOps.status === 403, perdidaOps.status);
+  conferir("e a proposta segue aprovada, no alerta", (await aux("GET", `/__orc/estado-do-alerta?id=${p.id}`)).status === "APROVADO" && (await naLista()));
+  conferir("OPS não confirma o sinal (403)", (await req("POST", `/orcamentos/${p.id}/confirmar-sinal`, {}, OPS)).status === 403);
+  conferir("OPS não aprova manualmente com Pix (403)", (await req("POST", `/orcamentos/${p.id}/aprovar-manualmente`, {}, OPS)).status === 403);
+  conferir("OPS não exclui a proposta (403)", (await req("DELETE", `/orcamentos/${p.id}`, undefined, OPS)).status === 403);
+
+  const reserva = await reservar(DP, [[peca, 1]]);
+  conferir("OPS não registra pagamento na reserva (403)", (await req("POST", `/reservations/${reserva.id}/pagamentos`, { tipo: "DEPOSIT", valor: 10, forma: "PIX" }, OPS)).status === 403);
+
+  // Configurações de pagamento: a tela manda todos os blocos de uma vez.
+  const atual = (await req("GET", "/orcamentos/conteudo")).json;
+  const tudo = (mudar = {}) =>
+    ["quem", "sinal_percentual", "pix_chave", "pix_favorecido", "pix_instrucao", "alerta_aprovadas_horas"].map((chave) => ({
+      chave,
+      titulo: atual[chave]?.titulo ?? "",
+      texto: chave in mudar ? mudar[chave] : (atual[chave]?.texto ?? ""),
+      imagemUrl: atual[chave]?.imagemUrl ?? "",
+    }));
+  const pixOps = await req("PUT", "/orcamentos/conteudo", { blocos: tudo({ pix_chave: "chave-trocada-por-ops" }) }, OPS);
+  conferir("OPS não troca a chave Pix (403)", pixOps.status === 403, pixOps.status);
+  conferir("e nada foi salvo", ((await req("GET", "/orcamentos/conteudo")).json.pix_chave?.texto ?? null) === (atual.pix_chave?.texto ?? null));
+  conferir("OPS não muda o prazo do alerta (403)", (await req("PUT", "/orcamentos/conteudo", { blocos: tudo({ alerta_aprovadas_horas: "200" }) }, OPS)).status === 403);
+  conferir("OPS não muda o percentual do sinal (403)", (await req("PUT", "/orcamentos/conteudo", { blocos: tudo({ sinal_percentual: "10" }) }, OPS)).status === 403);
+  const textoOps = await req("PUT", "/orcamentos/conteudo", { blocos: tudo({ quem: `Texto institucional ${suf}` }) }, OPS);
+  conferir("OPS continua editando os textos institucionais (pagamento igual)", textoOps.status === 200 && textoOps.json?.quem?.texto === `Texto institucional ${suf}`, textoOps.status);
+
+  const perdidaAdmin = await req("PATCH", `/orcamentos/${p.id}/recusar`, { categoria: "OUTRO", motivo: "Teste de permissão" });
+  conferir("ADMIN marca como perdida, e a proposta sai do alerta", perdidaAdmin.status === 200 && !(await naLista()), perdidaAdmin.status);
+}
+
 console.log(`\n${ok} conferências ok, ${falhas} falha(s).`);
 process.exit(falhas === 0 ? 0 : 1);

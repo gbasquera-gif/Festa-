@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Clock, Hourglass } from "lucide-react";
 import { formatarDataDaFesta, textoDoAguardo } from "@festae/shared";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useFormato } from "@/lib/privacidade";
 
 /**
@@ -44,6 +45,7 @@ function quandoEaFesta(p: AprovadaSemSinal): string {
 
 export function AlertaAprovadasSemSinal({ contexto }: { contexto: "orcamentos" | "operacao" }) {
   const { brl } = useFormato();
+  const ehAdmin = useAuth().user?.role === "ADMIN";
   const { data } = useQuery<Resposta>({
     queryKey: ["orcamentos", "alertas", "aprovadas-sem-sinal"],
     queryFn: () => api("/orcamentos/alertas/aprovadas-sem-sinal"),
@@ -105,14 +107,20 @@ export function AlertaAprovadasSemSinal({ contexto }: { contexto: "orcamentos" |
         ))}
       </ul>
 
-      <p className="text-xs text-muted-foreground">
-        Na proposta: registre o sinal recebido ou, se a cliente não for seguir, marque como perdida — as peças ficam
-        livres. O prazo do alerta se ajusta em{" "}
-        <Link href="/comercial/conteudo" className="underline">
-          Conteúdo da proposta → Pagamento
-        </Link>
-        .
-      </p>
+      {ehAdmin ? (
+        <p className="text-xs text-muted-foreground">
+          Na proposta: registre o sinal recebido ou, se a cliente não for seguir, marque como perdida — as peças ficam
+          livres. O prazo do alerta se ajusta em{" "}
+          <Link href="/comercial/conteudo" className="underline">
+            Conteúdo da proposta → Pagamento
+          </Link>
+          .
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground" data-alerta-somente-acompanhamento>
+          Você acompanha: registrar o sinal, marcar como perdida e ajustar o prazo do alerta são feitos pelo ADMIN.
+        </p>
+      )}
     </section>
   );
 }
