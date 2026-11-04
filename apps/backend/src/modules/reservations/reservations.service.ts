@@ -40,6 +40,9 @@ import { AvailabilityService } from "../availability/availability.service";
 import { PaymentsService } from "../payments/payments.service";
 import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-commitment";
 import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
+import { travarDatas } from "../availability/trava-da-data";
+import { dataDaReservaMudou, exigirVersao, versaoAtualDaReserva } from "./versao-da-reserva";
+import { seguradoPorPropostasAprovadas } from "../orcamentos/compromisso-das-propostas";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
 import { decidirCorrecao } from "./correcao-de-pagamento";
 import { referenciaVisual, type ReferenciaVisual } from "./referencia-visual";
@@ -215,33 +218,83 @@ export class ReservationsService {
       throw new ConflictException(mensagemDeConflito(conflitos));
     }
 
-    // O pedido vira reserva com a composição que acabou de ser conferida
-    // congelada junto. É ela que a disponibilidade passa a ler daqui em
-    // diante — mudar o kit no cadastro depois não mexe nesta festa.
-    const itensDoKit = event.order.kit?.products ?? [];
-    const [reservation] = await prisma.$transaction([
-      prisma.reservation.create({
+    // A conferência que vale é a de dentro da transação, sob a trava do dia
+    // — a mesma da venda manual, da aprovação de proposta, da edição e da
+    // remarcação. A de cima é a resposta rápida; entre ela e a gravação,
+    // outro canal pode ter levado a última peça. Aqui também contam as
+    // propostas aprovadas ainda sem reserva: a peça que uma cliente já
+    // aceitou não é oferecida de novo na loja.
+    const orderId = event.order.id;
+    const resultado = await prisma.$transaction(async (tx) => {
+      // Ordem das travas: o dia, depois o pedido.
+      await travarDatas(tx, [event.date]);
+      await travarPedido(tx, orderId);
+
+      // O carrinho relido sob as travas: outro clique pode ter acabado de
+      // pedir a reserva, e kit, itens ou data podem ter mudado desde a
+      // leitura de cima. Reserva e conferência saem deste estado.
+      const atual = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          kitId: true,
+          reservation: { select: { id: true } },
+          kit: { select: { products: { select: { productId: true, quantity: true } } } },
+          items: { select: { productId: true, quantity: true } },
+          event: { select: { date: true } },
+        },
+      });
+      if (!atual || atual.reservation) {
+        throw new ConflictException("Este evento já possui uma reserva solicitada.");
+      }
+      if (!atual.kitId) {
+        throw new BadRequestException("Selecione um kit antes de solicitar a reserva.");
+      }
+      if (diaDaFesta(atual.event.date) !== diaDaFesta(event.date)) {
+        throw new ConflictException("A data da festa mudou enquanto a reserva era pedida. Confira a data e peça de novo.");
+      }
+
+      const itensDoKit = atual.kit?.products ?? [];
+      const segurado = await seguradoPorPropostasAprovadas(atual.event.date, undefined, tx);
+      const faltas = await this.availability.conflitosDeItens(
+        atual.event.date,
+        { itensDoKit, itensAvulsos: atual.items },
+        undefined,
+        segurado.total,
+        tx,
+      );
+      // Sem gravar nada: a transação termina vazia e solta as travas.
+      if (faltas.length > 0) return { tipo: "FALTA" as const, faltas };
+
+      // O pedido vira reserva com a composição que acabou de ser conferida
+      // congelada junto. É ela que a disponibilidade passa a ler daqui em
+      // diante — mudar o kit no cadastro depois não mexe nesta festa.
+      const reservation = await tx.reservation.create({
         data: {
-          orderId: event.order.id,
-          eventDate: event.date,
+          orderId,
+          eventDate: atual.event.date,
           notes: input.notes,
         },
-      }),
-      prisma.orderKitItem.deleteMany({ where: { orderId: event.order.id } }),
-      prisma.orderKitItem.createMany({
+      });
+      await tx.orderKitItem.deleteMany({ where: { orderId } });
+      await tx.orderKitItem.createMany({
         data: itensDoKit.map((i) => ({
-          orderId: event.order!.id,
+          orderId,
           productId: i.productId,
           quantity: i.quantity,
         })),
-      }),
-      prisma.order.update({
-        where: { id: event.order.id },
+      });
+      await tx.order.update({
+        where: { id: orderId },
         data: { status: "REQUESTED", kitCongeladoEm: new Date() },
-      }),
-    ]);
+      });
+      return { tipo: "GRAVADA" as const, reservation };
+    }, { timeout: 15_000 });
 
-    return reservation;
+    if (resultado.tipo === "FALTA") {
+      await registrarConflitosDeAcervo(resultado.faltas, event.date, "LOJA", orderId);
+      throw new ConflictException(mensagemDeConflito(resultado.faltas));
+    }
+    return resultado.reservation;
   }
 
   /**
@@ -329,6 +382,8 @@ export class ReservationsService {
     return {
       ...comCredito(reserva, await saldosDeCredito(reserva.order.event.userId)),
       alteracoesDePagamentos,
+      // O formulário de edição devolve esta versão ao salvar.
+      versao: (await versaoAtualDaReserva(prisma, id))?.versao ?? null,
     };
   }
 
@@ -1168,7 +1223,8 @@ export class ReservationsService {
    * Mover só um deixaria a loja e a operação discordando sobre quando é a
    * festa — o pior desacordo possível.
    */
-  async alterarData(id: string, novaDataISO: string, usuarioId: string) {
+  async alterarData(id: string, novaDataISO: string, usuarioId: string, dataVistaISO?: string) {
+    const dataVista = exigirVersao(dataVistaISO);
     const reserva = await prisma.reservation.findUnique({
       where: { id },
       include: {
@@ -1205,6 +1261,10 @@ export class ReservationsService {
       throw new BadRequestException("Data inválida.");
     }
 
+    // Quem remarca decidiu olhando para uma data. Se a reserva já saiu dela
+    // (outra remarcação, uma edição), remarcar por cima desfaria aquilo calado.
+    if (diaDaFesta(reserva.eventDate) !== dataVista) throw dataDaReservaMudou(diaDaFesta(reserva.eventDate));
+
     const mesmoDia = diaDaFesta(reserva.eventDate) === diaDaFesta(novaData);
     if (mesmoDia) {
       throw new BadRequestException("A festa já está marcada para esta data.");
@@ -1234,21 +1294,88 @@ export class ReservationsService {
       });
     }
 
-    const dataAnterior = reserva.eventDate;
+    // A conferência que vale é a de dentro da transação: sob a trava do dia
+    // novo (a mesma de todos os canais) e a do pedido, com a reserva relida —
+    // uma edição ou outra remarcação pode ter terminado entre a leitura de
+    // cima e aqui. Contam também as propostas aprovadas ainda sem reserva.
+    const resultado = await prisma.$transaction(async (tx) => {
+      // Ordem das travas: o dia, depois o pedido. Só o dia novo: a data
+      // antiga só perde compromisso, e liberar material não precisa de vez.
+      await travarDatas(tx, [novaData]);
+      await travarPedido(tx, reserva.order.id);
 
-    const [atualizada] = await prisma.$transaction([
-      prisma.reservation.update({
+      const atual = await tx.reservation.findUnique({
+        where: { id },
+        select: {
+          status: true,
+          eventDate: true,
+          rescheduledFrom: true,
+          order: {
+            select: {
+              kitCongeladoEm: true,
+              kitItems: { select: { productId: true, quantity: true } },
+              kit: {
+                select: {
+                  products: {
+                    where: { product: { active: true } },
+                    select: { productId: true, quantity: true },
+                  },
+                },
+              },
+              items: { select: { productId: true, quantity: true } },
+            },
+          },
+        },
+      });
+      if (!atual || atual.status === "CANCELLED" || atual.status === "REJECTED") {
+        throw new ConflictException(
+          "Esta reserva foi cancelada enquanto a remarcação era salva. Nada foi alterado.",
+        );
+      }
+      if (diaDaFesta(atual.eventDate) !== dataVista) throw dataDaReservaMudou(diaDaFesta(atual.eventDate));
+      if (diaDaFesta(atual.eventDate) === diaDaFesta(novaData)) {
+        throw new BadRequestException("A festa já está marcada para esta data.");
+      }
+
+      const segurado = await seguradoPorPropostasAprovadas(novaData, undefined, tx);
+      const faltas = await this.availability.conflitosDeItens(
+        novaData,
+        { itensDoKit: itensDoKitDoPedido(atual.order), itensAvulsos: atual.order.items },
+        reserva.order.id,
+        segurado.total,
+        tx,
+      );
+      // Sem gravar nada: a transação termina vazia e solta as travas.
+      if (faltas.length > 0) return { tipo: "FALTA" as const, faltas };
+
+      const atualizada = await tx.reservation.update({
         where: { id },
         data: {
           eventDate: novaData,
           rescheduledAt: new Date(),
           // Guarda a primeira data, não a penúltima: se a festa for remarcada
           // duas vezes, o que interessa é de onde ela saiu originalmente.
-          rescheduledFrom: reserva.rescheduledFrom ?? dataAnterior,
+          rescheduledFrom: atual.rescheduledFrom ?? atual.eventDate,
         },
-      }),
-      prisma.event.update({ where: { id: reserva.order.event.id }, data: { date: novaData } }),
-    ]);
+      });
+      await tx.event.update({ where: { id: reserva.order.event.id }, data: { date: novaData } });
+      return { tipo: "GRAVADA" as const, atualizada, dataAnterior: atual.eventDate };
+    }, { timeout: 15_000 });
+
+    if (resultado.tipo === "FALTA") {
+      await registrarConflitosDeAcervo(resultado.faltas, novaData, "REAGENDAMENTO", id);
+      throw new ConflictException({
+        message: "Falta material na data nova.",
+        conflitos: resultado.faltas.map((c) => ({
+          produto: c.nome,
+          estoqueTotal: c.estoque,
+          jaComprometido: c.jaComprometido,
+          necessario: c.pedido,
+          disponivel: Math.max(0, c.estoque - c.jaComprometido),
+        })),
+      });
+    }
+    const { atualizada, dataAnterior } = resultado;
 
     this.logger.log(
       `Reserva ${id} remarcada por ${usuarioId}: ` +

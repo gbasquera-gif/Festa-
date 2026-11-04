@@ -1,5 +1,23 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma } from "@festae/database";
+import { travarPedido } from "../creditos/ledger";
+import {
+  cadastroAlterado,
+  camposAlteradosPorOutro,
+  exigirAntes,
+  telefone as telefoneNormalizado,
+  texto,
+} from "../../common/conferencia-de-campos";
+
+/** Os campos de "Corrigir dados", como a recusa os nomeia. */
+const ROTULOS_DOS_DADOS: Record<string, string> = {
+  nome: "o nome",
+  telefone: "o telefone",
+  endereco: "o endereço",
+  bairro: "o bairro",
+  observacoes: "as observações",
+};
+const CAMPOS_DOS_DADOS = ["nome", "telefone", "endereco", "bairro", "observacoes"] as const;
 import {
   normalizarTelefone,
   RESERVATION_TASKS,
@@ -194,6 +212,7 @@ export class OperationsService {
       endereco?: string;
       bairro?: string;
       observacoes?: string;
+      antes?: Record<string, unknown>;
     },
   ) {
     const reserva = await prisma.reservation.findUnique({
@@ -202,7 +221,38 @@ export class OperationsService {
     });
     if (!reserva) throw new NotFoundException("Reserva não encontrada.");
 
+    // Só o que esta tela mudou é conferido e gravado; o resto fica como está.
+    const campos = CAMPOS_DOS_DADOS.filter((c) => dados[c] !== undefined);
+    if (campos.length === 0) return this.detalhe(reservaId);
+    const antes = exigirAntes(campos, dados.antes);
+
     await prisma.$transaction(async (tx) => {
+      // A mesma trava da edição e da remarcação: as três passam uma de cada
+      // vez, e a conferência abaixo vê o que a anterior gravou.
+      await travarPedido(tx, reserva.orderId);
+      const agora = await tx.reservation.findUnique({
+        where: { id: reservaId },
+        select: {
+          notes: true,
+          order: { select: { event: { select: { address: true, neighborhood: true, user: { select: { name: true, phone: true } } } } } },
+        },
+      });
+      const gravado = {
+        nome: agora?.order.event.user.name,
+        telefone: agora?.order.event.user.phone,
+        endereco: agora?.order.event.address,
+        bairro: agora?.order.event.neighborhood,
+        observacoes: agora?.notes,
+      };
+      const conflito = camposAlteradosPorOutro(campos, antes, gravado, dados, {
+        nome: texto,
+        telefone: telefoneNormalizado,
+        endereco: texto,
+        bairro: texto,
+        observacoes: texto,
+      });
+      if (conflito.length > 0) throw cadastroAlterado(conflito, ROTULOS_DOS_DADOS);
+
       if (dados.nome || dados.telefone) {
         await tx.user.update({
           where: { id: reserva.order.event.userId },

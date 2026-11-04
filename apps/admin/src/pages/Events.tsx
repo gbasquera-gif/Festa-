@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -31,7 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { useFormato } from "@/lib/privacidade";
 
 interface EventRow {
@@ -43,7 +44,23 @@ interface EventRow {
   city: string;
   theme: { name: string } | null;
   user: { name: string; email: string | null };
-  order: { status: string; total: string } | null;
+  order: {
+    status: string;
+    total: string;
+    reservation: { id: string; status: string; eventDate: string } | null;
+  } | null;
+}
+
+/** A reserva que ainda segura data e material — cancelada e recusada não seguram. */
+function reservaAtiva(evento: EventRow) {
+  const r = evento.order?.reservation;
+  return r && r.status !== "CANCELLED" && r.status !== "REJECTED" ? r : null;
+}
+
+/** Registro antigo em que a data do evento ficou diferente da data da reserva. */
+function dataDivergente(evento: EventRow) {
+  const r = reservaAtiva(evento);
+  return r && r.eventDate.slice(0, 10) !== evento.date.slice(0, 10) ? r : null;
 }
 
 /** O mesmo nome que o cliente viu no app, vindo do pacote compartilhado. */
@@ -67,23 +84,43 @@ function diaDoInput(iso: string) {
 function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => void }) {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(diaDoInput(evento.date));
+  const reserva = reservaAtiva(evento);
+  const divergente = dataDivergente(evento);
   const [type, setType] = useState(evento.type);
   const [guestCount, setGuestCount] = useState(
     evento.guestCount === null ? "" : String(evento.guestCount),
   );
   const [city, setCity] = useState(evento.city);
+  /**
+   * Como a festa estava quando esta tela abriu. Só o que mudou é enviado,
+   * junto com o valor de antes: se outra pessoa corrigiu o mesmo campo nesse
+   * meio-tempo, o servidor recusa em vez de gravar por cima.
+   */
+  const [antes] = useState({
+    date: diaDoInput(evento.date),
+    type: evento.type,
+    city: evento.city,
+    guestCount: evento.guestCount,
+  });
+  const [alterado, setAlterado] = useState<string | null>(null);
+
+  // Vazio é "a combinar", e vai como nulo explícito: omitir o campo diria
+  // "não mexi nisto", e o número apagado voltaria na lista.
+  const convidados = guestCount.trim() ? Number(guestCount) : null;
+  const mudancas: Record<string, string | number | null> = {
+    ...(date !== antes.date ? { date } : {}),
+    ...(type !== antes.type ? { type } : {}),
+    ...(city !== antes.city ? { city } : {}),
+    ...(convidados !== antes.guestCount ? { guestCount: convidados } : {}),
+  };
 
   const mutation = useMutation({
     mutationFn: () =>
       api(`/events/${evento.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          date,
-          type,
-          city,
-          // Vazio é "a combinar", e vai como nulo explícito: omitir o campo
-          // diria "não mexi nisto", e o número apagado voltaria na lista.
-          guestCount: guestCount.trim() ? Number(guestCount) : null,
+          ...mudancas,
+          antes: Object.fromEntries(Object.keys(mudancas).map((c) => [c, antes[c as keyof typeof antes]])),
         }),
       }),
     onSuccess: () => {
@@ -91,8 +128,14 @@ function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => 
       toast.success("Festa atualizada.");
       aoFechar();
     },
-    onError: (erro) =>
-      toast.error(erro instanceof Error ? erro.message : "Erro ao atualizar a festa."),
+    onError: (erro) => {
+      if (erro instanceof ApiError && erro.detalhes?.codigo === "CADASTRO_ALTERADO") {
+        setAlterado(erro.message);
+        queryClient.invalidateQueries({ queryKey: ["events-admin"] });
+        return;
+      }
+      toast.error(erro instanceof Error ? erro.message : "Erro ao atualizar a festa.");
+    },
   });
 
   const semMudanca =
@@ -115,13 +158,41 @@ function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => 
               id="evento-data"
               type="date"
               value={date}
+              disabled={Boolean(reserva)}
               onChange={(e) => setDate(e.target.value)}
             />
-            {evento.order && (
-              <p className="text-sm text-muted-foreground">
-                Esta festa já tem pedido. Mudar a data aqui não reconfere agenda nem estoque —
-                para remarcar uma reserva, use a tela de Reservas.
-              </p>
+            {reserva ? (
+              <div className="space-y-2 text-sm text-muted-foreground" data-data-com-reserva>
+                <p>
+                  Esta festa tem reserva, e a data só muda pela reserva: use{" "}
+                  <strong>Alterar data da festa</strong> na tela de Reservas (ou a edição da reserva). Ela confere
+                  o acervo do dia novo e guarda a data anterior.
+                </p>
+                <Link href={`/reservas/${reserva.id}/editar`} className="underline">
+                  Abrir a reserva
+                </Link>
+                {divergente && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900" data-data-divergente>
+                    A data deste cadastro ({formatarDataDaFesta(evento.date)}) está diferente da data da reserva (
+                    {formatarDataDaFesta(divergente.eventDate)}), que é a que vale para agenda, acervo e financeiro.
+                    Confirme com a cliente qual é a certa: se for a da reserva,{" "}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => setDate(divergente.eventDate.slice(0, 10))}
+                    >
+                      alinhe o cadastro a ela
+                    </button>{" "}
+                    e salve; se for a outra, remarque a reserva.
+                  </div>
+                )}
+              </div>
+            ) : (
+              evento.order && (
+                <p className="text-sm text-muted-foreground">
+                  Ainda sem reserva: a data é conferida quando a reserva for pedida.
+                </p>
+              )
             )}
           </div>
 
@@ -160,11 +231,17 @@ function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => 
           </div>
         </div>
 
+        {alterado && (
+          <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" data-cadastro-alterado>
+            {alterado} Feche e abra de novo para ver os dados atuais.
+          </p>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={aoFechar} disabled={mutation.isPending}>
             Cancelar
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={semMudanca || mutation.isPending}>
+          <Button onClick={() => mutation.mutate()} disabled={semMudanca || mutation.isPending || alterado !== null}>
             {mutation.isPending ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>
@@ -359,7 +436,14 @@ export default function Events() {
           )}
           {visiveis.map((event) => (
             <TableRow key={event.id} style={compacto ? { opacity: 0.72 } : undefined}>
-              <TableCell data-label="Data">{formatarDataDaFesta(event.date)}</TableCell>
+              <TableCell data-label="Data">
+                {formatarDataDaFesta(event.date)}
+                {dataDivergente(event) && (
+                  <Badge variant="outline" className="ml-2 border-amber-400 text-amber-800" title="A data do cadastro está diferente da data da reserva">
+                    reserva em {formatarDataDaFesta(dataDivergente(event)!.eventDate)}
+                  </Badge>
+                )}
+              </TableCell>
               <TableCell data-label="Cliente">
                 <div className="font-medium">{event.user.name}</div>
                 <div className="text-xs text-muted-foreground">{event.user.email ?? "sem e-mail"}</div>

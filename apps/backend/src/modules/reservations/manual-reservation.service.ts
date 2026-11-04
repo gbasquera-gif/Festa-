@@ -21,7 +21,13 @@ import { creditoAplicadoEmCentavos, pagoEmCentavos, travarPedido, utilizarCredit
 import { decidirFicha, type DecisaoDaFicha, type FichaCandidata } from "./ficha-da-cliente";
 import { impressaoDaVenda } from "./impressao-da-venda";
 import { AvailabilityService } from "../availability/availability.service";
-import { itensDoKitDoPedido } from "../availability/item-commitment";
+import { itensDoKitDoPedido, type Conflito } from "../availability/item-commitment";
+import { travarDatas } from "../availability/trava-da-data";
+import { exigirVersao, reservaAlterada, versaoAtualDaReserva } from "./versao-da-reserva";
+import {
+  seguradoPorPropostasAprovadas,
+  type SeguradoPorPropostas,
+} from "../orcamentos/compromisso-das-propostas";
 import {
   registrarConflitosDeAcervo,
   type ContextoDoConflito,
@@ -58,6 +64,22 @@ export type NaMesmaTransacao = {
   depois?: (tx: Tx, reserva: { id: string; orderId: string }) => Promise<void>;
 };
 
+/**
+ * Falta de material constatada sob a trava do dia, dentro da transação.
+ *
+ * É lançada para desfazer a transação inteira — nada da venda ou da edição
+ * fica gravado. Quem chamou registra o conflito e responde o 409 detalhado
+ * depois do rollback, fora da trava.
+ */
+class FaltaNaData extends Error {
+  constructor(
+    readonly conflitos: Conflito[],
+    readonly propostas: SeguradoPorPropostas["propostas"],
+  ) {
+    super("Faltam itens para esta data.");
+  }
+}
+
 /** Estados que seguram data e material. Recusada e cancelada devolvem tudo. */
 const RESERVAS_ATIVAS = [
   "PENDING",
@@ -84,6 +106,8 @@ export interface ConflitoDetalhado {
   necessario: number;
   disponivel: number;
   reservasEmChoque: { id: string; cliente: string; status: string }[];
+  /** Propostas aprovadas, ainda sem reserva, que seguram a peça no dia. */
+  propostasEmChoque: { id: string; numero: number; cliente: string; opcao: string }[];
 }
 
 @Injectable()
@@ -236,7 +260,25 @@ export class ManualReservationService {
     }
 
     const reserva = await prisma.$transaction(async (tx) => {
+      // A trava do dia vem primeiro — a mesma da aprovação de proposta, da
+      // loja, da edição e da remarcação. Depois dela, o que a conversão pede
+      // (`antes`); o crédito, se houver, trava por último.
+      await travarDatas(tx, [dataDaFesta]);
       await extra.naMesmaTransacao?.antes?.(tx);
+
+      // A conferência que vale é esta: sob a trava, pela conexão da
+      // transação, contando as reservas do dia e o que propostas aprovadas
+      // ainda sem reserva seguram. A conferência lá de cima é só a resposta
+      // rápida; entre ela e aqui, outro canal pode ter levado a peça. Na
+      // conversão, a própria proposta não disputa material consigo mesma.
+      const segurado = await seguradoPorPropostasAprovadas(
+        dataDaFesta,
+        contexto.tipo === "CONVERSAO_DE_PROPOSTA" ? contexto.referencia : undefined,
+        tx,
+      );
+      const faltas = await this.availability.conflitosDeItens(dataDaFesta, pedido, undefined, segurado.total, tx);
+      if (faltas.length > 0) throw new FaltaNaData(faltas, segurado.propostas);
+
       const cliente = clienteDeFora ?? (await resolverCliente(tx));
 
       const evento = await tx.event.create({
@@ -366,6 +408,13 @@ export class ManualReservationService {
         const ja = await this.vendaJaRegistrada(chave, impressao);
         if (ja) return ja;
       }
+      if (erro instanceof FaltaNaData) {
+        await registrarConflitosDeAcervo(erro.conflitos, dataDaFesta, contexto.tipo, contexto.referencia);
+        throw new ConflictException({
+          message: "Faltam itens para esta data.",
+          conflitos: await this.detalhar(erro.conflitos, dataDaFesta, undefined, erro.propostas),
+        });
+      }
       throw erro;
     });
 
@@ -442,9 +491,14 @@ export class ManualReservationService {
       );
     }
 
-    const dataDaFesta = input.evento.data;
+    // A tela que vai ser gravada é a que abriu nesta versão. Conferência
+    // antecipada, para uma tela velha nem chegar a registrar falta de acervo;
+    // a que vale é a de dentro da transação, sob a trava do pedido.
+    const versaoDaTela = exigirVersao(input.versao);
+    const antes = await versaoAtualDaReserva(prisma, id);
+    if (antes && antes.versao !== versaoDaTela) throw reservaAlterada(antes.dia);
 
-    const mudouDeDia = diaDaFesta(reserva.eventDate) !== diaDaFesta(dataDaFesta);
+    const dataDaFesta = input.evento.data;
 
     // O material do pedido novo está livre nesta data? É a única conferência
     // de data que existe — o limite de festas por dia não existe mais.
@@ -496,12 +550,66 @@ export class ManualReservationService {
     const emailNovo = input.cliente.email?.trim() || null;
     const observacoes = input.evento.observacoes?.trim() || null;
 
-    await prisma.$transaction(async (tx) => {
+    const apurado = await prisma.$transaction(async (tx) => {
+      // Ordem das travas: o dia de destino (a mesma trava de todos os canais
+      // que comprometem acervo), depois o pedido.
+      await travarDatas(tx, [dataDaFesta]);
+      await travarPedido(tx, reserva.order.id);
+
+      // Sob as travas, a reserva como está gravada agora: outra edição, uma
+      // remarcação ou um cancelamento pode ter terminado entre a leitura de
+      // cima e aqui. É este estado que a conferência e a gravação usam.
+      const atual = await tx.reservation.findUnique({
+        where: { id },
+        select: {
+          status: true,
+          eventDate: true,
+          rescheduledFrom: true,
+          order: {
+            select: {
+              kitId: true,
+              kitCongeladoEm: true,
+              kitItems: { select: { productId: true, quantity: true } },
+              kit: {
+                select: {
+                  products: {
+                    where: { product: { active: true } },
+                    select: { productId: true, quantity: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!atual || atual.status === "CANCELLED" || atual.status === "REJECTED") {
+        throw new ConflictException(
+          "Esta reserva foi cancelada enquanto a edição era salva. Nada foi alterado.",
+        );
+      }
+      // Outra edição ou uma remarcação terminou depois que este formulário
+      // abriu: gravar a tela velha desfaria aquela mudança sem avisar.
+      const agora = await versaoAtualDaReserva(tx, id);
+      if (!agora || agora.versao !== versaoDaTela) throw reservaAlterada(agora?.dia ?? diaDaFesta(atual.eventDate));
+      const trocouAgora = (input.produtos.kitId || null) !== (atual.order.kitId ?? null);
+      const mudouAgora = diaDaFesta(atual.eventDate) !== diaDaFesta(dataDaFesta);
+      const segurado = await seguradoPorPropostasAprovadas(dataDaFesta, undefined, tx);
+      const faltas = await this.availability.conflitosDeItens(
+        dataDaFesta,
+        {
+          itensDoKit: trocouAgora ? (kit?.products ?? []) : itensDoKitDoPedido(atual.order),
+          itensAvulsos: input.produtos.itens,
+        },
+        reserva.order.id,
+        segurado.total,
+        tx,
+      );
+      if (faltas.length > 0) throw new FaltaNaData(faltas, segurado.propostas);
+
       // Crédito aplicado é dinheiro da cliente já comprometido com esta festa.
       // Baixar o total abaixo de pago + crédito deixaria crédito sobrando
       // dentro da reserva, sem caminho de volta para o saldo dela. Primeiro
       // se estorna o crédito, depois se baixa o preço.
-      await travarPedido(tx, reserva.order.id);
       const credito = await creditoAplicadoEmCentavos(tx, id);
       if (credito > 0) {
         const pago = await pagoEmCentavos(tx, reserva.order.id);
@@ -555,7 +663,7 @@ export class ManualReservationService {
           kitId: kit?.id ?? null,
           // Trocar de kit é a única edição que recongela: a festa passa a
           // segurar a composição do kit novo, conferida logo acima.
-          ...(trocouDeKit
+          ...(trocouAgora
             ? {
                 kitCongeladoEm: new Date(),
                 kitItems: {
@@ -591,27 +699,38 @@ export class ManualReservationService {
         data: {
           eventDate: dataDaFesta,
           notes: observacoes,
-          ...(mudouDeDia
+          ...(mudouAgora
             ? {
                 rescheduledAt: new Date(),
                 // A primeira data, não a penúltima: remarcada duas vezes, o
                 // que interessa é de onde a festa saiu originalmente.
-                rescheduledFrom: reserva.rescheduledFrom ?? reserva.eventDate,
+                rescheduledFrom: atual.rescheduledFrom ?? atual.eventDate,
               }
             : {}),
         },
       });
+
+      return { mudouDeDia: mudouAgora, dataAnterior: atual.eventDate };
+    }, { timeout: 15_000 }).catch(async (erro: unknown) => {
+      if (erro instanceof FaltaNaData) {
+        await registrarConflitosDeAcervo(erro.conflitos, dataDaFesta, "EDICAO_DE_RESERVA", id);
+        throw new ConflictException({
+          message: "Faltam itens para esta data.",
+          conflitos: await this.detalhar(erro.conflitos, dataDaFesta, reserva.order.id, erro.propostas),
+        });
+      }
+      throw erro;
     });
 
     this.logger.log(
       `Reserva ${id} editada por ${editadoPorId}` +
-        (mudouDeDia
-          ? ` — data ${diaDaFesta(reserva.eventDate)} -> ${diaDaFesta(dataDaFesta)}`
+        (apurado.mudouDeDia
+          ? ` — data ${diaDaFesta(apurado.dataAnterior)} -> ${diaDaFesta(dataDaFesta)}`
           : "") +
         `, total R$ ${total.toFixed(2)}.`,
     );
 
-    return { id, data: diaDaFesta(dataDaFesta), total, remarcada: mudouDeDia };
+    return { id, data: diaDaFesta(dataDaFesta), total, remarcada: apurado.mudouDeDia };
   }
 
   /**
@@ -847,6 +966,7 @@ export class ManualReservationService {
     conflitos: { productId: string; nome: string; estoque: number; jaComprometido: number; pedido: number }[],
     data: Date,
     ignorarOrderId?: string,
+    propostas: SeguradoPorPropostas["propostas"] = [],
   ): Promise<ConflitoDetalhado[]> {
     const inicio = new Date(data);
     inicio.setUTCHours(0, 0, 0, 0);
@@ -891,6 +1011,9 @@ export class ManualReservationService {
           ),
         )
         .map((r) => ({ id: r.id, cliente: r.order.event.user.name, status: r.status })),
+      propostasEmChoque: propostas
+        .filter((p) => p.produtos.includes(c.productId))
+        .map((p) => ({ id: p.id, numero: p.numero, cliente: p.cliente, opcao: p.opcao })),
     }));
   }
 }

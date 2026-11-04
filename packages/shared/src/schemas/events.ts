@@ -81,5 +81,12 @@ export type CreateEventInput = z.infer<typeof createEventSchema>;
  */
 export const updateEventSchema = createEventSchema.partial().extend({
   guestCount: z.coerce.number().int().min(1).max(2000).nullable().optional(),
+  /**
+   * Como cada campo enviado estava quando a tela abriu. Com ele, o servidor
+   * recusa (409) em vez de gravar por cima de quem corrigiu o mesmo campo
+   * nesse meio-tempo. O painel sempre manda; o app da cliente pode não
+   * mandar (versões instaladas continuam funcionando).
+   */
+  antes: z.record(z.string(), z.union([z.string().max(255), z.number(), z.null()])).optional(),
 });
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;

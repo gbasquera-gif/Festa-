@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 
 /**
  * Correção de erro de digitação numa reserva já registrada.
@@ -49,20 +49,50 @@ export function CorrigirDadosReserva({
   const [nome, setNome] = useState(cliente);
   const [tel, setTel] = useState(telefone ?? "");
   const [end, setEnd] = useState(endereco ?? "");
+  /**
+   * Como os dados estavam quando esta tela abriu. Vai junto com o que mudou:
+   * se outra pessoa corrigiu o mesmo campo nesse meio-tempo, o servidor
+   * recusa em vez de gravar por cima (e o que ninguém mais mexeu passa).
+   */
+  const [antes] = useState({ nome: cliente, telefone: telefone ?? null, endereco: endereco ?? null });
+  const [alterado, setAlterado] = useState<string | null>(null);
+
+  const recarregar = () => {
+    queryClient.invalidateQueries({ queryKey: ["proximas-acoes"] });
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    queryClient.invalidateQueries({ queryKey: ["reserva", reservaId] });
+  };
+
+  /** Só o que mudou nesta tela — o resto não é enviado, e não é sobrescrito. */
+  const mudancas = {
+    ...(nome.trim() !== (antes.nome ?? "").trim() ? { nome } : {}),
+    ...(tel.trim() !== (antes.telefone ?? "").trim() ? { telefone: tel } : {}),
+    ...(end.trim() !== (antes.endereco ?? "").trim() ? { endereco: end } : {}),
+  };
+  const semMudanca = Object.keys(mudancas).length === 0;
 
   const salvar = useMutation({
     mutationFn: () =>
       api(`/operacao/reservas/${reservaId}/dados`, {
         method: "PATCH",
-        body: JSON.stringify({ nome, telefone: tel, endereco: end }),
+        body: JSON.stringify({
+          ...mudancas,
+          antes: Object.fromEntries(Object.keys(mudancas).map((c) => [c, antes[c as keyof typeof antes]])),
+        }),
       }),
     onSuccess: () => {
       toast.success("Dados corrigidos.");
-      queryClient.invalidateQueries({ queryKey: ["proximas-acoes"] });
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      recarregar();
       onFechar();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível salvar."),
+    onError: (e) => {
+      if (e instanceof ApiError && e.detalhes?.codigo === "CADASTRO_ALTERADO") {
+        setAlterado(e.message);
+        recarregar();
+        return;
+      }
+      toast.error(e instanceof Error ? e.message : "Não foi possível salvar.");
+    },
   });
 
   return (
@@ -89,6 +119,11 @@ export function CorrigirDadosReserva({
               placeholder="Deixe vazio se for retirada"
             />
           </div>
+          {alterado && (
+            <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" data-cadastro-alterado>
+              {alterado} Feche e abra de novo para ver os dados atuais.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             Data, itens e valores não se corrigem por aqui — para mudar o que foi vendido, cancele a
             reserva e registre de novo, para a agenda continuar honesta.
@@ -100,7 +135,7 @@ export function CorrigirDadosReserva({
           </Button>
           <Button
             onClick={() => salvar.mutate()}
-            disabled={salvar.isPending}
+            disabled={salvar.isPending || semMudanca || alterado !== null}
             className="w-full sm:w-auto"
           >
             {salvar.isPending ? "Salvando..." : "Salvar"}

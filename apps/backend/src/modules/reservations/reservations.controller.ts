@@ -146,7 +146,7 @@ export class ReservationsController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(alterarDataSchema)) body: AlterarDataInput,
   ) {
-    return this.reservationsService.alterarData(id, body.data, user.userId);
+    return this.reservationsService.alterarData(id, body.data, user.userId, body.dataAtual);
   }
 
   /**
