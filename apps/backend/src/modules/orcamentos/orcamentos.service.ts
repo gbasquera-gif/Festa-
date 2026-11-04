@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -20,18 +21,29 @@ import {
   toCentsInt,
   exigeNovaVersao,
   conferirPixDaAprovacao,
+  diaEmChapeco,
+  mensagemDeEnvioBloqueado,
   normalizarDataDaFesta,
+  numeroDoContrato,
   normalizarTelefone,
   podeSerAprovada,
+  seloDasOpcoes,
+  seloSemVerificacao,
   situacaoDoOrcamento,
   type AprovarManualmenteInput,
   type CategoriaDaPerda,
+  type OpcaoConferida,
   type OrcamentoInput,
   type SaleChannel,
+  type SeloDeDisponibilidade,
+  type SimulacaoDeDisponibilidadeInput,
   type StatusDoOrcamento,
+  CHAVE_DO_ALERTA_DE_APROVADAS,
+  aguardoDoSinal,
+  limiarDoAlerta,
 } from "@festae/shared";
 import { AvailabilityService } from "../availability/availability.service";
-import type { Conflito } from "../availability/item-commitment";
+import { somarCompromisso, type Conflito } from "../availability/item-commitment";
 import { ManualReservationService } from "../reservations/manual-reservation.service";
 import { ReservationsService } from "../reservations/reservations.service";
 import { dadosDaDuplicata } from "./duplicacao";
@@ -39,8 +51,11 @@ import { kitDaConversao } from "./kit-da-conversao";
 import {
   compromissoDasAprovadas,
   demandaDaOpcao,
+  detalharFaltas,
   mensagemDeFaltaNaAprovacao,
+  type CompromissoDeProposta,
   type OpcaoComMaterial,
+  type ProdutoParaConferir,
 } from "./disponibilidade-da-proposta";
 import {
   dadosDasOpcoes,
@@ -52,6 +67,27 @@ import {
 } from "./opcoes";
 
 type Tx = Prisma.TransactionClient;
+
+/**
+ * As chaves do conteúdo que são configuração financeira: o que a cliente usa
+ * para pagar e o que decide quando a equipe é alertada. Só ADMIN altera.
+ */
+const CHAVES_DE_PAGAMENTO_DO_CONTEUDO = new Set([
+  "sinal_percentual",
+  "pix_chave",
+  "pix_favorecido",
+  "pix_instrucao",
+  CHAVE_DO_ALERTA_DE_APROVADAS,
+]);
+
+/** Uma opção pronta para a conferência detalhada: o material e como chamá-la. */
+type OpcaoParaConferir = OpcaoComMaterial & { id: string | null; chave?: string | null; nome: string };
+
+/** A conferência de uma opção, com os conflitos crus da regra (para a mensagem da cliente). */
+type OpcaoConferidaInterna = OpcaoConferida & { conflitos: Conflito[] };
+
+/** O que vai para a tela: a conferência sem os conflitos crus. */
+const paraTela = ({ conflitos: _conflitos, ...opcao }: OpcaoConferidaInterna): OpcaoConferida => opcao;
 
 /** As opções de uma proposta, na ordem, com as linhas de cada uma. */
 const OPCOES_COM_ITENS = {
@@ -291,7 +327,25 @@ export class OrcamentosService {
       );
     }
 
+    // Sem data não há o que conferir: a disponibilidade das peças depende do
+    // dia. A proposta fica salva como rascunho; o link só sai com a data.
+    if (!o.festaEm) {
+      throw new BadRequestException({
+        message:
+          "Defina a data da festa antes de enviar. Sem data não dá para conferir a disponibilidade das peças; a proposta continua salva como rascunho.",
+        codigo: "DATA_NECESSARIA",
+      });
+    }
+    const festaEm = o.festaEm;
+    const dia = diaDaFesta(festaEm);
     const agora = new Date();
+    if (dia < diaEmChapeco(agora)) {
+      throw new BadRequestException({
+        message: "A data da festa já passou. Corrija a data antes de enviar.",
+        codigo: "DATA_PASSADA",
+      });
+    }
+
     // O primeiro envio só é gravado quando dá para provar que é o primeiro:
     // proposta na versão 1 e sem envio registrado. Proposta antiga que já
     // tinha saído (e foi editada, ou está sendo reenviada) fica sem ele — a
@@ -314,11 +368,35 @@ export class OrcamentosService {
       (lerComposicaoCongelada(referencia?.composicaoDoKit) ? referencia?.composicaoDoKit : null);
 
     await prisma.$transaction(async (tx) => {
-      for (const c of congelar) {
-        await tx.orcamentoOpcao.update({ where: { id: c.id }, data: { composicaoDoKit: c.composicao } });
+      // A mesma trava da aprovação, por data. Enquanto este envio confere,
+      // nenhuma proposta da mesma data é aprovada (e passa a segurar peças):
+      // o que foi conferido vale até a proposta ser marcada como enviada.
+      // Depois disso, outra venda pode surgir — e o link e a aprovação
+      // conferem de novo.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`aprovacao-de-proposta:${dia}`}))`;
+
+      // Confere as opções como elas vão sair: com a composição do kit que
+      // este envio congela.
+      const comoVaiSair = o.opcoes.map((op) => ({
+        ...op,
+        composicaoDoKit: congelar.find((c) => c.id === op.id)?.composicao ?? op.composicaoDoKit,
+      }));
+      const [conferida] = await this.conferirEmLote([{ id: o.id, festaEm, opcoes: comoVaiSair }], agora, tx);
+      if (conferida.opcoes.some((op) => !op.disponivel)) {
+        const opcoes = conferida.opcoes.map(paraTela);
+        throw new ConflictException({
+          message: mensagemDeEnvioBloqueado(dia, opcoes),
+          codigo: "OPCOES_INDISPONIVEIS",
+          data: dia,
+          conferidoEm: agora.toISOString(),
+          opcoes,
+        });
       }
-      await tx.orcamento.update({
-        where: { id },
+
+      // Só marca se a proposta ainda é a que foi conferida: uma edição no
+      // meio do caminho regrava as opções, e a conferência deixaria de valer.
+      const { count } = await tx.orcamento.updateMany({
+        where: { id, updatedAt: o.updatedAt },
         data: {
           status: "ENVIADO",
           enviadoEm: agora,
@@ -329,6 +407,15 @@ export class OrcamentosService {
           categoriaDaPerda: null,
         },
       });
+      if (count === 0) {
+        throw new ConflictException({
+          message: "A proposta foi alterada enquanto era enviada. Abra de novo, confira e envie.",
+          codigo: "PROPOSTA_ALTERADA",
+        });
+      }
+      for (const c of congelar) {
+        await tx.orcamentoOpcao.update({ where: { id: c.id }, data: { composicaoDoKit: c.composicao } });
+      }
     });
     return { token: o.token };
   }
@@ -1174,7 +1261,27 @@ export class OrcamentosService {
 
   async salvarConteudo(
     blocos: { chave: string; titulo?: string; texto?: string; imagemUrl?: string }[],
+    papel?: string,
   ) {
+    // A tela manda todos os blocos de uma vez; o que conta é o que mudou.
+    // OPS salva os textos institucionais, mas uma mudança nas configurações
+    // de pagamento recusa o envio inteiro — nada fica salvo pela metade.
+    if (papel !== "ADMIN") {
+      const atual = await this.conteudo();
+      const norm = (v: string | null | undefined) => (v ? v : null);
+      const mexeu = blocos.filter(
+        (b) =>
+          CHAVES_DE_PAGAMENTO_DO_CONTEUDO.has(b.chave) &&
+          (norm(b.texto) !== norm(atual[b.chave]?.texto) ||
+            norm(b.titulo) !== norm(atual[b.chave]?.titulo) ||
+            norm(b.imagemUrl) !== norm(atual[b.chave]?.imagemUrl)),
+      );
+      if (mexeu.length > 0) {
+        throw new ForbiddenException(
+          "Só o ADMIN altera as configurações de pagamento (chave Pix, favorecido, instrução, percentual do sinal e prazo do alerta). Nada foi salvo.",
+        );
+      }
+    }
     for (const b of blocos) {
       await prisma.conteudoInstitucional.upsert({
         where: { chave: b.chave },
@@ -1192,6 +1299,66 @@ export class OrcamentosService {
       });
     }
     return this.conteudo();
+  }
+
+  /**
+   * Propostas aprovadas, sem reserva, aguardando o sinal além do prazo do
+   * alerta (padrão 48 h, ajustável no conteúdo da proposta).
+   *
+   * Só leitura: nada é cancelado, convertido, liberado ou lançado. A equipe
+   * confere o extrato — o sinal pode ter entrado por Pix direto na conta e
+   * ainda não ter sido registrado — e decide pelos fluxos que já existem na
+   * proposta (registrar o sinal, marcar como perdida).
+   *
+   * As mais antigas primeiro: são as que seguram peças há mais tempo.
+   */
+  async aprovadasAguardandoSinal(agora: Date = new Date()) {
+    const conteudo = await this.conteudo();
+    const limiarHoras = limiarDoAlerta(conteudo[CHAVE_DO_ALERTA_DE_APROVADAS]?.texto);
+    const corte = new Date(agora.getTime() - limiarHoras * 3_600_000);
+    const aprovadas = await prisma.orcamento.findMany({
+      where: {
+        status: "APROVADO",
+        reservationId: null,
+        // Sem data de aprovação registrada (não deveria existir), entra por precaução.
+        OR: [{ aprovadoEm: { lte: corte } }, { aprovadoEm: null }],
+      },
+      select: {
+        id: true,
+        numero: true,
+        clienteNome: true,
+        festaEm: true,
+        aprovadoEm: true,
+        aprovadoPelaEquipePorId: true,
+        opcaoAprovadaNome: true,
+        valorAprovado: true,
+        total: true,
+        percentualDoSinal: true,
+      },
+      orderBy: [{ aprovadoEm: { sort: "asc", nulls: "first" } }, { numero: "asc" }],
+    });
+    return {
+      limiarHoras,
+      conferidoEm: agora.toISOString(),
+      propostas: aprovadas.map((o) => {
+        const valor = num(o.valorAprovado ?? o.total);
+        const aguardo = aguardoDoSinal(agora, o.aprovadoEm, o.festaEm, limiarHoras);
+        return {
+          id: o.id,
+          numero: o.numero,
+          cliente: o.clienteNome,
+          festaEm: o.festaEm ? diaDaFesta(o.festaEm) : null,
+          aprovadoEm: o.aprovadoEm?.toISOString() ?? null,
+          aprovadaPor: o.aprovadoPelaEquipePorId ? ("EQUIPE" as const) : ("CLIENTE" as const),
+          opcao: o.opcaoAprovadaNome,
+          valorAprovado: valor,
+          sinalEsperado: calcularSinal(valor, this.percentualDoSinal(o, conteudo)).valor,
+          horasAguardando: aguardo.horasAguardando,
+          diasAteAFesta: aguardo.diasAteAFesta,
+          festaJaPassou: aguardo.festaJaPassou,
+        };
+      }),
+    };
   }
 
   /**
@@ -1229,6 +1396,10 @@ export class OrcamentosService {
    *
    * Conta as reservas do dia e o que outras propostas aprovadas, ainda sem
    * reserva, seguram provisoriamente — a mesma conta que a aprovação faz.
+   * Cada falta vem explicada: quanto falta, por quê e quem está segurando
+   * (número da reserva ou da proposta). Isso é só do painel: o link da
+   * cliente não recebe nada disto.
+   *
    * Sem data, ou já convertida em reserva, não há o que conferir aqui.
    */
   async disponibilidadeDaProposta(id: string) {
@@ -1254,43 +1425,266 @@ export class OrcamentosService {
       },
     });
     if (!o) throw new NotFoundException("Orçamento não encontrado.");
-    if (!o.festaEm) return { data: null, situacao: "SEM_DATA" as const, opcoes: [], seguradoPor: [] };
-    if (o.reservationId) {
-      return { data: diaDaFesta(o.festaEm), situacao: "RESERVADA" as const, opcoes: [], seguradoPor: [] };
-    }
+    const vazio = { conferidoEm: null, opcoes: [], seguradoPor: [], reservasSemSinalVencidas: [] };
+    if (!o.festaEm) return { data: null, situacao: "SEM_DATA" as const, ...vazio };
+    if (o.reservationId) return { data: diaDaFesta(o.festaEm), situacao: "RESERVADA" as const, ...vazio };
 
-    const { resultado, segurado } = await this.faltasPorOpcao({ id: o.id, festaEm: o.festaEm, opcoes: o.opcoes });
-    const pecasDaProposta = new Set(resultado.flatMap((r) => r.produtos));
+    const agora = new Date();
+    const [c] = await this.conferirEmLote([{ id: o.id, festaEm: o.festaEm, opcoes: o.opcoes }], agora);
     const unica = o.opcoes.length === 1;
     return {
-      data: diaDaFesta(o.festaEm),
+      data: c.dia,
       /** Aprovada sem reserva: esta proposta é que segura os itens da opção escolhida. */
       situacao: o.status === "APROVADO" ? ("SEGURA_ITENS" as const) : ("A_CONFERIR" as const),
-      opcoes: resultado.map((r) => ({
-        id: r.id,
-        nome: r.nome,
+      conferidoEm: agora.toISOString(),
+      opcoes: c.opcoes.map((r) => ({
+        ...paraTela(r),
         aprovada: o.status === "APROVADO" && (r.id === o.opcaoAprovadaId || (unica && !o.opcaoAprovadaId)),
-        disponivel: r.conflitos.length === 0,
-        faltas: r.conflitos.map((c) => ({
-          productId: c.productId,
-          nome: c.nome,
-          estoque: c.estoque,
-          pedido: c.pedido,
-          comprometido: c.jaComprometido,
-          seguradoPorPropostas: segurado.total.get(c.productId) ?? 0,
-        })),
       })),
       /**
        * Outras propostas aprovadas, ainda sem reserva, na mesma data, que
        * seguram alguma peça desta proposta — as que disputam o material.
        */
-      seguradoPor: segurado.propostas
-        .filter((p) => p.produtos.some((id) => pecasDaProposta.has(id)))
-        .map(({ produtos: _produtos, ...p }) => p),
+      seguradoPor: c.outras
+        .filter((p) => [...p.itens.keys()].some((pid) => c.pecas.has(pid)))
+        .map((p) => ({ id: p.id, numero: p.numero, cliente: p.cliente, opcao: p.opcao })),
+      /** Reservas da loja sem sinal, prazo vencido, que ainda prendem peças desta proposta. */
+      reservasSemSinalVencidas: c.reservas
+        .filter((r) => r.semSinalVencida && [...r.itens.keys()].some((pid) => c.pecas.has(pid)))
+        .map((r) => ({ id: r.id, numero: numeroDoContrato(r.numero) })),
     };
   }
 
+  /**
+   * A conferência das opções como estão no editor, antes de gravar.
+   *
+   * Nada é gravado: é a mesma conta do envio, sobre o que está na tela, para
+   * a equipe ver as faltas enquanto monta a proposta. O kit entra com a
+   * composição de hoje do catálogo — é a que o próximo envio congelaria.
+   */
+  async simularDisponibilidade(input: SimulacaoDeDisponibilidadeInput) {
+    const festaEm = normalizarDataDaFesta(input.data);
+    const agora = new Date();
+    const opcoes: OpcaoParaConferir[] = input.opcoes.map((op, n) => ({
+      id: null,
+      chave: op.chave,
+      nome: op.nome.trim() || `Opção ${n + 1}`,
+      kitId: op.kitId || null,
+      composicaoDoKit: null,
+      itens: op.itens.map((i) => ({ productId: i.productId || null, quantidade: i.quantidade })),
+    }));
+    const [c] = await this.conferirEmLote([{ id: input.orcamentoId ?? null, festaEm, opcoes }], agora);
+    return {
+      data: c.dia,
+      conferidoEm: agora.toISOString(),
+      /** Data já passada: o envio recusaria antes mesmo de conferir. */
+      dataPassada: c.dia < diaEmChapeco(agora),
+      opcoes: c.opcoes.map(paraTela),
+    };
+  }
+
+  /**
+   * O selo de disponibilidade de cada proposta da lista, conferido agora.
+   *
+   * Reflete a situação atual — uma proposta enviada ontem com tudo livre
+   * aparece com conflito se hoje outra festa levou a peça. Confere as que
+   * ainda podem virar festa: rascunho, enviada e aprovada sem reserva, com
+   * data de hoje em diante. A aprovada confere só a opção escolhida, que é a
+   * que ela segura. As demais saem como "não verificado", com o motivo.
+   */
+  async selosDeDisponibilidade(): Promise<{ conferidoEm: string; selos: Record<string, SeloDeDisponibilidade> }> {
+    const agora = new Date();
+    const hoje = diaEmChapeco(agora);
+    const todas = await prisma.orcamento.findMany({
+      select: { id: true, status: true, festaEm: true, reservationId: true },
+    });
+    const selos: Record<string, SeloDeDisponibilidade> = {};
+    const aConferir: string[] = [];
+    for (const o of todas) {
+      if (o.reservationId) selos[o.id] = seloSemVerificacao("VIROU_RESERVA");
+      else if (o.status === "RECUSADO") selos[o.id] = seloSemVerificacao("ENCERRADA");
+      else if (!o.festaEm) selos[o.id] = seloSemVerificacao("SEM_DATA");
+      else if (diaDaFesta(o.festaEm) < hoje) selos[o.id] = seloSemVerificacao("DATA_PASSADA");
+      else aConferir.push(o.id);
+    }
+    if (aConferir.length > 0) {
+      const propostas = await prisma.orcamento.findMany({
+        where: { id: { in: aConferir } },
+        select: {
+          id: true,
+          numero: true,
+          status: true,
+          festaEm: true,
+          opcaoAprovadaId: true,
+          opcoes: {
+            orderBy: { ordem: "asc" },
+            select: {
+              id: true,
+              ordem: true,
+              nome: true,
+              kitId: true,
+              composicaoDoKit: true,
+              itens: { select: { productId: true, quantidade: true } },
+            },
+          },
+        },
+      });
+      const lote = propostas.map((o) => {
+        const segura = o.status === "APROVADO" ? this.opcaoQueSegura(o) : null;
+        return { id: o.id, festaEm: o.festaEm as Date, opcoes: segura ? [segura] : o.opcoes };
+      });
+      const conferidas = await this.conferirEmLote(lote, agora);
+      conferidas.forEach((c, i) => {
+        selos[lote[i].id] = seloDasOpcoes(c.opcoes);
+      });
+    }
+    return { conferidoEm: agora.toISOString(), selos };
+  }
+
   // ---------------------------------------------------------------- privados
+
+  /**
+   * A conferência detalhada de uma ou várias propostas.
+   *
+   * Uma ida ao banco para cada coisa, para todas as datas de uma vez:
+   * reservas do dia (reserva por reserva), propostas aprovadas que seguram
+   * peças, kits e o acervo dos produtos pedidos. Cada opção é conferida
+   * sozinha — as opções de uma proposta são alternativas, nunca somam entre
+   * si — contra as reservas e as outras propostas aprovadas da data.
+   *
+   * A decisão de cada item é a de `conflitosDoPedido`, a mesma da reserva e
+   * do link da cliente; o detalhamento só acrescenta o porquê e o quem.
+   */
+  private async conferirEmLote(
+    propostas: readonly { id: string | null; festaEm: Date; opcoes: readonly OpcaoParaConferir[] }[],
+    agora: Date,
+    db: Tx = prisma,
+  ) {
+    const dias = [...new Set(propostas.map((p) => diaDaFesta(p.festaEm)))];
+    const reservasPorDia = await this.disponibilidade.compromissosPorReserva(dias, agora, db);
+    const aprovadasPorDia = await this.aprovadasQueSeguram(dias, db);
+    const kits = await this.kitsComNome(
+      propostas.flatMap((p) => p.opcoes),
+      db,
+    );
+
+    const demandas = propostas.map((p) =>
+      p.opcoes.map((op) => {
+        const congelada = lerComposicaoCongelada(op.composicaoDoKit);
+        return {
+          op,
+          demanda: demandaDaOpcao(op, (kitId) => kits.get(kitId)?.itens),
+          kit: congelada?.kitNome ?? (op.kitId ? (kits.get(op.kitId)?.nome ?? null) : null),
+        };
+      }),
+    );
+    const ids = new Set(
+      demandas.flat().flatMap(({ demanda }) => [...demanda.itensDoKit, ...demanda.itensAvulsos].map((i) => i.productId)),
+    );
+    const produtos =
+      ids.size === 0
+        ? []
+        : await db.product.findMany({
+            where: { id: { in: [...ids] } },
+            select: { id: true, name: true, slug: true, stockQuantity: true },
+          });
+    const catalogo = new Map<string, ProdutoParaConferir>(
+      produtos.map((p) => [p.id, { nome: p.name, identificador: p.slug, estoque: p.stockQuantity }]),
+    );
+
+    return propostas.map((p, i) => {
+      const dia = diaDaFesta(p.festaEm);
+      const reservas = reservasPorDia.get(dia) ?? [];
+      // A proposta não disputa com ela mesma: aprovada, é ela quem segura.
+      const outras = (aprovadasPorDia.get(dia) ?? []).filter((a) => a.id !== p.id);
+      const pecas = new Set<string>();
+      const opcoes = demandas[i].map(({ op, demanda, kit }, n): OpcaoConferidaInterna => {
+        for (const item of [...demanda.itensDoKit, ...demanda.itensAvulsos]) pecas.add(item.productId);
+        const { conflitos, faltas } = detalharFaltas({ demanda, reservas, propostas: outras, produtos: catalogo, kit });
+        return {
+          id: op.id,
+          chave: op.chave ?? null,
+          ordem: n + 1,
+          nome: op.nome,
+          disponivel: conflitos.length === 0,
+          faltas,
+          conflitos,
+        };
+      });
+      return { dia, opcoes, reservas, outras, pecas };
+    });
+  }
+
+  /**
+   * As propostas aprovadas, ainda sem reserva, que seguram peças nestas
+   * datas — cada uma com a opção que a cliente escolheu.
+   *
+   * O mesmo recorte de `seguradoPorAprovadas` (aprovada, sem reserva, festa
+   * no dia), para várias datas e proposta por proposta.
+   */
+  private async aprovadasQueSeguram(dias: readonly string[], db: Tx = prisma) {
+    const porDia = new Map<string, (CompromissoDeProposta & { cliente: string })[]>(dias.map((d) => [d, []]));
+    if (dias.length === 0) return porDia;
+    const aprovadas = await db.orcamento.findMany({
+      where: {
+        status: "APROVADO",
+        reservationId: null,
+        OR: dias.map((d) => {
+          const inicio = new Date(`${d}T00:00:00.000Z`);
+          return { festaEm: { gte: inicio, lt: new Date(inicio.getTime() + 86_400_000) } };
+        }),
+      },
+      orderBy: { numero: "asc" },
+      select: {
+        id: true,
+        numero: true,
+        clienteNome: true,
+        festaEm: true,
+        opcaoAprovadaId: true,
+        opcoes: {
+          orderBy: { ordem: "asc" },
+          select: {
+            id: true,
+            ordem: true,
+            nome: true,
+            kitId: true,
+            composicaoDoKit: true,
+            itens: { select: { productId: true, quantidade: true } },
+          },
+        },
+      },
+    });
+    const seguradas = aprovadas.flatMap((a) => {
+      const opcao = this.opcaoQueSegura(a);
+      return opcao && a.festaEm ? [{ a, opcao, dia: diaDaFesta(a.festaEm) }] : [];
+    });
+    const kits = await this.kitsDoCatalogo(seguradas.map((x) => x.opcao), db);
+    for (const { a, opcao, dia } of seguradas) {
+      porDia.get(dia)?.push({
+        id: a.id,
+        numero: a.numero,
+        cliente: a.clienteNome,
+        opcao: opcao.nome,
+        itens: somarCompromisso([demandaDaOpcao(opcao, (kitId) => kits.get(kitId))]),
+      });
+    }
+    return porDia;
+  }
+
+  /** Os kits citados, com o nome e as peças ativas de hoje no catálogo. */
+  private async kitsComNome(opcoes: readonly OpcaoComMaterial[], db: Tx = prisma) {
+    const ids = [...new Set(opcoes.filter((op) => op.kitId).map((op) => op.kitId as string))];
+    if (ids.length === 0) return new Map<string, { nome: string; itens: { productId: string; quantity: number }[] }>();
+    const kits = await db.kit.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        name: true,
+        products: { where: { product: { active: true } }, select: { productId: true, quantity: true } },
+      },
+    });
+    return new Map(kits.map((k) => [k.id, { nome: k.name, itens: k.products }]));
+  }
 
   /**
    * Cada opção cabe na data? A conferência da reserva, somando o que as

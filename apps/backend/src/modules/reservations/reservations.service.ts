@@ -442,12 +442,6 @@ export class ReservationsService {
       throw new BadRequestException("A data do pagamento não pode estar no futuro.");
     }
 
-    // A regra única de confirmação: sinal pago (de qualquer valor) confirma a
-    // solicitada; saldo não. Ver `confirmaAReserva` em @festae/shared.
-    const confirmaAReserva = confirmaPorLiquidacao(
-      reserva.status as ReservationStatus,
-      dados.tipo === "DEPOSIT" ? "SINAL" : "SALDO",
-    );
     const orderId = reserva.order.id;
     const totalDoPedido = Number(reserva.order.total);
 
@@ -472,6 +466,29 @@ export class ReservationsService {
 
       // 2. Reler dentro do lock. A leitura de fora serviu para validar a
       //    reserva; para decidir sobre dinheiro, ela já pode estar velha.
+      //
+      //    A etapa da reserva também. Entre a leitura de fora e a trava, a
+      //    liberação da reserva sem sinal (ou um cancelamento) pode ter
+      //    cancelado a reserva e devolvido as peças ao acervo. Confirmar com
+      //    a etapa velha reabria como confirmada uma reserva cancelada — com
+      //    as peças possivelmente já vendidas para outra festa. Cancelada
+      //    aqui dentro, nada é lançado: é o mesmo "reserva cancelada" da
+      //    conferência de fora, só que sem janela.
+      const etapa = await tx.reservation.findUnique({ where: { id }, select: { status: true } });
+      if (!etapa || etapa.status === "CANCELLED" || etapa.status === "REJECTED") {
+        throw new ConflictException(
+          "Esta reserva foi cancelada enquanto o pagamento era registrado. Nada foi lançado. " +
+            "Reative ou registre uma nova antes de lançar o pagamento.",
+        );
+      }
+      // A regra única de confirmação, com a etapa relida: sinal pago (de
+      // qualquer valor) confirma a solicitada; saldo não. Ver
+      // `confirmaAReserva` em @festae/shared.
+      const confirmaAReserva = confirmaPorLiquidacao(
+        etapa.status as ReservationStatus,
+        dados.tipo === "DEPOSIT" ? "SINAL" : "SALDO",
+      );
+
       const pagamentos = await tx.payment.findMany({
         where: { orderId },
         select: { id: true, type: true, status: true, amount: true },
@@ -546,10 +563,18 @@ export class ReservationsService {
       }
 
       if (confirmaAReserva) {
-        await tx.reservation.update({
-          where: { id },
+        // Condicional mesmo sob a trava: só a solicitada vira confirmada.
+        // Qualquer caminho que mude a etapa sem passar pela trava do pedido
+        // não consegue, por aqui, ser desfeito.
+        const { count } = await tx.reservation.updateMany({
+          where: { id, status: "PENDING" },
           data: { status: "CONFIRMED", confirmedAt: new Date() },
         });
+        if (count !== 1) {
+          throw new ConflictException(
+            "A etapa desta reserva mudou enquanto o pagamento era registrado. Nada foi lançado. Recarregue e confira.",
+          );
+        }
         await tx.order.update({ where: { id: orderId }, data: { status: "CONFIRMED" } });
       }
 
@@ -574,12 +599,13 @@ export class ReservationsService {
         credito: fromCentsInt(creditoEmCentavos),
         encerradas: aEncerrar.length,
         quita,
+        confirmou: confirmaAReserva,
       };
     });
 
     this.logger.log(
       `Pagamento (${dados.tipo}) registrado por ${usuarioId} ` +
-        `na reserva ${id}${confirmaAReserva ? " — reserva confirmada" : ""}.`,
+        `na reserva ${id}${apurado.confirmou ? " — reserva confirmada" : ""}.`,
     );
 
     return {
@@ -587,7 +613,7 @@ export class ReservationsService {
       total: totalDoPedido,
       pago: apurado.pago,
       saldo: saldoAPagar(totalDoPedido, apurado.pago + apurado.credito),
-      reservaConfirmada: confirmaAReserva,
+      reservaConfirmada: apurado.confirmou,
       pixPendentesEncerrados: apurado.encerradas,
       pedidoQuitado: apurado.quita,
     };
@@ -619,6 +645,13 @@ export class ReservationsService {
 
     const resultado = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`;
+      // A situação da reserva relida sob a trava: um cancelamento que
+      // terminou entre a leitura de fora e aqui muda o que pode ser corrigido.
+      const situacao = await tx.reservation.findUnique({
+        where: { id: reservaId },
+        select: { status: true, cancelledAt: true, tratamentoDoCancelamento: { select: { id: true } } },
+      });
+      if (!situacao) throw new NotFoundException("Reserva não encontrada.");
       const pagamentos = await tx.payment.findMany({
         where: { orderId },
         select: {
@@ -643,10 +676,10 @@ export class ReservationsService {
             recebidoEm: pagamento.paidAt,
           },
           reservaCancelada:
-            reserva.status === "CANCELLED" ||
-            reserva.status === "REJECTED" ||
-            reserva.cancelledAt !== null ||
-            reserva.tratamentoDoCancelamento !== null,
+            situacao.status === "CANCELLED" ||
+            situacao.status === "REJECTED" ||
+            situacao.cancelledAt !== null ||
+            situacao.tratamentoDoCancelamento !== null,
           outrosRecebidosEmCentavos: pagamentos
             .filter((p) => p.id !== pagamentoId && p.status === "PAID")
             .reduce((t, p) => t + toCentsInt(Number(p.amount)), 0),

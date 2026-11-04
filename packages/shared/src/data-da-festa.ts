@@ -46,6 +46,38 @@ export function diaEmChapeco(instante: Date): string {
 }
 
 /**
+ * "18:42" — que horas eram, em Chapecó, neste instante.
+ *
+ * O servidor e o app formatam por aqui, e não pelo relógio do aparelho: um
+ * celular configurado em outro fuso não pode mostrar um prazo diferente do
+ * que o servidor vai aplicar.
+ */
+export function horarioEmChapeco(instante: Date): string {
+  const local = new Date(instante.getTime() + FUSO_DE_CHAPECO_EM_MINUTOS * 60_000);
+  return local.toISOString().slice(11, 16);
+}
+
+/**
+ * O prazo do sinal de uma reserva da loja, como o servidor calcula — a mesma
+ * conta que decide se um Pix novo pode ser gerado e até quando ele vale.
+ */
+export type PrazoDoSinal =
+  | { temPrazo: false }
+  | {
+      temPrazo: true;
+      /** Fim do prazo (ISO). */
+      prazo: string;
+      /** O fim do prazo no horário de Chapecó, pronto para mostrar: "18:42". */
+      horario: string;
+      encerrado: boolean;
+      /** Se um Pix novo cabe inteiro dentro do prazo (o Mercado Pago exige 30 min). */
+      podeGerarNovoPix: boolean;
+      motivo: "PRAZO_DO_SINAL_ENCERRADO" | "PRAZO_DO_SINAL_INSUFICIENTE" | null;
+      /** A mesma mensagem que a geração do Pix devolve quando recusa. */
+      mensagem: string | null;
+    };
+
+/**
  * O instante em que uma data de festa deve ser gravada.
  *
  * Aceita as duas formas que chegam pela API e as trata de maneira diferente

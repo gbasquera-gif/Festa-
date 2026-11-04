@@ -49,6 +49,15 @@ export class PaymentsController {
     return this.paymentsService.findByOrder(event.order!.id);
   }
 
+  /** Até que horas pagar o sinal, calculado pelo servidor. Só a dona da festa (ou a equipe). */
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get("events/:eventId/order/prazo-do-sinal")
+  async prazoDoSinal(@CurrentUser() user: AuthUser, @Param("eventId") eventId: string) {
+    const event = await this.eventsService.findById(eventId, user);
+    return this.paymentsService.prazoDoSinal(event.order!.id);
+  }
+
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post("events/:eventId/order/payments")

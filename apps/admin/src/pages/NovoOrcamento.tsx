@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp, ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import {
   EVENT_TYPES,
   EVENT_TYPE_META,
   MAXIMO_DE_OPCOES,
   SALE_CHANNELS,
   SALE_CHANNEL_LABELS,
+  type OpcaoConferida,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import {
   type ProdutoDoCatalogo,
 } from "@/components/orcamento/EditorDaOpcao";
 import { useVoltar } from "@/lib/voltar";
+import { AvisoDeIndisponibilidade } from "@/components/orcamento/AvisoDeIndisponibilidade";
 import { api, ApiError } from "@/lib/api";
 import { brl } from "@/components/financeiro/formato";
 
@@ -50,6 +52,21 @@ type Cliente = { id: string; name: string; phone: string | null; email: string |
 type Tema = { id: string; name: string; coverImageUrl: string | null };
 
 const hoje = () => new Date().toISOString().slice(0, 10);
+
+/** A simulação do servidor: as opções como estão na tela, conferidas agora. */
+type Simulacao = { data: string; conferidoEm: string; dataPassada: boolean; opcoes: OpcaoConferida[] };
+
+/**
+ * O que o aviso do detalhe mandou corrigir: ?opcao=2&item=<produto>&acao=substituir.
+ * Lido uma vez, na abertura.
+ */
+function focoDaUrl(): { opcao: number; item: string | null; acao: "substituir" | "remover" } | null {
+  const q = new URLSearchParams(window.location.search);
+  const opcao = Number(q.get("opcao"));
+  if (!Number.isInteger(opcao) || opcao < 1) return null;
+  const acao = q.get("acao") === "remover" ? "remover" : "substituir";
+  return { opcao, item: q.get("item"), acao };
+}
 
 export default function NovoOrcamento({ id }: { id?: string }) {
   const [, navegar] = useLocation();
@@ -94,6 +111,47 @@ export default function NovoOrcamento({ id }: { id?: string }) {
   /** Quais opções estão abertas. Uma nova nasce aberta. */
   const [abertas, setAbertas] = useState<Set<string>>(() => new Set());
   const [removendo, setRemovendo] = useState<OpcaoEditada | null>(null);
+  const [foco] = useState(focoDaUrl);
+
+  /**
+   * A conferência de disponibilidade enquanto a proposta é montada.
+   *
+   * Só o que importa para o material (data, kit e peças de cada opção) entra
+   * na conta, e ela espera meio segundo de calma para não perguntar a cada
+   * tecla. Nada é gravado: é para a equipe ver as faltas antes de salvar e
+   * enviar. Salvar como rascunho continua permitido com faltas; o envio é
+   * que fica bloqueado — e o servidor confere de novo.
+   */
+  const pedidoDaSimulacao = useMemo(() => {
+    if (dataADefinir || !data) return null;
+    const comMaterial = opcoes.some((o) => o.kitId || o.linhas.some((l) => l.productId));
+    if (!comMaterial) return null;
+    return JSON.stringify({
+      data,
+      ...(id ? { orcamentoId: id } : {}),
+      opcoes: opcoes.map((o, i) => ({
+        chave: o.chave,
+        nome: o.nome.trim() || `Opção ${i + 1}`,
+        kitId: o.kitId || null,
+        itens: o.linhas.map((l) => ({ productId: l.productId || null, quantidade: l.quantidade })),
+      })),
+    });
+  }, [data, dataADefinir, id, opcoes]);
+  const [pedidoCalmo, setPedidoCalmo] = useState<string | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setPedidoCalmo(pedidoDaSimulacao), 500);
+    return () => clearTimeout(t);
+  }, [pedidoDaSimulacao]);
+  const simulacao = useQuery<Simulacao>({
+    queryKey: ["orcamento", "simulacao", pedidoCalmo],
+    queryFn: () => api("/orcamentos/disponibilidade/simular", { method: "POST", body: pedidoCalmo! }),
+    enabled: pedidoCalmo !== null && pedidoCalmo === pedidoDaSimulacao,
+    placeholderData: keepPreviousData,
+  });
+  const conferidaPorChave = new Map(
+    (pedidoDaSimulacao ? (simulacao.data?.opcoes ?? []) : []).map((o) => [o.chave, o]),
+  );
+  const conferidas = opcoes.map((o) => conferidaPorChave.get(o.chave)).filter((o): o is OpcaoConferida => Boolean(o));
 
   // A primeira opção de uma proposta nova já nasce aberta.
   useEffect(() => {
@@ -124,7 +182,9 @@ export default function NovoOrcamento({ id }: { id?: string }) {
     const carregadas = (o.opcoes ?? []).map(opcaoDoServidor);
     if (carregadas.length > 0) {
       setOpcoes(carregadas);
-      setAbertas(new Set([carregadas[0].chave]));
+      // Vindo do aviso do detalhe, abre a opção a corrigir.
+      const pedida = foco ? carregadas[foco.opcao - 1] : undefined;
+      setAbertas(new Set([(pedida ?? carregadas[0]).chave]));
     }
   }, [existente.data]);
 
@@ -432,6 +492,7 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           const totais = totaisDaOpcaoEditada(o);
           const kitNome = kits.data?.find((k) => k.id === o.kitId)?.name;
           const problema = problemaDaOpcao(o);
+          const conferida = conferidaPorChave.get(o.chave);
           return (
             <article key={o.chave} className="painel-cartao overflow-hidden" data-opcao={i + 1}>
               <header className="flex flex-wrap items-center gap-2 p-3 sm:p-4">
@@ -459,9 +520,20 @@ export default function NovoOrcamento({ id }: { id?: string }) {
                     <span className="block truncate text-xs text-muted-foreground">
                       {[kitNome ?? "Sem kit", `${o.linhas.length} ${o.linhas.length === 1 ? "item" : "itens"}`, `${o.imagens.length} ${o.imagens.length === 1 ? "imagem" : "imagens"}`].join(" · ")}
                       {problema && <span style={{ color: "var(--color-coral-dark, #c4472a)" }}> · {problema}</span>}
+                      {conferida && !conferida.disponivel && (
+                        <span style={{ color: "#c4472a" }} data-opcao-indisponivel>
+                          {" "}· {conferida.faltas.length} {conferida.faltas.length === 1 ? "item indisponível" : "itens indisponíveis"}
+                        </span>
+                      )}
                     </span>
                   </span>
                 </button>
+                {conferida &&
+                  (conferida.disponivel ? (
+                    <CheckCircle2 className="size-4 shrink-0" style={{ color: "#2e9b6b" }} aria-label="Tudo disponível na data" />
+                  ) : (
+                    <AlertTriangle className="size-4 shrink-0" style={{ color: "#c4472a" }} aria-label="Itens indisponíveis na data" />
+                  ))}
                 <span className="fin-numero shrink-0 text-base" style={{ color: "var(--color-navy)" }}>{brl(totais.oficial)}</span>
                 <div className="flex shrink-0 items-center">
                   <Button type="button" variant="ghost" size="icon" className="size-10" disabled={i === 0}
@@ -505,6 +577,8 @@ export default function NovoOrcamento({ id }: { id?: string }) {
                     // não há tema — trocar o kit de uma opção não pode mudar
                     // o tema das outras.
                     aoEscolherKit={(k) => { if (k.themeId && !themeId) setThemeId(k.themeId); }}
+                    faltas={conferida?.faltas}
+                    foco={foco && foco.item && opcoes[foco.opcao - 1]?.chave === o.chave ? { productId: foco.item, acao: foco.acao } : null}
                   />
                 </div>
               )}
@@ -523,6 +597,72 @@ export default function NovoOrcamento({ id }: { id?: string }) {
           Adicionar opção de festa
         </Button>
       </section>
+
+      {/* DISPONIBILIDADE — o resumo da conferência, antes de salvar. */}
+      {dataADefinir ? (
+        <p className="painel-cartao p-4 text-sm text-muted-foreground" data-sem-data>
+          Sem data, a disponibilidade das peças não é conferida e a proposta não pode ser enviada. Ela pode ser
+          salva como rascunho; quando a data for definida, a conferência acontece aqui e de novo no envio.
+        </p>
+      ) : simulacao.data && pedidoDaSimulacao && conferidas.some((o) => !o.disponivel) ? (
+        <AvisoDeIndisponibilidade
+          contexto="editor"
+          data={simulacao.data.data}
+          opcoes={conferidas}
+          conferidoEm={simulacao.data.conferidoEm}
+          verificando={simulacao.isFetching}
+          aoVerificar={() => simulacao.refetch()}
+          acoesDaOpcao={(op) => {
+            const alvo = opcoes.find((x) => x.chave === op.chave);
+            return alvo ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10"
+                onClick={() => {
+                  setAbertas((atual) => new Set(atual).add(alvo.chave));
+                  setTimeout(() => document.getElementById(`${alvo.chave}-kit`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+                }}
+              >
+                Editar opção
+              </Button>
+            ) : null;
+          }}
+          acoesDoItem={(op, f) => {
+            const alvo = opcoes.find((x) => x.chave === op.chave);
+            if (!alvo) return null;
+            const linha = alvo.linhas.findIndex((l) => l.productId === f.productId && f.avulso > 0);
+            return (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-10"
+                onClick={() => {
+                  setAbertas((atual) => new Set(atual).add(alvo.chave));
+                  setTimeout(
+                    () =>
+                      document
+                        .getElementById(linha >= 0 ? `${alvo.chave}-item-${linha}` : `${alvo.chave}-kit`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                    50,
+                  );
+                }}
+              >
+                {linha >= 0 ? "Substituir ou remover o item" : "Trocar ou remover o kit"}
+              </Button>
+            );
+          }}
+        />
+      ) : simulacao.data && pedidoDaSimulacao && conferidas.length > 0 ? (
+        <p className="painel-cartao flex items-center gap-2 p-4 text-sm" style={{ color: "#2e9b6b" }} data-tudo-disponivel>
+          <CheckCircle2 className="size-4 shrink-0" aria-hidden />
+          Todas as opções cabem na data {simulacao.data.dataPassada ? "(atenção: a data já passou — o envio será recusado)" : ""}.
+          <Button type="button" variant="ghost" size="sm" className="ml-auto min-h-9" onClick={() => simulacao.refetch()} disabled={simulacao.isFetching}>
+            {simulacao.isFetching ? "Verificando…" : "Verificar novamente"}
+          </Button>
+        </p>
+      ) : null}
 
       {problemas.length > 0 && (
         <p className="text-right text-xs" style={{ color: "var(--color-coral-dark, #c4472a)" }}>
