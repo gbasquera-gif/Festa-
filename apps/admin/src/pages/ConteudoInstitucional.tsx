@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { GaleriaDeImagens, ImagemUnica } from "@/components/GaleriaDeImagens";
 
 /**
@@ -90,12 +91,20 @@ const PAGAMENTO = [
     ajuda: "O que fazer depois do Pix. Em branco, a proposta usa uma instrução padrão.",
     placeholder: "Envie o comprovante no WhatsApp para confirmarmos sua data.",
   },
+  {
+    chave: "alerta_aprovadas_horas",
+    rotulo: "Alerta de sinal pendente (horas)",
+    ajuda:
+      "Depois de quantas horas uma proposta aprovada sem reserva aparece no alerta da equipe. Só avisa: não vence nem libera nada. Em branco, 48 horas.",
+    placeholder: "48",
+  },
 ] as const;
 
 type Bloco = { titulo: string; texto: string; imagemUrl: string };
 
 export default function ConteudoInstitucional() {
   const queryClient = useQueryClient();
+  const ehAdmin = useAuth().user?.role === "ADMIN";
   const { data } = useQuery<Record<string, { titulo: string | null; texto: string | null; imagemUrl: string | null }>>({
     queryKey: ["orcamentos", "conteudo"],
     queryFn: () => api("/orcamentos/conteudo"),
@@ -231,6 +240,11 @@ export default function ConteudoInstitucional() {
             O que a proposta mostra depois que a cliente aprova. Aprovar não é pagar: o
             recebimento continua sendo confirmado por vocês, na reserva.
           </p>
+          {!ehAdmin && (
+            <p className="text-xs font-medium text-muted-foreground" data-pagamento-somente-leitura>
+              Só o ADMIN altera estas configurações. Você pode consultar.
+            </p>
+          )}
         </div>
         {PAGAMENTO.map((c) => (
           <div key={c.chave} className="space-y-1.5">
@@ -240,6 +254,7 @@ export default function ConteudoInstitucional() {
               value={valores[c.chave]?.texto ?? ""}
               onChange={(e) => alterar(c.chave, "texto", e.target.value)}
               placeholder={c.placeholder}
+              disabled={!ehAdmin}
             />
             <p className="text-xs text-muted-foreground">{c.ajuda}</p>
           </div>

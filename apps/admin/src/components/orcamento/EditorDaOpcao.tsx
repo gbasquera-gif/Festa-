@@ -1,12 +1,15 @@
-import { useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Plus, Repeat, Trash2 } from "lucide-react";
 import {
+  MOTIVO_DA_FALTA_LABEL,
   TIPOS_DA_LINHA,
   TIPO_DA_LINHA_LABEL,
   calcularOrcamento,
   toCentsInt,
   totalDaLinha,
   montarComposicaoDoKit,
+  unidades,
+  type FaltaDeItem,
   type TipoDaLinha,
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
@@ -29,7 +32,27 @@ export type KitDoCatalogo = {
   coverImageUrl: string | null; images: string[]; themeId: string | null;
   products?: { quantity: number; product: { id: string; name: string; active: boolean } }[];
 };
-export type ProdutoDoCatalogo = { id: string; name: string; unitPrice: string; imageUrl: string | null; category: string };
+export type ProdutoDoCatalogo = {
+  id: string;
+  name: string;
+  unitPrice: string;
+  imageUrl: string | null;
+  category: string;
+  /** Unidades no acervo. Zero é "não temos" — a peça não cabe em data nenhuma. */
+  stockQuantity?: number;
+};
+
+/** "Painel — R$ 80,00 · 2 no acervo", para escolher sabendo o que existe. */
+function rotuloDoProduto(p: ProdutoDoCatalogo): string {
+  const acervo =
+    p.stockQuantity === undefined ? "" : p.stockQuantity > 0 ? ` · ${p.stockQuantity} no acervo` : " · sem unidades no acervo";
+  return `${p.name} — ${brl(Number(p.unitPrice))}${acervo}`;
+}
+
+/** A frase curta de uma falta, para a linha do editor. */
+function textoDaFaltaNaLinha(f: FaltaDeItem): string {
+  return `Indisponível: precisa de ${unidades(f.necessario)}, ${f.disponivel === 0 ? "nenhuma livre" : `${unidades(f.disponivel)} livre${f.disponivel === 1 ? "" : "s"}`} na data — faltam ${f.faltante}. Motivo: ${MOTIVO_DA_FALTA_LABEL[f.motivo]}`;
+}
 
 export type Linha = {
   tipo: TipoDaLinha;
@@ -162,6 +185,8 @@ export function EditorDaOpcao({
   produtos,
   capaDoTema,
   aoEscolherKit,
+  faltas,
+  foco,
 }: {
   opcao: OpcaoEditada;
   aoMudar: (mudanca: Partial<OpcaoEditada> | ((o: OpcaoEditada) => Partial<OpcaoEditada>)) => void;
@@ -170,8 +195,51 @@ export function EditorDaOpcao({
   capaDoTema: string | null;
   /** Avisa a página, que decide o tema (só preenche se estiver vazio). */
   aoEscolherKit: (kit: KitDoCatalogo) => void;
+  /** Os itens desta opção que não cabem na data, da última conferência. */
+  faltas?: readonly FaltaDeItem[];
+  /** O item que o aviso do detalhe mandou corrigir, e como. */
+  foco?: { productId: string; acao: "substituir" | "remover" } | null;
 }) {
   const id = (campo: string) => `${opcao.chave}-${campo}`;
+  /** A linha cuja peça está sendo trocada por outra do catálogo. */
+  const [substituindo, setSubstituindo] = useState<number | null>(null);
+  const faltaDoProduto = new Map((faltas ?? []).map((f) => [f.productId, f]));
+  // Faltas que vêm do kit: a peça não é linha, é parte do kit — o que se
+  // troca é o kit (ou se remove), e a peça aparece marcada na composição.
+  const faltasDoKit = (faltas ?? []).filter((f) => f.noKit > 0);
+  const pecasIndisponiveis = new Set(faltasDoKit.map((f) => f.productId));
+
+  // Veio do aviso do detalhe: leva a tela até o item e abre a troca.
+  useEffect(() => {
+    if (!foco) return;
+    const linha = opcao.linhas.findIndex((l) => l.productId === foco.productId);
+    const alvo =
+      linha >= 0 ? document.getElementById(id(`item-${linha}`)) : document.getElementById(id("kit"));
+    alvo?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (linha >= 0 && foco.acao === "substituir") setSubstituindo(linha);
+    if (linha < 0) (alvo as HTMLSelectElement | null)?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foco?.productId, foco?.acao]);
+
+  function substituirProduto(i: number, produtoId: string) {
+    const p = produtos.find((x) => x.id === produtoId);
+    if (!p) return;
+    aoMudar((o) => ({
+      linhas: o.linhas.map((l, k) =>
+        k === i
+          ? {
+              ...l,
+              tipo: p.category === "BALAO" ? "BALOES" : "PRODUTO",
+              productId: p.id,
+              descricao: p.name,
+              valorUnitario: Number(p.unitPrice),
+              imagemUrl: p.imageUrl ?? undefined,
+            }
+          : l,
+      ),
+    }));
+    setSubstituindo(null);
+  }
   const totais = totaisDaOpcaoEditada(opcao);
   const negociado = opcao.valorFinalTocado && toCentsInt(totais.oficial) !== toCentsInt(totais.total);
   const composicaoMudou =
@@ -264,8 +332,37 @@ export function EditorDaOpcao({
           <ComposicaoDoKit
             kitNome={kitSelecionado.kitNome}
             itens={kitSelecionado.itens}
+            indisponiveis={pecasIndisponiveis}
             nota="Composição atual do catálogo. Ela fica registrada nesta opção quando a proposta for enviada e não muda depois, mesmo que o kit seja alterado."
           />
+        )}
+        {faltasDoKit.length > 0 && (
+          <div className="space-y-2 rounded-md border p-3" style={{ borderColor: "#c4472a", background: "rgba(224,90,58,0.05)" }} data-falta-no-kit>
+            <p className="flex items-center gap-1.5 text-sm font-medium" style={{ color: "#c4472a" }}>
+              <AlertTriangle className="size-4 shrink-0" aria-hidden />
+              {faltasDoKit.length === 1 ? "Uma peça do kit está indisponível na data" : `${faltasDoKit.length} peças do kit estão indisponíveis na data`}
+            </p>
+            <ul className="space-y-1 text-sm" style={{ color: "var(--color-navy)" }}>
+              {faltasDoKit.map((f) => (
+                <li key={f.productId}>
+                  <strong>{f.nome}</strong>
+                  {f.identificador ? <span className="text-xs text-muted-foreground"> · {f.identificador}</span> : null}
+                  <span className="block text-xs text-muted-foreground">{textoDaFaltaNaLinha(f)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              A peça faz parte do kit e não sai sozinha: troque o kit por outro, remova o kit e monte peça a peça, ou ajuste o kit no catálogo.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => document.getElementById(id("kit"))?.focus()}>
+                <Repeat className="mr-1.5 size-4" aria-hidden /> Trocar o kit
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="min-h-10" onClick={() => escolherKit("")}>
+                <Trash2 className="mr-1.5 size-4" aria-hidden /> Remover o kit
+              </Button>
+            </div>
+          </div>
         )}
 
         <div className="flex flex-wrap items-end gap-2">
@@ -279,7 +376,7 @@ export function EditorDaOpcao({
             >
               <option value="">Escolher…</option>
               {produtos.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} — {brl(Number(p.unitPrice))}</option>
+                <option key={p.id} value={p.id}>{rotuloDoProduto(p)}</option>
               ))}
             </select>
           </div>
@@ -301,8 +398,17 @@ export function EditorDaOpcao({
         )}
 
         <div className="space-y-2">
-          {opcao.linhas.map((l, i) => (
-            <div key={i} className="flex flex-wrap items-end gap-2 rounded-md border p-3">
+          {opcao.linhas.map((l, i) => {
+            const falta = l.productId ? faltaDoProduto.get(l.productId) : undefined;
+            const faltaNaLinha = falta && falta.avulso > 0 ? falta : undefined;
+            return (
+            <div
+              key={i}
+              id={id(`item-${i}`)}
+              className="flex flex-wrap items-end gap-2 rounded-md border p-3"
+              style={faltaNaLinha ? { borderColor: "#c4472a", background: "rgba(224,90,58,0.05)", boxShadow: "inset 3px 0 0 #c4472a" } : undefined}
+              data-linha-indisponivel={faltaNaLinha ? true : undefined}
+            >
               <div className="w-[9.5rem] space-y-1">
                 <span className="painel-periodo">Tipo</span>
                 <select
@@ -357,8 +463,54 @@ export function EditorDaOpcao({
               >
                 <Trash2 className="size-4" />
               </Button>
+              {faltaNaLinha && (
+                <div className="basis-full space-y-2 pt-1">
+                  <p className="flex items-start gap-1.5 text-sm" style={{ color: "#c4472a" }}>
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <span>
+                      {textoDaFaltaNaLinha(faltaNaLinha)}
+                      {faltaNaLinha.noKit > 0 ? ` O kit desta opção também usa ${unidades(faltaNaLinha.noKit)}.` : ""}
+                    </span>
+                  </p>
+                  {substituindo === i ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="sr-only" htmlFor={id(`substituir-${i}`)}>Substituir por</label>
+                      <select
+                        id={id(`substituir-${i}`)}
+                        value=""
+                        autoFocus
+                        onChange={(e) => e.target.value && substituirProduto(i, e.target.value)}
+                        className="h-10 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
+                      >
+                        <option value="">Substituir por…</option>
+                        {produtos
+                          .filter((p) => p.id !== l.productId)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>{rotuloDoProduto(p)}</option>
+                          ))}
+                      </select>
+                      <Button type="button" variant="ghost" size="sm" className="min-h-10" onClick={() => setSubstituindo(null)}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" className="min-h-10" onClick={() => setSubstituindo(i)}>
+                        <Repeat className="mr-1.5 size-4" aria-hidden /> Substituir item
+                      </Button>
+                      <Button
+                        type="button" variant="ghost" size="sm" className="min-h-10"
+                        onClick={() => aoMudar((o) => ({ linhas: o.linhas.filter((_, k) => k !== i) }))}
+                      >
+                        <Trash2 className="mr-1.5 size-4" aria-hidden /> Remover item
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

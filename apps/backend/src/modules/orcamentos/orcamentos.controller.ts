@@ -5,11 +5,13 @@ import {
   converterOrcamentoSchema,
   orcamentoSchema,
   recusarOrcamentoSchema,
+  simulacaoDeDisponibilidadeSchema,
   type AprovarManualmenteInput,
   type CategoriaDaPerda,
   type ConverterOrcamentoInput,
   type OrcamentoInput,
   type SaleChannel,
+  type SimulacaoDeDisponibilidadeInput,
 } from "@festae/shared";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
@@ -42,11 +44,17 @@ export class OrcamentosController {
     return this.orcamentos.conteudo();
   }
 
+  /**
+   * Textos institucionais: ADMIN e OPS. Configurações de pagamento (chave
+   * Pix, favorecido, instrução, percentual do sinal e prazo do alerta): só
+   * ADMIN — o serviço recusa se OPS tentar mudar alguma delas.
+   */
   @Put("conteudo")
   salvarConteudo(
     @Body() body: { blocos: { chave: string; titulo?: string; texto?: string; imagemUrl?: string }[] },
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.orcamentos.salvarConteudo(body.blocos ?? []);
+    return this.orcamentos.salvarConteudo(body.blocos ?? [], user.role);
   }
 
   /**
@@ -60,6 +68,33 @@ export class OrcamentosController {
   @Get("panorama")
   panorama(@Query("ano") ano?: string, @Query("mes") mes?: string) {
     return this.panoramas.panorama(lerRecorte(ano, mes));
+  }
+
+  /**
+   * O selo de disponibilidade de cada proposta da lista, conferido agora.
+   * Declarada antes de `:id`, senão "disponibilidade" seria lido como um id.
+   */
+  /**
+   * Propostas aprovadas há mais do prazo do alerta, sem reserva. Só leitura.
+   * Declarada antes de `:id`, como as outras rotas de nome fixo.
+   */
+  @ApiOperation({ summary: "Aprovadas aguardando sinal além do prazo do alerta" })
+  @Get("alertas/aprovadas-sem-sinal")
+  aprovadasSemSinal() {
+    return this.orcamentos.aprovadasAguardandoSinal();
+  }
+
+  @ApiOperation({ summary: "Selo de disponibilidade das propostas" })
+  @Get("disponibilidade")
+  selos() {
+    return this.orcamentos.selosDeDisponibilidade();
+  }
+
+  /** Confere as opções como estão no editor, sem gravar nada. */
+  @ApiOperation({ summary: "Simula a disponibilidade das opções do editor (não grava)" })
+  @Post("disponibilidade/simular")
+  simular(@Body(new ZodValidationPipe(simulacaoDeDisponibilidadeSchema)) body: SimulacaoDeDisponibilidadeInput) {
+    return this.orcamentos.simularDisponibilidade(body);
   }
 
   /** Cada opção cabe na data? Contando reservas e propostas aprovadas sem reserva. */
@@ -122,6 +157,10 @@ export class OrcamentosController {
     return this.orcamentos.excluir(id);
   }
 
+  // Marcar como perdida tira a proposta de circulação e libera as peças que
+  // ela segurava: decisão comercial do ADMIN. OPS acompanha (o alerta e a
+  // proposta continuam visíveis), mas não executa.
+  @Roles("ADMIN")
   @Patch(":id/recusar")
   recusar(
     @Param("id") id: string,

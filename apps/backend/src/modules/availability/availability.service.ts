@@ -9,6 +9,7 @@ import {
   type PedidoComprometido,
 } from "./item-commitment";
 import { SELECAO_DO_COMPROMISSO, STATUS_QUE_COMPROMETEM } from "./selecao-do-pedido";
+import { prazoDoSinalVencido } from "./reserva-sem-sinal";
 import { travarPedido } from "../creditos/ledger";
 import { PaymentsService } from "../payments/payments.service";
 
@@ -26,6 +27,18 @@ const CONSULTAS_POR_RODADA = 5;
  * Só REJECTED e CANCELLED liberam a data.
  */
 const COUNTED_STATUSES = STATUS_QUE_COMPROMETEM;
+
+/** O que uma reserva compromete na data, para explicar um conflito. */
+export interface CompromissoDeReserva {
+  id: string;
+  /** O número da reserva (contractSeq), que vira FE-0042 na tela. */
+  numero: number;
+  status: string;
+  /** Reserva da loja sem sinal, com o prazo vencido, ainda não liberada. */
+  semSinalVencida: boolean;
+  /** Unidades por produto: kit e avulsos no mesmo balde, como em `somarCompromisso`. */
+  itens: Map<string, number>;
+}
 
 export interface DayAvailability {
   date: string;
@@ -278,6 +291,74 @@ export class AvailabilityService {
     }));
 
     return somarCompromisso(pedidos);
+  }
+
+  /**
+   * O compromisso do dia, reserva por reserva — para dizer quem está
+   * segurando a peça, e não só quanto.
+   *
+   * Lê exatamente o que `compromissoDoDia` lê (mesmos dias, mesmas etapas,
+   * mesma regra de kit congelado), só que sem somar tudo num balde: somadas,
+   * as reservas daqui dão o mesmo número de lá. Só leitura — não libera nem
+   * cancela nada. Reserva sem sinal com o prazo vencido continua contando,
+   * como na conta oficial; ela só sai marcada, para a tela explicar.
+   *
+   * Vários dias numa consulta só, para a lista de orçamentos não ir ao
+   * banco uma vez por proposta.
+   */
+  async compromissosPorReserva(
+    dias: readonly string[],
+    agora: Date,
+    db: Prisma.TransactionClient = prisma,
+  ): Promise<Map<string, CompromissoDeReserva[]>> {
+    const unicos = [...new Set(dias)];
+    const porDia = new Map<string, CompromissoDeReserva[]>(unicos.map((d) => [d, []]));
+    if (unicos.length === 0) return porDia;
+
+    const reservas = await db.reservation.findMany({
+      where: {
+        OR: unicos.map((dia) => {
+          const [inicio, fim] = this.limitesDoDia(new Date(`${dia}T12:00:00.000Z`));
+          return { eventDate: { gte: inicio, lt: fim } };
+        }),
+        status: { in: [...COUNTED_STATUSES] },
+      },
+      orderBy: { contractSeq: "asc" },
+      select: {
+        id: true,
+        contractSeq: true,
+        status: true,
+        eventDate: true,
+        requestedAt: true,
+        order: {
+          select: {
+            ...SELECAO_DO_COMPROMISSO,
+            payments: { where: { status: "PAID" }, select: { id: true }, take: 1 },
+          },
+        },
+        creditosUtilizados: { select: { id: true }, take: 1 },
+      },
+    });
+
+    for (const r of reservas) {
+      const dia = r.eventDate.toISOString().slice(0, 10);
+      porDia.get(dia)?.push({
+        id: r.id,
+        numero: r.contractSeq,
+        status: r.status,
+        semSinalVencida: prazoDoSinalVencido(
+          {
+            status: r.status,
+            requestedAt: r.requestedAt,
+            temPagamentoConfirmado: r.order.payments.length > 0,
+            temCreditoAplicado: r.creditosUtilizados.length > 0,
+          },
+          agora,
+        ),
+        itens: somarCompromisso([{ itensDoKit: itensDoKitDoPedido(r.order), itensAvulsos: r.order.items }]),
+      });
+    }
+    return porDia;
   }
 
   /** Nome e estoque dos produtos citados, para conferir e para explicar. */
