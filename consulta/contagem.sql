@@ -1,6 +1,7 @@
 -- Festaê — divergência entre a data do evento e a data da reserva.
 -- SOMENTE LEITURA. Devolve apenas números agregados: nenhum id, nome,
--- telefone, data individual ou valor sai daqui.
+-- telefone, data individual ou valor sai daqui. O total de reservas não é
+-- impresso (o log é público): só se havia alguma para comparar (on/off).
 --
 -- "Dia" = data UTC gravada (a mesma regra de diaDaFesta no código).
 -- "Hoje" = o dia em Chapecó (America/Sao_Paulo).
@@ -29,7 +30,8 @@ WITH base AS (
    WHERE b.dia_evento <> b.dia_reserva
 )
 SELECT x FROM (
-  SELECT 1 AS o, 'divergentes_total=' || count(*) AS x FROM div
+  SELECT 0 AS o, 'havia_reservas_para_comparar=' || CASE WHEN EXISTS (SELECT 1 FROM base) THEN 'on' ELSE 'off' END AS x
+  UNION ALL SELECT 1, 'divergentes_total=' || count(*) FROM div
   UNION ALL SELECT 2, 'em_andamento=' || count(*) FILTER (WHERE em_andamento) FROM div
   UNION ALL SELECT 3, 'em_andamento_com_festa_hoje_ou_futura=' || count(*) FILTER (WHERE em_andamento AND dia_reserva >= (SELECT d FROM hoje)) FROM div
   UNION ALL SELECT 4, 'em_andamento_com_festa_passada=' || count(*) FILTER (WHERE em_andamento AND dia_reserva < (SELECT d FROM hoje)) FROM div
