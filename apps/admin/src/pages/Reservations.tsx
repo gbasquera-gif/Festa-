@@ -16,6 +16,7 @@ import {
   type AbaDeReserva,
   type GrupoDeProximidade,
   RESERVATION_STATUSES,
+  diaDaFesta,
   formatarDataDaFesta,
   formatarDiaDoMomento,
   frasesDoTratamento,
@@ -716,6 +717,7 @@ function Detail({ row }: { row: ReservationRow }) {
         telefone={event.user.phone}
         endereco={event.address}
         data={eventDate}
+        diaDaReserva={diaDaFesta(row.eventDate)}
         total={Number(row.order.total)}
         jaPago={payment.received}
         status={row.status}

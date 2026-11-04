@@ -23,6 +23,7 @@ import { impressaoDaVenda } from "./impressao-da-venda";
 import { AvailabilityService } from "../availability/availability.service";
 import { itensDoKitDoPedido, type Conflito } from "../availability/item-commitment";
 import { travarDatas } from "../availability/trava-da-data";
+import { exigirVersao, reservaAlterada, versaoAtualDaReserva } from "./versao-da-reserva";
 import {
   seguradoPorPropostasAprovadas,
   type SeguradoPorPropostas,
@@ -490,6 +491,13 @@ export class ManualReservationService {
       );
     }
 
+    // A tela que vai ser gravada é a que abriu nesta versão. Conferência
+    // antecipada, para uma tela velha nem chegar a registrar falta de acervo;
+    // a que vale é a de dentro da transação, sob a trava do pedido.
+    const versaoDaTela = exigirVersao(input.versao);
+    const antes = await versaoAtualDaReserva(prisma, id);
+    if (antes && antes.versao !== versaoDaTela) throw reservaAlterada(antes.dia);
+
     const dataDaFesta = input.evento.data;
 
     // O material do pedido novo está livre nesta data? É a única conferência
@@ -579,6 +587,10 @@ export class ManualReservationService {
           "Esta reserva foi cancelada enquanto a edição era salva. Nada foi alterado.",
         );
       }
+      // Outra edição ou uma remarcação terminou depois que este formulário
+      // abriu: gravar a tela velha desfaria aquela mudança sem avisar.
+      const agora = await versaoAtualDaReserva(tx, id);
+      if (!agora || agora.versao !== versaoDaTela) throw reservaAlterada(agora?.dia ?? diaDaFesta(atual.eventDate));
       const trocouAgora = (input.produtos.kitId || null) !== (atual.order.kitId ?? null);
       const mudouAgora = diaDaFesta(atual.eventDate) !== diaDaFesta(dataDaFesta);
       const segurado = await seguradoPorPropostasAprovadas(dataDaFesta, undefined, tx);

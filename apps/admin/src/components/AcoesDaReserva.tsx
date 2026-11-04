@@ -66,6 +66,7 @@ export function AcoesDaReserva({
   telefone,
   endereco,
   data,
+  diaDaReserva,
   total,
   jaPago,
   status,
@@ -79,6 +80,8 @@ export function AcoesDaReserva({
   telefone: string | null;
   endereco: string | null;
   data: string;
+  /** O dia da reserva (AAAA-MM-DD) que está na tela: a remarcação parte dele. */
+  diaDaReserva: string;
   total: number;
   /** Soma dos pagamentos já recebidos. Define o valor proposto e o saldo. */
   jaPago: number;
@@ -127,7 +130,7 @@ export function AcoesDaReserva({
     mutationFn: () =>
       api(`/reservations/${reservaId}/data`, {
         method: "PATCH",
-        body: JSON.stringify({ data: novaData }),
+        body: JSON.stringify({ data: novaData, dataAtual: diaDaReserva }),
       }),
     onSuccess: () => {
       toast.success("Data alterada. A data antiga voltou a ficar livre na loja.");
@@ -145,6 +148,13 @@ export function AcoesDaReserva({
       setMotivoRecusa(null);
       if (e instanceof ApiError && Array.isArray(e.detalhes?.conflitos)) {
         setConflitos(e.detalhes.conflitos as ConflitoDeData[]);
+        return;
+      }
+      // A data mudou enquanto o diálogo estava aberto: mostra a atual e
+      // recarrega a reserva, para a próxima tentativa partir dela.
+      if (e instanceof ApiError && e.detalhes?.codigo === "DATA_DA_RESERVA_MUDOU") {
+        setMotivoRecusa(e.message);
+        recarregar();
         return;
       }
       setMotivoRecusa(e instanceof Error ? e.message : "Não foi possível alterar a data.");

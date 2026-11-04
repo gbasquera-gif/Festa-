@@ -31,6 +31,8 @@ import {
 interface ReservaCompleta {
   id: string;
   status: string;
+  /** A versão da reserva: o formulário a devolve ao salvar (ver o servidor). */
+  versao?: string | null;
   /** O histórico das correções de pagamento (antes, depois, quem, por quê). */
   alteracoesDePagamentos?: AlteracaoDePagamento[];
   /** Crédito Festaê aplicado, já somado pelo servidor. */
@@ -133,6 +135,13 @@ export default function EditarReserva() {
   const [origem, setOrigem] = useState("");
   const [carregado, setCarregado] = useState(false);
   const [conflitos, setConflitos] = useState<ConflitoDetalhado[] | null>(null);
+  /**
+   * A versão que estava na tela quando o formulário foi preenchido — não a
+   * do último refetch. É ela que diz ao servidor "estou corrigindo isto".
+   */
+  const [versaoDaTela, setVersaoDaTela] = useState<string | null>(null);
+  /** Outra pessoa mudou a reserva enquanto esta tela estava aberta. */
+  const [alterada, setAlterada] = useState<string | null>(null);
 
   const mudar = (parcial: Partial<DadosDaReserva>) =>
     setDados((atual) => ({ ...atual, ...parcial }));
@@ -143,6 +152,7 @@ export default function EditarReserva() {
     if (reserva && !carregado) {
       setDados(paraFormulario(reserva));
       setOrigem(reserva.order.event.saleChannel);
+      setVersaoDaTela(reserva.versao ?? null);
       setCarregado(true);
     }
   }, [reserva, carregado]);
@@ -196,6 +206,7 @@ export default function EditarReserva() {
             ajusteComercial,
           },
           origem: origem || undefined,
+          versao: versaoDaTela ?? undefined,
         }),
       }),
     onSuccess: () => {
@@ -214,6 +225,13 @@ export default function EditarReserva() {
     },
     onError: (erro) => {
       setConflitos(null);
+      // Remarcada, com item trocado ou corrigida por outra pessoa depois que
+      // esta tela abriu: o servidor não grava a tela velha por cima.
+      if (erro instanceof ApiError && erro.detalhes?.codigo === "RESERVA_ALTERADA") {
+        setAlterada(erro.message);
+        toast.error("A reserva mudou enquanto você editava. Nada foi salvo.");
+        return;
+      }
       if (erro instanceof ApiError && erro.detalhes?.conflitos) {
         setConflitos(erro.detalhes.conflitos as ConflitoDetalhado[]);
         toast.error("Falta material para esta data.");
@@ -222,6 +240,24 @@ export default function EditarReserva() {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar.");
     },
   });
+
+  /**
+   * Busca a reserva como está agora e preenche o formulário de novo, com a
+   * versão nova. O que tinha sido digitado se perde de propósito: a pessoa
+   * refaz a correção olhando para o que está valendo.
+   */
+  async function carregarVersaoAtual() {
+    const atual = await queryClient.fetchQuery({
+      queryKey: ["reserva", id],
+      queryFn: () => api<ReservaCompleta>(`/reservations/${id}`),
+      staleTime: 0,
+    });
+    setDados(paraFormulario(atual));
+    setOrigem(atual.order.event.saleChannel);
+    setVersaoDaTela(atual.versao ?? null);
+    setAlterada(null);
+    setConflitos(null);
+  }
 
   function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -266,6 +302,19 @@ export default function EditarReserva() {
         {dataOriginal.split("-").reverse().join("/")}. Mudar data, kit ou itens reconfere agenda e
         estoque, como numa reserva nova.
       </p>
+
+      {alterada && (
+        <div
+          role="alert"
+          className="mb-4 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+          data-reserva-alterada
+        >
+          <p className="font-medium text-destructive">{alterada}</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void carregarVersaoAtual()}>
+            Carregar a versão atual
+          </Button>
+        </div>
+      )}
 
       {conflitos && (
         <PainelDeConflitos

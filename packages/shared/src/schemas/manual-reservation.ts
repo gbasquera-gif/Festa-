@@ -213,6 +213,13 @@ export type CorrigirDadosInput = z.infer<typeof corrigirDadosSchema>;
  */
 export const alterarDataSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD."),
+  /**
+   * A data que a pessoa estava vendo quando abriu a remarcação. Se a reserva
+   * mudou de dia nesse meio-tempo, o servidor recusa em vez de passar por
+   * cima. Opcional no formato só para a recusa de painel antigo ser clara;
+   * o servidor exige.
+   */
+  dataAtual: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD.").optional(),
 });
 export type AlterarDataInput = z.infer<typeof alterarDataSchema>;
 
@@ -294,6 +301,13 @@ export const editarReservaSchema = manualReservationSchema
   // a edição mexe no pedido, não no saldo da cliente.
   .omit({ credito: true })
   .extend({
+    /**
+     * A versão da reserva quando o formulário abriu (vem em GET
+     * /reservations/:id). Se mudou até o "Salvar", o servidor recusa em vez
+     * de gravar a tela velha por cima. Opcional no formato só para a recusa
+     * de painel antigo ser clara; o servidor exige.
+     */
+    versao: z.string().max(128).optional(),
     origem: z.enum(SALE_CHANNELS as unknown as [string, ...string[]]).optional(),
     financeiro: z.object({
       valorProdutos: z.coerce.number().min(0),

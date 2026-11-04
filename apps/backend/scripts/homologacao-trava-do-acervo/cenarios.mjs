@@ -87,15 +87,32 @@ async function vendaRegistrada(data, itens) {
   if (!deu(r)) throw new Error(`venda: ${r.status} ${r.texto}`);
   return { id: r.json.id, corpo };
 }
-const editar = (venda, data, itens) =>
+/** A reserva como o painel a abre (GET /reservations/:id): traz a versão. */
+const reservaNoPainel = async (id) => (await req("GET", `/reservations/${id}`)).json;
+const corpoDaEdicao = (venda, { data, itens, observacoes }) => ({
+  cliente: venda.corpo.cliente,
+  evento: { data, tipo: "ANIVERSARIO", ...(observacoes ? { observacoes } : {}) },
+  produtos: { itens: itens.map(([p, quantity]) => ({ productId: p.id, quantity })) },
+  logistica: venda.corpo.logistica,
+  financeiro: { valorProdutos: 100, entrega: 0, montagem: 0, desconto: 0 },
+});
+/**
+ * Edição como o painel faz: manda a versão da reserva que estava na tela
+ * quando o formulário abriu. Sem `versao`, abre o formulário agora (versão
+ * atual); com `versao`, simula uma tela aberta antes.
+ */
+const editarCom = async (venda, { data, itens, observacoes, versao }) =>
   req("PATCH", `/reservations/${venda.id}`, {
-    cliente: venda.corpo.cliente,
-    evento: { data, tipo: "ANIVERSARIO" },
-    produtos: { itens: itens.map(([p, quantity]) => ({ productId: p.id, quantity })) },
-    logistica: venda.corpo.logistica,
-    financeiro: { valorProdutos: 100, entrega: 0, montagem: 0, desconto: 0 },
+    ...corpoDaEdicao(venda, { data, itens, observacoes }),
+    versao: versao ?? (await reservaNoPainel(venda.id)).versao,
   });
-const remarcar = (id, data) => req("PATCH", `/reservations/${id}/data`, { data });
+const editar = (venda, data, itens) => editarCom(venda, { data, itens });
+/** Remarcação como o painel faz: manda a data que a pessoa estava vendo. */
+const remarcar = async (id, data, dataAtual) =>
+  req("PATCH", `/reservations/${id}/data`, {
+    data,
+    dataAtual: dataAtual ?? String((await reservaNoPainel(id)).eventDate).slice(0, 10),
+  });
 const pagar = (id) => req("POST", `/reservations/${id}/pagamentos`, { tipo: "DEPOSIT", valor: 30, forma: "PIX" });
 
 const linha = (p, quantidade) => ({ tipo: "PRODUTO", productId: p.id, descricao: p.nome, quantidade, valorUnitario: 50 });
@@ -561,6 +578,11 @@ console.log("23. Remarcação em corrida com venda, edição e confirmação de 
     [100, () => editar(venda, D1, [[p, 2]])],
   ]);
   conferir("remarcação × edição: nenhuma das duas trava ou dá erro interno", rs.every((r) => r.status < 500), resumo(rs));
+  conferir(
+    "remarcação × edição abertas juntas: uma grava, a outra é recusada por versão (nada some calado)",
+    rs.filter(deu).length === 1 && rs.some((r) => r.status === 409 && ["RESERVA_ALTERADA", "DATA_DA_RESERVA_MUDOU"].includes(erro(r).codigo)),
+    resumo(rs),
+  );
   const d = await datasConsistentes("remarcação × edição", venda.id);
   await semExcesso("remarcação × edição, no dia em que a festa ficou", p, d.reserva);
 }
@@ -581,6 +603,162 @@ console.log("23. Remarcação em corrida com venda, edição e confirmação de 
   const d = await datasConsistentes("remarcação × pagamento", id);
   conferir("remarcação e pagamento passam, sem impasse", rs.every(deu) && Date.now() - inicio < 6_000, resumo(rs));
   conferir("a reserva fica confirmada no dia novo", d.status === "CONFIRMED" && d.reserva === D2, d);
+}
+
+// ----------------------------------------------------------------------------
+// Edição × remarcação: nenhuma gravação apaga outra sem avisar.
+const dataBr = (iso) => iso.split("-").reverse().join("/");
+
+console.log("24. Edição feita numa tela aberta antes de uma remarcação: recusada, a remarcação fica");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Toalha Versao", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const tela = await reservaNoPainel(venda.id); // a operadora abre o formulário
+  conferir("o painel recebe a versão da reserva", typeof tela.versao === "string" && tela.versao.length >= 16, tela.versao);
+  const rr = await remarcar(venda.id, D2); // outra pessoa remarca
+  conferir("a remarcação passa", deu(rr), resumo([rr]));
+  const re = await editarCom(venda, { data: D1, itens: [[p, 1]], versao: tela.versao, observacoes: "Trocar a cor da toalha" });
+  conferir("a edição da tela velha é recusada (409 RESERVA_ALTERADA)", re.status === 409 && erro(re).codigo === "RESERVA_ALTERADA", resumo([re]));
+  conferir("e a recusa diz em que dia a festa está agora", erro(re).dataAtual === D2 && String(erro(re).message).includes(dataBr(D2)), erro(re));
+  const d = await datasConsistentes("depois da recusa", venda.id);
+  conferir("a remarcação continua valendo (dia novo, com a data anterior guardada)", d.reserva === D2 && d.remarcadaDe === D1, d);
+  const a1 = await acervo(p, D1);
+  const a2 = await acervo(p, D2);
+  conferir("o acervo acompanha: nada preso no dia antigo, a peça presa no novo", a1.emReservas === 0 && a2.emReservas === 1, { a1, a2 });
+  const agora = await reservaNoPainel(venda.id);
+  conferir("nada da edição recusada foi gravado", !String(agora.notes ?? "").includes("toalha"), agora.notes);
+  const re2 = await editarCom(venda, { data: D2, itens: [[p, 1]], versao: agora.versao, observacoes: "Trocar a cor da toalha" });
+  conferir("recarregada a reserva, a mesma correção passa e o dia novo fica", deu(re2) && (await datas(venda.id)).reserva === D2, resumo([re2]));
+}
+
+console.log("25. Remarcação pela data velha depois de uma edição que mudou o dia: recusada");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const D3 = novoDia();
+  const p = await produto("Balao Versao", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const vista = String((await reservaNoPainel(venda.id)).eventDate).slice(0, 10); // diálogo de remarcar aberto
+  const re = await editar(venda, D3, [[p, 1]]); // outra pessoa edita e leva a festa para D3
+  conferir("a edição que muda o dia passa", deu(re), resumo([re]));
+  const rr = await remarcar(venda.id, D2, vista);
+  conferir("a remarcação pela data velha é recusada (409 DATA_DA_RESERVA_MUDOU)", rr.status === 409 && erro(rr).codigo === "DATA_DA_RESERVA_MUDOU", resumo([rr]));
+  conferir("e a recusa diz a data atual", String(erro(rr).message).includes(dataBr(D3)) && erro(rr).dataAtual === D3, erro(rr));
+  const d = await datasConsistentes("depois da recusa", venda.id);
+  conferir("a festa continua no dia que a edição gravou", d.reserva === D3, d);
+  conferir("nada ficou preso no dia que a remarcação pediu", (await acervo(p, D2)).emReservas === 0);
+}
+
+console.log("26. Duas edições abertas ao mesmo tempo: a segunda não apaga a primeira");
+{
+  const D1 = novoDia();
+  const p = await produto("Mesa Duas Telas", 3);
+  const q = await produto("Cadeira Duas Telas", 3);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const v = (await reservaNoPainel(venda.id)).versao;
+  const a = await editarCom(venda, { data: D1, itens: [[p, 1], [q, 2]], versao: v }); // acrescenta cadeiras
+  const b = await editarCom(venda, { data: D1, itens: [[p, 1]], versao: v, observacoes: "Endereço corrigido" }); // tela velha
+  conferir("a primeira grava e a segunda é recusada (409 RESERVA_ALTERADA)", deu(a) && b.status === 409 && erro(b).codigo === "RESERVA_ALTERADA", resumo([a, b]));
+  conferir("as cadeiras da primeira edição continuam na reserva", (await acervo(q, D1)).emReservas === 2);
+}
+
+console.log("27. Edição e remarcação da mesma tela, no mesmo instante: só uma grava");
+{
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Painel Instante", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const tela = await reservaNoPainel(venda.id);
+  const rs = await cruzar("reservas", [venda.id], [
+    [0, () => remarcar(venda.id, D2, String(tela.eventDate).slice(0, 10))],
+    [100, () => editarCom(venda, { data: D1, itens: [[p, 2]], versao: tela.versao })],
+  ]);
+  conferir(
+    "exatamente uma grava; a outra recebe 409 de versão",
+    rs.filter(deu).length === 1 && rs.some((r) => r.status === 409 && ["RESERVA_ALTERADA", "DATA_DA_RESERVA_MUDOU"].includes(erro(r).codigo)),
+    resumo(rs),
+  );
+  const d = await datasConsistentes("no mesmo instante", venda.id);
+  const remarcou = deu(rs[0]);
+  const final = remarcou
+    ? d.reserva === D2 && (await acervo(p, D2)).emReservas === 1 && (await acervo(p, D1)).emReservas === 0
+    : d.reserva === D1 && (await acervo(p, D1)).emReservas === 2 && (await acervo(p, D2)).emReservas === 0;
+  conferir(`o estado final é exatamente o de quem gravou (${remarcou ? "remarcação" : "edição"})`, final, d);
+  await semExcesso("no mesmo instante, dia antigo", p, D1);
+  await semExcesso("no mesmo instante, dia novo", p, D2);
+}
+
+{
+  // O espelho: a edição chega primeiro e a remarcação da mesma tela, depois.
+  const D1 = novoDia();
+  const D2 = novoDia();
+  const p = await produto("Painel Instante Espelho", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const tela = await reservaNoPainel(venda.id);
+  const rs = await cruzar("reservas", [venda.id], [
+    [0, () => editarCom(venda, { data: D1, itens: [[p, 2]], versao: tela.versao })],
+    [100, () => remarcar(venda.id, D2, String(tela.eventDate).slice(0, 10))],
+  ]);
+  const d = await datasConsistentes("espelho", venda.id);
+  const a1 = await acervo(p, D1);
+  const a2 = await acervo(p, D2);
+  if (rs.every(deu)) {
+    // A edição não mexeu na data: a data que a remarcação via continua
+    // valendo, e ela leva o pedido JÁ EDITADO (2 peças) para o dia novo,
+    // conferido sob a trava. As duas vontades ficam — nenhuma some.
+    conferir(
+      "espelho: as duas gravam sem se apagar (dia da remarcação, com as 2 peças da edição)",
+      d.reserva === D2 && d.remarcadaDe === D1 && a2.emReservas === 2 && a1.emReservas === 0,
+      { d, a1, a2 },
+    );
+  } else {
+    conferir(
+      "espelho: se uma é recusada, é por versão (409) e o estado é o de quem gravou",
+      rs.some((r) => r.status === 409 && ["RESERVA_ALTERADA", "DATA_DA_RESERVA_MUDOU"].includes(erro(r).codigo)) &&
+        (deu(rs[0]) ? d.reserva === D1 && a1.emReservas === 2 : d.reserva === D2 && a2.emReservas === 1),
+      { rs: resumo(rs), d, a1, a2 },
+    );
+  }
+  await semExcesso("espelho, dia novo", p, D2);
+}
+
+console.log("28. Painel aberto antes da atualização (sem versão): recusa com orientação, nada gravado");
+{
+  const D1 = novoDia();
+  const p = await produto("Vaso Painel Antigo", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const semVersao = await req("PATCH", `/reservations/${venda.id}`, corpoDaEdicao(venda, { data: novoDia(), itens: [[p, 1]] }));
+  conferir(
+    "edição sem versão: 400 VERSAO_DA_RESERVA_AUSENTE, pedindo para recarregar",
+    semVersao.status === 400 && erro(semVersao).codigo === "VERSAO_DA_RESERVA_AUSENTE" && /recarregue/i.test(erro(semVersao).message),
+    resumo([semVersao]),
+  );
+  const semData = await req("PATCH", `/reservations/${venda.id}/data`, { data: novoDia() });
+  conferir(
+    "remarcação sem a data atual: 400 VERSAO_DA_RESERVA_AUSENTE",
+    semData.status === 400 && erro(semData).codigo === "VERSAO_DA_RESERVA_AUSENTE",
+    resumo([semData]),
+  );
+  conferir("nada mudou na reserva", (await datas(venda.id)).reserva === D1);
+}
+
+console.log("29. Sem falso conflito: pagamento entre abrir e salvar não trava a edição");
+{
+  const D1 = novoDia();
+  const p = await produto("Bandeja Pagamento", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const v1 = (await reservaNoPainel(venda.id)).versao;
+  const pg = await pagar(venda.id); // o ADMIN registra o sinal enquanto a edição está aberta
+  conferir("o pagamento é registrado", deu(pg), resumo([pg]));
+  conferir("pagamento não muda a versão", (await reservaNoPainel(venda.id)).versao === v1);
+  const re = await editarCom(venda, { data: D1, itens: [[p, 1]], versao: v1, observacoes: "Entrega pelo portão lateral" });
+  conferir("a edição aberta antes do pagamento passa", deu(re), resumo([re]));
+  const v2 = (await reservaNoPainel(venda.id)).versao;
+  conferir("gravada a edição, a versão muda", typeof v2 === "string" && v2 !== v1, { v1, v2 });
+  const reuso = await editarCom(venda, { data: D1, itens: [[p, 1]], versao: v1 });
+  conferir("a versão antiga não serve mais (409)", reuso.status === 409 && erro(reuso).codigo === "RESERVA_ALTERADA", resumo([reuso]));
 }
 
 console.log(`\n${ok} ok, ${falhas} falha(s)`);

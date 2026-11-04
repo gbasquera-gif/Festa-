@@ -41,6 +41,7 @@ import { PaymentsService } from "../payments/payments.service";
 import { itensDoKitDoPedido, mensagemDeConflito } from "../availability/item-commitment";
 import { registrarConflitosDeAcervo } from "../availability/registro-de-conflitos";
 import { travarDatas } from "../availability/trava-da-data";
+import { dataDaReservaMudou, exigirVersao, versaoAtualDaReserva } from "./versao-da-reserva";
 import { seguradoPorPropostasAprovadas } from "../orcamentos/compromisso-das-propostas";
 import { pendentesAEncerrar } from "./encerrar-pendencias";
 import { decidirCorrecao } from "./correcao-de-pagamento";
@@ -381,6 +382,8 @@ export class ReservationsService {
     return {
       ...comCredito(reserva, await saldosDeCredito(reserva.order.event.userId)),
       alteracoesDePagamentos,
+      // O formulário de edição devolve esta versão ao salvar.
+      versao: (await versaoAtualDaReserva(prisma, id))?.versao ?? null,
     };
   }
 
@@ -1187,7 +1190,8 @@ export class ReservationsService {
    * Mover só um deixaria a loja e a operação discordando sobre quando é a
    * festa — o pior desacordo possível.
    */
-  async alterarData(id: string, novaDataISO: string, usuarioId: string) {
+  async alterarData(id: string, novaDataISO: string, usuarioId: string, dataVistaISO?: string) {
+    const dataVista = exigirVersao(dataVistaISO);
     const reserva = await prisma.reservation.findUnique({
       where: { id },
       include: {
@@ -1223,6 +1227,10 @@ export class ReservationsService {
     } catch {
       throw new BadRequestException("Data inválida.");
     }
+
+    // Quem remarca decidiu olhando para uma data. Se a reserva já saiu dela
+    // (outra remarcação, uma edição), remarcar por cima desfaria aquilo calado.
+    if (diaDaFesta(reserva.eventDate) !== dataVista) throw dataDaReservaMudou(diaDaFesta(reserva.eventDate));
 
     const mesmoDia = diaDaFesta(reserva.eventDate) === diaDaFesta(novaData);
     if (mesmoDia) {
@@ -1291,6 +1299,7 @@ export class ReservationsService {
           "Esta reserva foi cancelada enquanto a remarcação era salva. Nada foi alterado.",
         );
       }
+      if (diaDaFesta(atual.eventDate) !== dataVista) throw dataDaReservaMudou(diaDaFesta(atual.eventDate));
       if (diaDaFesta(atual.eventDate) === diaDaFesta(novaData)) {
         throw new BadRequestException("A festa já está marcada para esta data.");
       }
