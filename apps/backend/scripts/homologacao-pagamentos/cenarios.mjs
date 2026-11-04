@@ -401,6 +401,34 @@ const horarioChapeco = (d) => new Date(d.getTime() - 180 * 60_000).toISOString()
 await encerrarCena();
 
 // ============================================================================
+console.log("B11. Aviso de pagamento (webhook) atrasado, chegando depois do cancelamento");
+{
+  // O QR venceu, o Mercado Pago respondeu "não pago" e a reserva foi
+  // liberada. Depois chega o aviso de que aquele Pix foi pago (pagamento no
+  // último instante, aviso atrasado). O dinheiro não pode sumir, e a reserva
+  // não volta sozinha: o acervo pode já ter sido vendido para outra festa.
+  const r = await reservaDaLoja(61);
+  const qr = await pix(r.id, -2);
+  await provedor({ modo: "nao-pago" });
+  await liberar();
+  let e = await estado(r.id);
+  conferir("sem pagamento confirmado, a reserva foi liberada", e.reserva === "CANCELLED", e);
+  await aux("POST", "/__pag/webhook-pago", { paymentId: qr.id });
+  e = await estado(r.id);
+  conferir("o aviso atrasado é registrado: o pagamento fica como pago (o dinheiro não some)", e.pagamentos.some((p) => p.startsWith("PIX:PAID")), e.pagamentos);
+  conferir("a reserva não é reaberta sozinha", e.reserva === "CANCELLED" && !e.etapas.includes("CANCELLED>CONFIRMED"), e.etapas);
+  conferir("e vira pendência de pagamento após cancelamento, para a equipe tratar", e.aposCancelamento === 1, e);
+  await aux("POST", "/__pag/webhook-pago", { paymentId: qr.id }); // o Mercado Pago reenvia o aviso
+  e = await estado(r.id);
+  conferir(
+    "o reenvio do aviso não duplica nada (um pagamento pago, uma pendência)",
+    e.aposCancelamento === 1 && e.pagamentos.filter((p) => p.startsWith("PIX:PAID")).length === 1,
+    e,
+  );
+}
+await encerrarCena();
+
+// ============================================================================
 console.log("B8. Crédito, reexecução e cota de consultas");
 {
   const r = await reservaDaLoja(120);
