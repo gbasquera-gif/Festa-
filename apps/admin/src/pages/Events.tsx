@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { useFormato } from "@/lib/privacidade";
 
 interface EventRow {
@@ -91,18 +91,36 @@ function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => 
     evento.guestCount === null ? "" : String(evento.guestCount),
   );
   const [city, setCity] = useState(evento.city);
+  /**
+   * Como a festa estava quando esta tela abriu. Só o que mudou é enviado,
+   * junto com o valor de antes: se outra pessoa corrigiu o mesmo campo nesse
+   * meio-tempo, o servidor recusa em vez de gravar por cima.
+   */
+  const [antes] = useState({
+    date: diaDoInput(evento.date),
+    type: evento.type,
+    city: evento.city,
+    guestCount: evento.guestCount,
+  });
+  const [alterado, setAlterado] = useState<string | null>(null);
+
+  // Vazio é "a combinar", e vai como nulo explícito: omitir o campo diria
+  // "não mexi nisto", e o número apagado voltaria na lista.
+  const convidados = guestCount.trim() ? Number(guestCount) : null;
+  const mudancas: Record<string, string | number | null> = {
+    ...(date !== antes.date ? { date } : {}),
+    ...(type !== antes.type ? { type } : {}),
+    ...(city !== antes.city ? { city } : {}),
+    ...(convidados !== antes.guestCount ? { guestCount: convidados } : {}),
+  };
 
   const mutation = useMutation({
     mutationFn: () =>
       api(`/events/${evento.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          date,
-          type,
-          city,
-          // Vazio é "a combinar", e vai como nulo explícito: omitir o campo
-          // diria "não mexi nisto", e o número apagado voltaria na lista.
-          guestCount: guestCount.trim() ? Number(guestCount) : null,
+          ...mudancas,
+          antes: Object.fromEntries(Object.keys(mudancas).map((c) => [c, antes[c as keyof typeof antes]])),
         }),
       }),
     onSuccess: () => {
@@ -110,8 +128,14 @@ function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => 
       toast.success("Festa atualizada.");
       aoFechar();
     },
-    onError: (erro) =>
-      toast.error(erro instanceof Error ? erro.message : "Erro ao atualizar a festa."),
+    onError: (erro) => {
+      if (erro instanceof ApiError && erro.detalhes?.codigo === "CADASTRO_ALTERADO") {
+        setAlterado(erro.message);
+        queryClient.invalidateQueries({ queryKey: ["events-admin"] });
+        return;
+      }
+      toast.error(erro instanceof Error ? erro.message : "Erro ao atualizar a festa.");
+    },
   });
 
   const semMudanca =
@@ -207,11 +231,17 @@ function EditarEvento({ evento, aoFechar }: { evento: EventRow; aoFechar: () => 
           </div>
         </div>
 
+        {alterado && (
+          <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" data-cadastro-alterado>
+            {alterado} Feche e abra de novo para ver os dados atuais.
+          </p>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={aoFechar} disabled={mutation.isPending}>
             Cancelar
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={semMudanca || mutation.isPending}>
+          <Button onClick={() => mutation.mutate()} disabled={semMudanca || mutation.isPending || alterado !== null}>
             {mutation.isPending ? "Salvando..." : "Salvar"}
           </Button>
         </DialogFooter>

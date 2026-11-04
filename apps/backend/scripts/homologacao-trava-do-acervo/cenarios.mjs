@@ -436,7 +436,21 @@ console.log("16. A tela da proposta continua somando as aprovadas como antes");
 // ----------------------------------------------------------------------------
 // Data da festa: a da reserva e a do evento andam juntas.
 const datas = (reservaId) => aux("GET", `/__trv/datas?reservaId=${reservaId}`);
-const corrigirFesta = (eventId, corpo, token = ADMIN) => req("PATCH", `/events/${eventId}`, corpo, token);
+/** A festa como a tela Eventos a abre. */
+const festaNoPainel = async (eventId) => (await req("GET", `/events/${eventId}`)).json;
+const comoEstava = (festa, campos) =>
+  Object.fromEntries(campos.map((c) => [c, c === "date" ? String(festa.date).slice(0, 10) : (festa[c] ?? null)]));
+/**
+ * Eventos → "Editar festa". Pelo painel (ADMIN), manda como os campos
+ * estavam quando a tela abriu: sem `antes`, abre a tela agora; com `antes`,
+ * simula uma tela aberta antes; `antes: null` simula o painel antigo. Pelo
+ * login da cliente, não manda nada (o app instalado não manda).
+ */
+const corrigirFesta = async (eventId, corpo, token = ADMIN, antes) => {
+  if (token !== ADMIN || antes === null) return req("PATCH", `/events/${eventId}`, corpo, token);
+  const ref = antes ?? comoEstava(await festaNoPainel(eventId), Object.keys(corpo));
+  return req("PATCH", `/events/${eventId}`, { ...corpo, antes: ref }, token);
+};
 async function datasConsistentes(nome, reservaId) {
   const d = await datas(reservaId);
   conferir(`${nome}: data da reserva e data do evento iguais (${d.reserva})`, d.reserva === d.evento, d);
@@ -759,6 +773,135 @@ console.log("29. Sem falso conflito: pagamento entre abrir e salvar não trava a
   conferir("gravada a edição, a versão muda", typeof v2 === "string" && v2 !== v1, { v1, v2 });
   const reuso = await editarCom(venda, { data: D1, itens: [[p, 1]], versao: v1 });
   conferir("a versão antiga não serve mais (409)", reuso.status === 409 && erro(reuso).codigo === "RESERVA_ALTERADA", resumo([reuso]));
+}
+
+// ----------------------------------------------------------------------------
+// Correções cadastrais (Operação → "Corrigir dados" e Eventos → "Editar
+// festa"): só o campo que outra pessoa mudou é conflito.
+/** Os dados como a tela "Corrigir dados" os abre. */
+const dadosNaTela = async (reservaId) => {
+  const r = await reservaNoPainel(reservaId);
+  return {
+    nome: r.order.event.user.name,
+    telefone: r.order.event.user.phone,
+    endereco: r.order.event.address ?? null,
+    bairro: r.order.event.neighborhood ?? null,
+    observacoes: r.notes ?? null,
+  };
+};
+/** "Corrigir dados": manda só os campos dados, com os valores de quando a tela abriu. */
+const corrigirDados = async (reservaId, campos, tela) => {
+  const ref = tela === null ? null : (tela ?? (await dadosNaTela(reservaId)));
+  return req("PATCH", `/operacao/reservas/${reservaId}/dados`, {
+    ...campos,
+    ...(ref ? { antes: Object.fromEntries(Object.keys(campos).map((c) => [c, ref[c] ?? null])) } : {}),
+  });
+};
+const tel = () => `0049${String(Date.now()).slice(-5)}${String(++seq).padStart(3, "0")}`;
+
+console.log("30. Corrigir dados numa tela velha depois de outra correção do mesmo campo: recusada");
+{
+  const D1 = novoDia();
+  const p = await produto("Toalha Cadastro", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const tela = await dadosNaTela(venda.id); // a operadora B abre "Corrigir dados"
+  const certo = tel();
+  const a = await corrigirDados(venda.id, { telefone: certo }); // A corrige o telefone
+  conferir("a primeira correção do telefone passa", deu(a), resumo([a]));
+  const b = await corrigirDados(venda.id, { telefone: tel() }, tela); // B grava o que tinha na tela
+  conferir("a tela velha é recusada (409 CADASTRO_ALTERADO, campo telefone)", b.status === 409 && erro(b).codigo === "CADASTRO_ALTERADO" && JSON.stringify(erro(b).campos) === '["telefone"]', resumo([b]));
+  conferir("a recusa não mostra o telefone de ninguém", !String(erro(b).message).includes(certo.slice(-6)), erro(b).message);
+  const agora = await dadosNaTela(venda.id);
+  conferir("o telefone corrigido por A continua gravado", String(agora.telefone).endsWith(certo.slice(-8)), agora.telefone);
+}
+
+console.log("31. Correções em campos diferentes passam todas (sem conflito falso)");
+{
+  const D1 = novoDia();
+  const p = await produto("Mesa Cadastro", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const tela = await dadosNaTela(venda.id);
+  const { eventId } = await datas(venda.id);
+  const festaTela = await festaNoPainel(eventId);
+  const a = await corrigirDados(venda.id, { endereco: "Rua das Flores, 100" }); // A corrige o endereço
+  const novoTel = tel();
+  const b = await corrigirDados(venda.id, { telefone: novoTel }, tela); // B, tela velha, só o telefone
+  conferir("endereço (A) e telefone (B), da mesma tela velha, passam os dois", deu(a) && deu(b), resumo([a, b]));
+  const c = await corrigirFesta(eventId, { guestCount: 70 }, ADMIN, comoEstava(festaTela, ["guestCount"])); // Eventos, tela velha
+  conferir("Eventos (tela velha) mudando só os convidados também passa", deu(c), resumo([c]));
+  const igual = await corrigirDados(venda.id, { endereco: "Rua das Flores, 100" }, tela); // C, mesma correção que A
+  conferir("corrigir para o mesmo valor que outra pessoa já gravou não é conflito", deu(igual), resumo([igual]));
+  const agora = await dadosNaTela(venda.id);
+  const festa = await festaNoPainel(eventId);
+  conferir(
+    "as três correções ficaram (endereço, telefone e convidados)",
+    agora.endereco === "Rua das Flores, 100" && String(agora.telefone).endsWith(novoTel.slice(-8)) && festa.guestCount === 70,
+    { agora: { endereco: agora.endereco }, convidados: festa.guestCount },
+  );
+}
+
+console.log("32. Eventos: tela velha recusada no campo que outra pessoa mudou; a edição da reserva respeita a correção");
+{
+  const D1 = novoDia();
+  const p = await produto("Painel Cadastro", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const { eventId } = await datas(venda.id);
+  const festaTela = await festaNoPainel(eventId);
+  const a = await corrigirFesta(eventId, { guestCount: 80 }); // outra aba de Eventos
+  const b = await corrigirFesta(eventId, { guestCount: 60 }, ADMIN, comoEstava(festaTela, ["guestCount"]));
+  conferir("convidados: a tela velha é recusada (409 CADASTRO_ALTERADO)", deu(a) && b.status === 409 && erro(b).codigo === "CADASTRO_ALTERADO", resumo([a, b]));
+  conferir("ficam os 80 convidados gravados antes", (await festaNoPainel(eventId)).guestCount === 80);
+  const edicao = await reservaNoPainel(venda.id); // o formulário de edição da reserva abre
+  const correcao = await corrigirDados(venda.id, { telefone: tel() }); // alguém corrige o telefone
+  const salva = await editarCom(venda, { data: D1, itens: [[p, 1]], versao: edicao.versao });
+  conferir(
+    "a edição da reserva aberta antes da correção é recusada (409 RESERVA_ALTERADA), e o telefone corrigido fica",
+    deu(correcao) && salva.status === 409 && erro(salva).codigo === "RESERVA_ALTERADA",
+    resumo([correcao, salva]),
+  );
+}
+
+console.log("33. No mesmo instante: o mesmo campo, só uma grava; campos diferentes, as duas");
+{
+  const D1 = novoDia();
+  const p = await produto("Vaso Cadastro", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const { orderId } = await aux("GET", `/__trv/reserva?id=${venda.id}`);
+  const tela = await dadosNaTela(venda.id);
+  const rs = await cruzar("pedidos", [orderId], [
+    [0, () => corrigirDados(venda.id, { endereco: "Rua A, 1" }, tela)],
+    [100, () => corrigirDados(venda.id, { endereco: "Rua B, 2" }, tela)],
+  ]);
+  conferir(
+    "mesmo campo, mesma tela, mesmo instante: uma grava e a outra recebe 409 CADASTRO_ALTERADO",
+    rs.filter(deu).length === 1 && rs.some((r) => r.status === 409 && erro(r).codigo === "CADASTRO_ALTERADO"),
+    resumo(rs),
+  );
+  const ganhou = deu(rs[0]) ? "Rua A, 1" : "Rua B, 2";
+  conferir("o endereço gravado é o de quem gravou", (await dadosNaTela(venda.id)).endereco === ganhou);
+  const tela2 = await dadosNaTela(venda.id);
+  const { eventId } = await datas(venda.id);
+  const festaTela = await festaNoPainel(eventId);
+  const rs2 = await cruzar("pedidos", [orderId], [
+    [0, () => corrigirDados(venda.id, { telefone: tel() }, tela2)],
+    [100, () => corrigirFesta(eventId, { guestCount: 45 }, ADMIN, comoEstava(festaTela, ["guestCount"]))],
+  ]);
+  conferir("campos diferentes no mesmo instante: as duas gravam", rs2.every(deu), resumo(rs2));
+}
+
+console.log("34. Painel antigo (sem os valores de antes): recusado com orientação; o app da cliente continua");
+{
+  const D1 = novoDia();
+  const p = await produto("Bandeja Cadastro", 2);
+  const venda = await vendaRegistrada(D1, [[p, 1]]);
+  const { eventId } = await datas(venda.id);
+  const d = await corrigirDados(venda.id, { telefone: tel() }, null);
+  conferir("Corrigir dados sem antes: 400 PAINEL_DESATUALIZADO", d.status === 400 && erro(d).codigo === "PAINEL_DESATUALIZADO" && /recarregue/i.test(erro(d).message), resumo([d]));
+  const e = await corrigirFesta(eventId, { guestCount: 30 }, ADMIN, null);
+  conferir("Eventos (painel) sem antes: 400 PAINEL_DESATUALIZADO", e.status === 400 && erro(e).codigo === "PAINEL_DESATUALIZADO", resumo([e]));
+  const { token } = await aux("GET", `/__trv/token-da-dona?eventId=${eventId}`);
+  const cliente = await corrigirFesta(eventId, { guestCount: 30 }, token);
+  conferir("a dona da festa, pelo app, sem antes: continua funcionando", deu(cliente) && (await festaNoPainel(eventId)).guestCount === 30, resumo([cliente]));
 }
 
 console.log(`\n${ok} ok, ${falhas} falha(s)`);

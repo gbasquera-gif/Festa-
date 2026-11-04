@@ -201,6 +201,21 @@ export const corrigirDadosSchema = z.object({
   endereco: z.string().max(255).optional().or(z.literal("")),
   bairro: z.string().max(120).optional().or(z.literal("")),
   observacoes: z.string().max(2000).optional().or(z.literal("")),
+  /**
+   * Como cada campo enviado estava quando a tela abriu. O servidor recusa
+   * (409) se outra pessoa mudou um deles nesse meio-tempo, em vez de gravar
+   * por cima. Opcional no formato só para a recusa de painel antigo ser
+   * clara; o servidor exige.
+   */
+  antes: z
+    .object({
+      nome: z.string().max(160).nullable().optional(),
+      telefone: z.string().max(30).nullable().optional(),
+      endereco: z.string().max(255).nullable().optional(),
+      bairro: z.string().max(120).nullable().optional(),
+      observacoes: z.string().max(2000).nullable().optional(),
+    })
+    .optional(),
 });
 export type CorrigirDadosInput = z.infer<typeof corrigirDadosSchema>;
 
