@@ -1,0 +1,43 @@
+name: Festae - impacto da Entrega C (somente leitura)
+
+# Roda só no push deste branch de consulta. Compila as funções da Entrega C
+# e conta, numa transação READ ONLY (com prova de que escrita é recusada),
+# o que as propostas aprovadas sem reserva passarão a segurar. Imprime só
+# números agregados. Nenhum deploy, nenhuma escrita, nenhum dado pessoal.
+on:
+  push:
+    branches: ["consulta/impacto-c-2026-11-04"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: festae-consulta-impacto-c
+  cancel-in-progress: false
+
+jobs:
+  contar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+      - name: Compilar as funções da Entrega C
+        run: pnpm exec turbo run build --filter=@festae/backend...
+      - name: Verificar segredo
+        env:
+          DB_CONFIGURADO: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL != '' }}
+        run: test "$DB_CONFIGURADO" = true || { echo 'Falta FESTAE_DATABASE_PUBLIC_URL'; exit 1; }
+      - name: Contagem em transação somente leitura
+        working-directory: apps/backend
+        env:
+          FESTAE_DATABASE_PUBLIC_URL: ${{ secrets.FESTAE_DATABASE_PUBLIC_URL }}
+        run: bash scripts/consulta-impacto-c/executar.sh
