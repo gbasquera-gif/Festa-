@@ -1,0 +1,43 @@
+name: Festae - sandbox Mercado Pago (validade mínima do Pix)
+
+# Só no push deste branch de teste. O job usa o Environment protegido
+# "mercadopago-sandbox": fica parado até a aprovação de quem foi cadastrado
+# como revisor, e só ele enxerga o segredo MP_SANDBOX_ACCESS_TOKEN.
+# Nenhum outro segredo, nenhum banco, nenhum deploy.
+on:
+  push:
+    branches: ["teste/sandbox-validade-pix"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: festae-sandbox-validade-pix
+  cancel-in-progress: false
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: mercadopago-sandbox
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+      - name: Compilar o backend (a classe real do gateway)
+        run: pnpm exec turbo run build --filter=@festae/backend...
+      - name: Conferência da lógica sem rede
+        working-directory: apps/backend
+        run: node scripts/sandbox-validade-pix/testar.cjs --simular
+      - name: Teste no sandbox (só credencial de teste)
+        working-directory: apps/backend
+        env:
+          MP_ACCESS_TOKEN: ${{ secrets.MP_SANDBOX_ACCESS_TOKEN }}
+        run: node scripts/sandbox-validade-pix/testar.cjs
