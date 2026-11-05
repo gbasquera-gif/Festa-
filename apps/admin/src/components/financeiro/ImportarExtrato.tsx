@@ -14,6 +14,7 @@ import {
 } from "@festae/shared";
 import { Button } from "@/components/ui/button";
 import { enviarArquivos } from "@/lib/api";
+import { centavosEmReais } from "@/lib/centavos";
 import { useFormato } from "@/lib/privacidade";
 import { Rotulo } from "./pecas";
 
@@ -64,7 +65,7 @@ function Categoria({ categoria }: { categoria: CategoriaDoExtrato }) {
  */
 export function ImportarExtrato() {
   const { brl } = useFormato();
-  const reais = (centavos: number) => brl(centavos / 100);
+  const reais = (centavos: number) => brl(centavosEmReais(centavos));
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("TODAS");
   const [limite, setLimite] = useState(PAGINA);
