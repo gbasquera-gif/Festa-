@@ -32,8 +32,9 @@ import {
  * a tela já fazia ao escolher uma peça; preço, acervo e disponibilidade seguem
  * as regras de sempre, conferidas ao salvar.
  *
- * Fechar a janela sem confirmar não perde nada: a seleção continua guardada e
- * volta ao reabrir. Só o "Adicionar selecionados" a esvazia.
+ * Cancelar descarta só o que foi marcado e ainda não confirmado; a composição
+ * não é tocada. Clicar fora da janela com peças marcadas não fecha — perder a
+ * seleção é sempre um gesto explícito (Cancelar, X ou Esc).
  *
  * O preço chega já formatado por quem usa (`formatarPreco`): o componente não
  * decide como dinheiro aparece na tela.
@@ -76,13 +77,20 @@ export function SeletorDeItens({
   const resumo = resumoDaSelecao(selecao);
   const selo = textoDoRepetido ?? ((q: number) => `Já incluído · ${q} un.`);
 
+  /** Fecha e volta ao zero: nada marcado, sem busca e sem filtro. */
+  function fechar() {
+    setSelecao({});
+    setBusca("");
+    setCategoria("");
+    setSomenteSelecionados(false);
+    setAberto(false);
+  }
+
   function confirmar() {
     const itens = selecionadosEmOrdem(produtos, selecao);
     if (itens.length === 0) return;
     aoConfirmar(itens);
-    setSelecao({});
-    setSomenteSelecionados(false);
-    setAberto(false);
+    fechar();
   }
 
   return (
@@ -90,15 +98,15 @@ export function SeletorDeItens({
       <Button type="button" variant="outline" className="min-h-11" onClick={() => setAberto(true)}>
         <ListPlus className="mr-1.5 size-4" aria-hidden />
         {rotuloDoBotao}
-        {resumo.itens > 0 && (
-          <span className="ml-1.5 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-            {resumo.itens} pendente{resumo.itens === 1 ? "" : "s"}
-          </span>
-        )}
       </Button>
 
-      <Dialog open={aberto} onOpenChange={setAberto}>
-        <DialogContent className="flex h-[92dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <Dialog open={aberto} onOpenChange={(abrir) => (abrir ? setAberto(true) : fechar())}>
+        <DialogContent
+          className="flex h-[92dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+          onInteractOutside={(e) => {
+            if (resumo.itens > 0) e.preventDefault();
+          }}
+        >
           <DialogHeader className="border-b p-4 pr-12 text-left">
             <DialogTitle>Adicionar itens do catálogo</DialogTitle>
             <DialogDescription>
@@ -207,8 +215,8 @@ export function SeletorDeItens({
                   <X className="mr-1 size-4" aria-hidden /> Limpar seleção
                 </Button>
               )}
-              <Button type="button" variant="outline" className="min-h-11" onClick={() => setAberto(false)}>
-                Fechar
+              <Button type="button" variant="outline" className="min-h-11" onClick={fechar}>
+                Cancelar
               </Button>
               <Button type="button" className="min-h-11" disabled={resumo.itens === 0} onClick={confirmar}>
                 Adicionar selecionados{resumo.itens > 0 ? ` (${resumo.itens})` : ""}
