@@ -354,6 +354,8 @@ interface Regra {
   sinal?: "+" | "-";
   /** Regra genérica: não vale se uma regra específica já viu o sentido trocado. */
   generica?: boolean;
+  /** Descrição com um sentido só: com o sentido trocado, fica pendente. */
+  exclusiva?: boolean;
 }
 
 /**
@@ -364,18 +366,15 @@ interface Regra {
  * Mercado Pago sobre dinheiro reservado/retirado.
  */
 const REGRAS: Regra[] = [
-  { categoria: "RENDIMENTO_DO_COFRINHO", nome: "rendimento", padrao: /\brendiment/ },
+  // Rendimento é crédito no cofrinho; negativo não é rendimento.
+  { categoria: "RENDIMENTO_DO_COFRINHO", nome: "rendimento", padrao: /\brendiment/, sinal: "+", exclusiva: true },
   {
     categoria: "RESERVA_AUTOMATICA_POR_VENDAS",
     nome: "reserva automática de vendas",
     padrao: /reserva automatica|reservad[oa] automaticamente|reserva (de|das|por) vendas?/,
     sinal: "-",
-  },
-  {
-    categoria: "RETIRADA_DO_COFRINHO",
-    nome: "volta da reserva automática de vendas",
-    padrao: /reserva automatica|reservad[oa] automaticamente|reserva (de|das|por) vendas?/,
-    sinal: "+",
+    // Só existe indo para o cofrinho; como entrada na conta, fica pendente.
+    exclusiva: true,
   },
   {
     categoria: "TRANSFERENCIA_PARA_COFRINHO",
@@ -421,6 +420,7 @@ export function classificarMovimentacao(texto: string, valor: number): { categor
   for (const r of REGRAS) {
     if (!r.padrao.test(t) || (r.generica && sinalDivergente)) continue;
     if (r.sinal && (r.sinal === "+" ? valor <= 0 : valor >= 0)) {
+      if (r.exclusiva) return { categoria: "DESCONHECIDA", regra: "a descrição não combina com o sentido do valor" };
       if (!r.generica) sinalDivergente = true;
       continue;
     }

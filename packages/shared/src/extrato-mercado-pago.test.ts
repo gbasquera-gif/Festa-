@@ -160,6 +160,34 @@ describe("6. rendimentos do cofrinho", () => {
   });
 });
 
+describe("descrições confirmadas no aplicativo: sentido trocado fica pendente", () => {
+  const pendente = { categoria: "DESCONHECIDA", regra: "a descrição não combina com o sentido do valor" };
+
+  it("'Reserva por vendas' só vale como saída para o cofrinho", () => {
+    expect(classificarMovimentacao("Reserva por vendas", -5000).categoria).toBe("RESERVA_AUTOMATICA_POR_VENDAS");
+    expect(classificarMovimentacao("Reserva por vendas", 5000)).toEqual(pendente);
+  });
+
+  it("'Rendimentos' negativo não é rendimento", () => {
+    expect(classificarMovimentacao("Rendimentos", 31).categoria).toBe("RENDIMENTO_DO_COFRINHO");
+    expect(classificarMovimentacao("Rendimentos", -31)).toEqual(pendente);
+  });
+
+  it("no arquivo: as duas linhas ficam pendentes e fora dos totais do cofrinho", () => {
+    const extrato = `RELEASE_DATE;TRANSACTION_TYPE;REFERENCE_ID;TRANSACTION_NET_AMOUNT;PARTIAL_BALANCE
+03-10-2026;Reserva por vendas;90000000201;50,00;150,00
+04-10-2026;Rendimentos;90000000202;-0,10;149,90
+`;
+    const r = analisarExtratos([arquivo("sentido-trocado.csv", extrato)]);
+    expect(r.arquivos[0].situacao).toBe("ACEITO");
+    expect(r.movimentacoes.map((m) => m.categoria)).toEqual(["DESCONHECIDA", "DESCONHECIDA"]);
+    // Compara como número (o resumo pode devolver -0, que vale zero).
+    const cofrinho = Object.fromEntries(Object.entries(r.resumo.cofrinho).map(([k, v]) => [k, v + 0]));
+    expect(cofrinho).toEqual({ enviado: 0, retirado: 0, liquido: 0, rendimentos: 0 });
+    expect(r.resumo.pendentes).toBe(2);
+  });
+});
+
 describe("7. tarifas e diferença entre bruto e líquido", () => {
   const r = analisarExtratos([arquivo("liberacoes.csv", LIBERACOES)]);
 
