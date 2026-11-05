@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ComposicaoDoKit } from "@/components/orcamento/ComposicaoDoKit";
+import { SeletorDeItens } from "@/components/SeletorDeItens";
 import { GaleriaDeImagens } from "@/components/GaleriaDeImagens";
 import { brl } from "@/components/financeiro/formato";
 
@@ -278,23 +279,34 @@ export function EditorDaOpcao({
     if (k) aoEscolherKit(k);
   }
 
-  function adicionarProduto(produtoId: string) {
-    const p = produtos.find((x) => x.id === produtoId);
-    if (!p) return;
-    aoMudar((o) => ({
-      linhas: [
-        ...o.linhas,
-        {
-          tipo: p.category === "BALAO" ? "BALOES" : "PRODUTO",
-          productId: p.id,
-          descricao: p.name,
-          quantidade: 1,
-          valorUnitario: Number(p.unitPrice),
-          imagemUrl: p.imageUrl ?? undefined,
-        },
-      ],
-    }));
+  /**
+   * As peças escolhidas no seletor entram como sempre entraram, uma linha por
+   * peça — agora várias de uma vez e com a quantidade já escolhida. Peça que
+   * já estava na opção ganha outra linha, como acontecia ao escolhê-la de novo.
+   */
+  function adicionarProdutos(itens: { produto: { id: string }; quantidade: number }[]) {
+    const novas: Linha[] = [];
+    for (const { produto, quantidade } of itens) {
+      const p = produtos.find((x) => x.id === produto.id);
+      if (!p) continue;
+      novas.push({
+        tipo: p.category === "BALAO" ? "BALOES" : "PRODUTO",
+        productId: p.id,
+        descricao: p.name,
+        quantidade,
+        valorUnitario: Number(p.unitPrice),
+        imagemUrl: p.imageUrl ?? undefined,
+      });
+    }
+    if (novas.length > 0) aoMudar((o) => ({ linhas: [...o.linhas, ...novas] }));
   }
+
+  /** Quanto de cada peça do catálogo já está nas linhas desta opção. */
+  const jaNaOpcao = useMemo(() => {
+    const q: Record<string, number> = {};
+    for (const l of opcao.linhas) if (l.productId) q[l.productId] = (q[l.productId] ?? 0) + l.quantidade;
+    return q;
+  }, [opcao.linhas]);
 
   function alterarLinha(i: number, campo: keyof Linha, valor: string | number) {
     aoMudar((o) => ({ linhas: o.linhas.map((l, k) => (k === i ? { ...l, [campo]: valor } : l)) }));
@@ -366,20 +378,15 @@ export function EditorDaOpcao({
         )}
 
         <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-0 flex-1 basis-56 space-y-1.5">
-            <Label htmlFor={id("produto")}>Adicionar peça do catálogo</Label>
-            <select
-              id={id("produto")}
-              value=""
-              onChange={(e) => e.target.value && adicionarProduto(e.target.value)}
-              className="h-11 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="">Escolher…</option>
-              {produtos.map((p) => (
-                <option key={p.id} value={p.id}>{rotuloDoProduto(p)}</option>
-              ))}
-            </select>
-          </div>
+          <SeletorDeItens
+            produtos={produtos}
+            formatarPreco={brl}
+            jaIncluidos={jaNaOpcao}
+            permitirRepetidos
+            rotuloDoBotao="Adicionar peças do catálogo"
+            textoDoRepetido={(q) => `Já na opção · ${q} un. (entra outra linha)`}
+            aoConfirmar={adicionarProdutos}
+          />
           {/* A Festaê vende o que ainda não está cadastrado. A linha manual
               entra no valor e não vira item de acervo. */}
           <Button

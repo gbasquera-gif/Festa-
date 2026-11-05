@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SeletorDeItens } from "@/components/SeletorDeItens";
+import { incluirNaReserva } from "@/lib/selecao-de-itens";
 
 export interface Kit {
   id: string;
@@ -23,6 +27,8 @@ export interface Produto {
   name: string;
   unitPrice: string | number;
   stockQuantity: number;
+  imageUrl?: string | null;
+  category?: string;
 }
 
 export interface ConflitoDetalhado {
@@ -381,35 +387,79 @@ export function BlocosDaReserva({
             </div>
           )}
 
-          <div>
-            <Label className="mb-2 block">Itens adicionais</Label>
-            <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border p-3">
-              {produtos?.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 py-1.5">
-                  <span className="min-w-0 text-sm">
-                    <span className="block truncate">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {brl(Number(p.unitPrice))} · acervo {p.stockQuantity}
-                    </span>
-                  </span>
-                  {/* inputMode numérico abre o teclado de números no iPhone;
-                      sem isso a pessoa digita quantidade num teclado de letras. */}
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    className="h-11 w-20 shrink-0 text-center sm:h-9"
-                    value={valor.extras[p.id] ?? ""}
-                    placeholder="0"
-                    onChange={(e) =>
-                      mudar({
-                        extras: { ...valor.extras, [p.id]: Number(e.target.value) || 0 },
-                      })
-                    }
-                  />
-                </div>
-              ))}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label className="block">Itens adicionais</Label>
+              <SeletorDeItens
+                produtos={produtos ?? []}
+                formatarPreco={brl}
+                jaIncluidos={Object.fromEntries(Object.entries(valor.extras).filter(([, q]) => q > 0))}
+                permitirRepetidos={false}
+                textoDoRepetido={(q) => `Já na reserva · ${q} un. — ajuste na lista`}
+                aoConfirmar={(itens) =>
+                  mudar({
+                    extras: incluirNaReserva(
+                      valor.extras,
+                      Object.fromEntries(itens.map((i) => [i.produto.id, i.quantidade])),
+                    ),
+                  })
+                }
+              />
             </div>
+            {Object.keys(valor.extras).length === 0 ? (
+              <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                Nenhum item avulso. Use “Adicionar itens” para escolher várias peças de uma vez.
+              </p>
+            ) : (
+              <ul className="divide-y rounded-md border">
+                {Object.entries(valor.extras).map(([produtoId, quantidade]) => {
+                  const p = produtos?.find((x) => x.id === produtoId);
+                  return (
+                    <li key={produtoId} className="flex items-center justify-between gap-3 p-3">
+                      <span className="min-w-0 text-sm">
+                        <span className="block truncate">{p?.name ?? "Peça fora do catálogo ativo"}</span>
+                        {p && (
+                          <span className="text-xs text-muted-foreground">
+                            {brl(Number(p.unitPrice))} · acervo {p.stockQuantity}
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        {/* inputMode numérico abre o teclado de números no iPhone;
+                            sem isso a pessoa digita quantidade num teclado de letras. */}
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          className="h-11 w-20 text-center sm:h-9"
+                          value={quantidade || ""}
+                          placeholder="0"
+                          aria-label={`Quantidade de ${p?.name ?? "peça"}`}
+                          onChange={(e) =>
+                            mudar({
+                              extras: { ...valor.extras, [produtoId]: Number(e.target.value) || 0 },
+                            })
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-11 sm:size-9"
+                          aria-label={`Remover ${p?.name ?? "peça"}`}
+                          onClick={() => {
+                            const { [produtoId]: _removido, ...resto } = valor.extras;
+                            mudar({ extras: resto });
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </CardContent>
       </Card>
