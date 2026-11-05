@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Rotulo } from "./pecas";
 import { dia } from "./formato";
 import { useFormato } from "@/lib/privacidade";
+import { ImportarExtrato } from "./ImportarExtrato";
 
 type Situacao =
   | "CONFERE"
@@ -374,6 +375,8 @@ export function ConciliacaoMercadoPago() {
           )}
         </>
       )}
+
+      <ImportarExtrato />
     </div>
   );
 }

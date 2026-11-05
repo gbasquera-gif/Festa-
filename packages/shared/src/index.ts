@@ -645,3 +645,24 @@ export {
 export type { AguardoDoSinal } from "./aprovadas-sem-sinal";
 
 export type { PrazoDoSinal } from "./data-da-festa";
+
+export {
+  CATEGORIAS_DO_EXTRATO,
+  FORMATOS_DO_EXTRATO,
+  LIMITES_DO_EXTRATO,
+  analisarExtratos,
+  classificarMovimentacao,
+  lerCentavos,
+  lerData,
+} from "./extrato-mercado-pago";
+export type {
+  AnaliseDeExtratos,
+  ArquivoAnalisado,
+  ArquivoDoExtrato,
+  CategoriaDoExtrato,
+  FormatoDoExtrato,
+  GrupoDaCategoria,
+  MovimentacaoDoExtrato,
+  ResumoDoExtratoMercadoPago,
+  TotalDaCategoria,
+} from "./extrato-mercado-pago";

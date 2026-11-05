@@ -79,6 +79,27 @@ export async function uploadImage(folder: "themes" | "kits" | "products", file: 
 }
 
 /**
+ * Envia arquivos para uma rota protegida (multipart) e devolve o JSON.
+ * Mesmo cuidado do `uploadImage`: sem Content-Type manual.
+ */
+export async function enviarArquivos<T>(path: string, campo: string, arquivos: File[]): Promise<T> {
+  const token = getToken();
+  const body = new FormData();
+  for (const arquivo of arquivos) body.append(campo, arquivo);
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  });
+  if (!res.ok) {
+    const corpo = await res.json().catch(() => ({}));
+    const texto = typeof corpo.message === "string" ? corpo.message : `Erro ${res.status}`;
+    throw new ApiError(res.status === 413 ? "Arquivo grande demais (máximo 2 MB)." : texto, res.status);
+  }
+  return res.json();
+}
+
+/**
  * Baixa um arquivo de uma rota protegida.
  *
  * Um `<a href>` comum não serve: a rota exige o token no cabeçalho, e o
